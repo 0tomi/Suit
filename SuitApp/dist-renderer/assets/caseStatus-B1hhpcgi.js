@@ -1,0 +1,1 @@
+function a(i){if(!i)return"Inicial";if(i.end_date||i.endDate)return"Finalizado";const t=String(i.status??"").trim().toLowerCase();return t==="closed"||t==="finalizado"?"Finalizado":t==="open"||t==="active"||t==="activo"?"Activo":i.status||"Inicial"}function n(i){return a(i)==="Finalizado"}export{a as g,n as i};

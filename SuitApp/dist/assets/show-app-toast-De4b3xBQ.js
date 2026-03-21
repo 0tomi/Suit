@@ -1,0 +1,1 @@
+import{aF as e}from"./App-oGnKHWi6.js";const c={success:"success",danger:"error",warning:"warning",info:"info"};function a({title:s,description:o,variant:n="success",duration:r=3e3}){return e.show({title:s,description:o,type:c[n]||"info",duration:r})}export{a as s};

@@ -1,0 +1,385 @@
+@import "tailwindcss";
+
+/* Vincula el prefijo dark: de Tailwind a la clase .dark del ThemeContext
+   en lugar del media query prefers-color-scheme del sistema operativo. */
+@variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens para dark mode ── */
+@theme inline {
+    --color-bg-page: var(--bg-page);
+    --color-bg-card: var(--bg-card);
+    --color-bg-card-hover: var(--bg-card-hover);
+    --color-bg-input: var(--bg-input);
+    --color-bg-header: var(--bg-header);
+    --color-text-primary: var(--text-primary);
+    --color-text-secondary: var(--text-secondary);
+    --color-text-tertiary: var(--text-tertiary);
+    --color-border-default: var(--border-default);
+    --color-border-subtle: var(--border-subtle);
+    --color-bg-overlay: var(--bg-overlay);
+}
+
+/* ── Light mode (default) ── */
+:root {
+    --bg-page: #f9fafb;
+    /* gray-50 */
+    --bg-card: #ffffff;
+    /* white */
+    --bg-card-hover: #f9fafb;
+    /* gray-50 */
+    --bg-input: #ffffff;
+    /* white */
+    --bg-header: #f9fafb;
+    /* gray-50 */
+    --text-primary: #111827;
+    /* gray-900 */
+    --text-secondary: #6b7280;
+    /* gray-500 */
+    --text-tertiary: #9ca3af;
+    /* gray-400 */
+    --border-default: #e5e7eb;
+    /* gray-200 */
+    --border-subtle: #f3f4f6;
+    /* gray-100 */
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+}
+
+/* ── Dark mode ── */
+.dark {
+    --bg-page: #030712;
+    /* gray-950 */
+    --bg-card: #111827;
+    /* gray-900 */
+    --bg-card-hover: #1f2937;
+    /* gray-800 */
+    --bg-input: #1f2937;
+    /* gray-800 */
+    --bg-header: #111827;
+    /* gray-900 */
+    --text-primary: #f3f4f6;
+    /* gray-100 */
+    --text-secondary: #9ca3af;
+    /* gray-400 */
+    --text-tertiary: #6b7280;
+    /* gray-500 */
+    --border-default: #374151;
+    /* gray-700 */
+    --border-subtle: #1f2937;
+    /* gray-800 */
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+}
+
+/* Transición suave entre modos */
+*,
+*::before,
+*::after {
+    transition: background-color 0.2s ease, color 0.15s ease, border-color 0.2s ease;
+}
+
+/* Custom Base Styles */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
+}
+
+button,
+[role="button"],
+[role="combobox"],
+a {
+    cursor: pointer;
+}
+
+/* React Big Calendar Customization */
+.rbc-calendar {
+    @apply font-sans;
+}
+
+.rbc-day-bg {
+    @apply cursor-pointer transition-colors duration-200;
+}
+
+.rbc-day-bg:hover {
+    @apply bg-blue-50;
+}
+
+/* Today highlight */
+.rbc-today {
+    @apply bg-blue-50/50;
+}
+
+.rbc-event {
+    @apply rounded-md shadow-sm border border-blue-600/20 bg-blue-600;
+    transition: none;
+}
+
+.rbc-event-content,
+.rbc-background-event {
+    transition: none;
+}
+
+/* Header customization */
+.rbc-header {
+    @apply py-2 font-semibold text-(--text-secondary);
+}
+
+/* ── Dark mode overrides para React Big Calendar ── */
+.dark .rbc-month-view,
+.dark .rbc-time-view,
+.dark .rbc-agenda-view,
+.dark .rbc-header,
+.dark .rbc-month-row,
+.dark .rbc-day-bg,
+.dark .rbc-timeslot-group,
+.dark .rbc-time-content,
+.dark .rbc-time-header-content {
+    border-color: var(--border-default);
+}
+
+.dark .rbc-off-range-bg {
+    background-color: var(--bg-page);
+}
+
+.dark .rbc-day-bg:hover {
+    background-color: var(--bg-card-hover);
+}
+
+.dark .rbc-today {
+    background-color: var(--border-subtle);
+}
+
+.dark .rbc-agenda-view table.rbc-agenda-table {
+    border-color: var(--border-default);
+}
+
+.dark .rbc-agenda-view table.rbc-agenda-table tbody>tr>td {
+    border-color: var(--border-default);
+}
+
+
+/* Tiptap Editor Styles */
+.ProseMirror {
+    outline: none;
+}
+
+.ProseMirror p.is-editor-empty:first-child::before {
+    color: #adb5bd;
+    content: attr(data-placeholder);
+    float: left;
+    height: 0;
+    pointer-events: none;
+}
+
+.dark .ProseMirror p.is-editor-empty:first-child::before {
+    color: #6b7280;
+}
+
+.ProseMirror img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 1rem auto;
+    border-radius: 0.5rem;
+}
+
+/* Bordes de tabla en dark mode */
+.dark .ProseMirror table {
+    border-color: #374151;
+}
+
+.dark .ProseMirror td,
+.dark .ProseMirror th {
+    border-color: #374151;
+}
+
+/* Salto de página en dark mode — override de inline styles */
+.dark [data-page-break="true"] {
+    border-top-color: #4b5563 !important;
+}
+
+.dark [data-page-break="true"] > span {
+    background: #1f2937 !important;
+    color: #9ca3af !important;
+}
+
+.search-match {
+    background: rgba(250, 204, 21, 0.35);
+    border-radius: 0.2rem;
+}
+
+.search-match--active {
+    background: rgba(59, 130, 246, 0.28);
+    box-shadow: 0 0 0 1px rgba(37, 99, 235, 0.55);
+}
+
+.dark .search-match {
+    background: rgba(250, 204, 21, 0.18);
+}
+
+.dark .search-match--active {
+    background: rgba(59, 130, 246, 0.35);
+    box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.6);
+}
+
+/* Variable Node Style */
+.variable-node {
+    @apply inline-flex items-center px-2 py-0.5 mx-1 bg-indigo-100 text-indigo-700 rounded-md font-medium text-sm border border-indigo-200 select-none cursor-default;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.dark .variable-node {
+    @apply bg-indigo-900/40 text-indigo-300 border-indigo-700;
+    box-shadow: none;
+}
+
+/* ── Radix ScrollArea Styles ── */
+.ScrollAreaRoot {
+    overflow: hidden;
+}
+
+.ScrollAreaViewport {
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+}
+
+.ScrollAreaScrollbar {
+    display: flex;
+    /* prevents selection when clicking and dragging on scrollbar */
+    user-select: none;
+    /* disable browser handling of all panning and zooming gestures on touch devices */
+    touch-action: none;
+    padding: 2px;
+    background: transparent;
+    transition: background 160ms ease-out;
+}
+
+.ScrollAreaScrollbar:hover {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+.ScrollAreaScrollbar[data-orientation="vertical"] {
+    width: 8px;
+}
+
+.ScrollAreaScrollbar[data-orientation="horizontal"] {
+    flex-direction: column;
+    height: 8px;
+}
+
+.ScrollAreaThumb {
+    flex: 1;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+    position: relative;
+    transition: background 160ms ease-out;
+}
+
+.ScrollAreaThumb::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+}
+
+.ScrollAreaThumb:hover {
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.dark .ScrollAreaThumb {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.dark .ScrollAreaThumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.ScrollAreaCorner {
+    background: transparent;
+}
+
+.sidebar-footer-gradient {
+    background: linear-gradient(to bottom, transparent, rgba(15, 23, 42, 0.5));
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+
+@keyframes tutorialIconHop {
+    0%   { transform: translateY(0); }
+    20%  { transform: translateY(-3px) scale(1.02); }
+    40%  { transform: translateY(-7px) scale(1.04); }
+    60%  { transform: translateY(0); }
+    75%  { transform: translateY(-3px) scale(1.02); }
+    100% { transform: translateY(0); }
+}
+
+.tutorial-icon-hop {
+    animation: tutorialIconHop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .tutorial-icon-hop {
+        animation: none;
+    }
+}
+
+/* Parpadeo de entrada para vencimientos urgentes */
+@keyframes urgentEntryBlink {
+    0%   { background-color: inherit; }
+    20%  { background-color: rgba(239, 68, 68, 0.30); }
+    40%  { background-color: inherit; }
+    65%  { background-color: rgba(239, 68, 68, 0.30); }
+    85%  { background-color: inherit; }
+    100% { background-color: rgba(239, 68, 68, 0.10); }
+}
+
+.deadline-urgent-blink {
+    animation: urgentEntryBlink 2s ease-in-out 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .deadline-urgent-blink {
+        animation: none;
+    }
+}
+
+/* Sileo Toast Alignment */
+[data-sileo-description].sileo-toast-description {
+    color: #cbd5e1 !important;
+    text-align: center !important;
+    font-weight: 500;
+    line-height: 1.35;
+    white-space: pre-line;
+}
+
+/* ── Video Player Custom Styles ── */
+media-player[paused] .vds-pause-icon { display: none; }
+media-player:not([paused]) .vds-play-icon { display: none; }
+
+media-player[muted] .vds-unmute-icon { display: none; }
+media-player:not([muted]) .vds-mute-icon { display: none; }
+
+media-player[fullscreen] .vds-enter-fullscreen-icon { display: none; }
+media-player:not([fullscreen]) .vds-exit-fullscreen-icon { display: none; }
+
+.vds-slider {
+    --vds-slider-fill: 0%;
+}
+
+.vds-time-slider .vds-slider-track {
+    width: var(--vds-slider-fill);
+}
+
+.vds-volume-slider .vds-slider-track {
+    width: var(--vds-slider-fill);
+}

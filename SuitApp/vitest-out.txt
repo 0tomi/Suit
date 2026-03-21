@@ -1,0 +1,9 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/valen/Desktop/Cosas/SuitApp/SuitApp[39m
+
+No test files found, exiting with code 1
+
+filter: C:/Users/valen/Desktop/Cosas/SuitApp/SuitApp/vitest-hotkeys.test.jsx
+include: tests/unit/**/*.{test,spec}.{js,jsx}
+exclude:  **/node_modules/**, **/.git/**
+

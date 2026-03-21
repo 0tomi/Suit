@@ -1,0 +1,37 @@
+import { useState } from 'react';
+import { Users, UserCheck } from 'lucide-react';
+import SideMenuPageLayout from '../components/ui/SideMenuPageLayout.jsx';
+import ClientsTab from '../components/people/ClientsTab.jsx';
+import PartesTab from '../components/people/PartesTab.jsx';
+
+const TABS = [
+    { id: 'clients', label: 'Clientes', icon: UserCheck },
+    { id: 'partes', label: 'Partes', icon: Users },
+];
+
+const People = () => {
+    const [activeTab, setActiveTab] = useState('clients');
+
+    const contentByTab = {
+        clients: <ClientsTab />,
+        partes: <PartesTab />,
+    };
+
+    return (
+        <SideMenuPageLayout
+            title="Personas"
+            titleTestId="page-people-title"
+            description="Gestiona clientes y partes vinculadas a los casos."
+            icon={Users}
+            sections={TABS}
+            activeSection={activeTab}
+            onSectionChange={setActiveTab}
+            sectionIdPrefix="people-tab"
+            maxWidthClass="max-w-full" // Use full width for tables
+        >
+            {contentByTab[activeTab] || null}
+        </SideMenuPageLayout>
+    );
+};
+
+export default People;
