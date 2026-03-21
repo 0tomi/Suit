@@ -1,0 +1,41 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class Template extends Model
+{
+    use HasFactory;
+
+    protected $fillable = ['template_category_id', 'title', 'content'];
+
+    protected static function booted(): void
+    {
+        static::deleting(function (Template $template): void {
+            Tombstone::record(Tombstone::TYPE_TEMPLATE, $template->id);
+        });
+    }
+
+    /**
+     * When a template is created/updated/deleted, propagate the timestamp
+     * to the parent category so clients can detect catalog changes via last-modified.
+     */
+    protected $touches = ['category'];
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(TemplateCategory::class, 'template_category_id');
+    }
+
+    /**
+     * Get a lightweight list of templates indicating their category.
+     * Used for the main catalog catalog caching where content is omitted.
+     */
+    public static function getLightweightCatalog(): \Illuminate\Database\Eloquent\Collection
+    {
+        return self::select('id', 'title', 'template_category_id')->get();
+    }
+}

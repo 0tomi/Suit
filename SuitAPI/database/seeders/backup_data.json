@@ -1,0 +1,322 @@
+{
+    "agendas": [
+        {
+            "id": 1,
+            "name": "Personal Agenda: user",
+            "user_id": 1,
+            "suit_case_id": null,
+            "created_at": "2026-02-05 00:20:31",
+            "updated_at": "2026-02-05 00:20:31"
+        },
+        {
+            "id": 2,
+            "name": "Personal Agenda: admin",
+            "user_id": 2,
+            "suit_case_id": null,
+            "created_at": "2026-02-05 00:20:46",
+            "updated_at": "2026-02-05 00:20:46"
+        },
+        {
+            "id": 3,
+            "name": "Agenda: Caso desalojo",
+            "user_id": 1,
+            "suit_case_id": 1,
+            "created_at": "2026-02-05 00:46:07",
+            "updated_at": "2026-02-05 00:46:07"
+        }
+    ],
+    "cache": [
+        {
+            "key": "laravel-cache-boost:mcp:database-schema:sqlite:suit_cases|documents",
+            "value": "a:3:{s:6:\"engine\";s:6:\"sqlite\";s:6:\"tables\";a:0:{}s:6:\"global\";a:4:{s:5:\"views\";a:0:{}s:17:\"stored_procedures\";a:0:{}s:9:\"functions\";a:0:{}s:9:\"sequences\";a:0:{}}}",
+            "expiration": 1770743606
+        },
+        {
+            "key": "laravel-cache-boost:mcp:database-schema:sqlite:case",
+            "value": "a:3:{s:6:\"engine\";s:6:\"sqlite\";s:6:\"tables\";a:4:{s:11:\"case_client\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"client_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:41:\"case_client_suit_case_id_client_id_unique\";a:4:{s:7:\"columns\";a:2:{i:0;s:12:\"suit_case_id\";i:1;s:9:\"client_id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"client_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:7:\"clients\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:16:\"case_permissions\";a:5:{s:7:\"columns\";a:6:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:7:\"user_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:16:\"permission_level\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:7:\"user_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:10:\"case_types\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:11:\"description\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:22:\"case_types_name_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:4:\"name\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:10:\"suit_cases\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:5:\"title\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"lawyer_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"start_date\";a:1:{s:4:\"type\";s:4:\"date\";}s:8:\"end_date\";a:1:{s:4:\"type\";s:4:\"date\";}s:7:\"details\";a:1:{s:4:\"type\";s:4:\"text\";}s:6:\"status\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:12:\"case_type_id\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"case_type_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"case_types\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:8:\"set null\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"lawyer_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}}s:6:\"global\";a:4:{s:5:\"views\";a:0:{}s:17:\"stored_procedures\";a:0:{}s:9:\"functions\";a:0:{}s:9:\"sequences\";a:0:{}}}",
+            "expiration": 1770839760
+        },
+        {
+            "key": "laravel-cache-boost:mcp:database-schema:sqlite:users",
+            "value": "a:3:{s:6:\"engine\";s:6:\"sqlite\";s:6:\"tables\";a:1:{s:5:\"users\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"email\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:17:\"email_verified_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:8:\"password\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:14:\"remember_token\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:4:\"role\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:3:\"tag\";a:1:{s:4:\"type\";s:7:\"varchar\";}}s:7:\"indexes\";a:3:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}s:18:\"users_email_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:5:\"email\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:16:\"users_tag_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:3:\"tag\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}}s:6:\"global\";a:4:{s:5:\"views\";a:0:{}s:17:\"stored_procedures\";a:0:{}s:9:\"functions\";a:0:{}s:9:\"sequences\";a:0:{}}}",
+            "expiration": 1770919010
+        },
+        {
+            "key": "laravel-cache-boost:mcp:database-schema:sqlite:",
+            "value": "a:3:{s:6:\"engine\";s:6:\"sqlite\";s:6:\"tables\";a:22:{s:7:\"agendas\";a:5:{s:7:\"columns\";a:6:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:7:\"user_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:7:\"user_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:5:\"cache\";a:5:{s:7:\"columns\";a:3:{s:3:\"key\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"value\";a:1:{s:4:\"type\";s:4:\"text\";}s:10:\"expiration\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:2:{s:22:\"cache_expiration_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:10:\"expiration\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:24:\"sqlite_autoindex_cache_1\";a:4:{s:7:\"columns\";a:1:{i:0;s:3:\"key\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:11:\"cache_locks\";a:5:{s:7:\"columns\";a:3:{s:3:\"key\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"owner\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"expiration\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:2:{s:28:\"cache_locks_expiration_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:10:\"expiration\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:30:\"sqlite_autoindex_cache_locks_1\";a:4:{s:7:\"columns\";a:1:{i:0;s:3:\"key\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:11:\"case_client\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"client_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:41:\"case_client_suit_case_id_client_id_unique\";a:4:{s:7:\"columns\";a:2:{i:0;s:12:\"suit_case_id\";i:1;s:9:\"client_id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"client_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:7:\"clients\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:16:\"case_permissions\";a:5:{s:7:\"columns\";a:6:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:7:\"user_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:16:\"permission_level\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:7:\"user_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:10:\"case_types\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:11:\"description\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:22:\"case_types_name_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:4:\"name\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:7:\"clients\";a:5:{s:7:\"columns\";a:13:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"first_name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"last_name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:21:\"identification_number\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"email\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"phone\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:7:\"address\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:4:\"type\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:6:\"status\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"notes\";a:1:{s:4:\"type\";s:4:\"text\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"deleted_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:36:\"clients_identification_number_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:21:\"identification_number\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:15:\"document_client\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:11:\"document_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"client_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:44:\"document_client_document_id_client_id_unique\";a:4:{s:7:\"columns\";a:2:{i:0;s:11:\"document_id\";i:1;s:9:\"client_id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"client_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:7:\"clients\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:11:\"document_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:9:\"documents\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:17:\"document_versions\";a:5:{s:7:\"columns\";a:11:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:11:\"document_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:14:\"version_number\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"file_path\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"mime_type\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:4:\"size\";a:1:{s:4:\"type\";s:7:\"integer\";}s:13:\"encryption_iv\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:8:\"checksum\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_by\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:51:\"document_versions_document_id_version_number_unique\";a:4:{s:7:\"columns\";a:2:{i:0;s:11:\"document_id\";i:1;s:14:\"version_number\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:10:\"created_by\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:11:\"document_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:9:\"documents\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:9:\"documents\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:7:\"user_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:8:\"event_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"is_locked\";a:1:{s:4:\"type\";s:7:\"tinyint\";}s:9:\"locked_by\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"locked_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:4:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"locked_by\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:8:\"set null\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:8:\"event_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:6:\"events\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:8:\"set null\";}i:2;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:3;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:7:\"user_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:6:\"events\";a:5:{s:7:\"columns\";a:9:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"agenda_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:5:\"title\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:11:\"description\";a:1:{s:4:\"type\";s:4:\"text\";}s:4:\"date\";a:1:{s:4:\"type\";s:4:\"date\";}s:4:\"time\";a:1:{s:4:\"type\";s:4:\"time\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"agenda_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:7:\"agendas\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:11:\"failed_jobs\";a:5:{s:7:\"columns\";a:7:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"uuid\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"connection\";a:1:{s:4:\"type\";s:4:\"text\";}s:5:\"queue\";a:1:{s:4:\"type\";s:4:\"text\";}s:7:\"payload\";a:1:{s:4:\"type\";s:4:\"text\";}s:9:\"exception\";a:1:{s:4:\"type\";s:4:\"text\";}s:9:\"failed_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:23:\"failed_jobs_uuid_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:4:\"uuid\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:6:\"images\";a:5:{s:7:\"columns\";a:9:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"file_path\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"mime_type\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:4:\"size\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_by\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:10:\"created_by\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:11:\"job_batches\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"total_jobs\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"pending_jobs\";a:1:{s:4:\"type\";s:7:\"integer\";}s:11:\"failed_jobs\";a:1:{s:4:\"type\";s:7:\"integer\";}s:14:\"failed_job_ids\";a:1:{s:4:\"type\";s:4:\"text\";}s:7:\"options\";a:1:{s:4:\"type\";s:4:\"text\";}s:12:\"cancelled_at\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:7:\"integer\";}s:11:\"finished_at\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:1:{s:30:\"sqlite_autoindex_job_batches_1\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:4:\"jobs\";a:5:{s:7:\"columns\";a:7:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:5:\"queue\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:7:\"payload\";a:1:{s:4:\"type\";s:4:\"text\";}s:8:\"attempts\";a:1:{s:4:\"type\";s:7:\"integer\";}s:11:\"reserved_at\";a:1:{s:4:\"type\";s:7:\"integer\";}s:12:\"available_at\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:2:{s:16:\"jobs_queue_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:5:\"queue\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:10:\"migrations\";a:5:{s:7:\"columns\";a:3:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"migration\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"batch\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:21:\"password_reset_tokens\";a:5:{s:7:\"columns\";a:3:{s:5:\"email\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"token\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:40:\"sqlite_autoindex_password_reset_tokens_1\";a:4:{s:7:\"columns\";a:1:{i:0;s:5:\"email\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:22:\"personal_access_tokens\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:14:\"tokenable_type\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:12:\"tokenable_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:4:\"text\";}s:5:\"token\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"abilities\";a:1:{s:4:\"type\";s:4:\"text\";}s:12:\"last_used_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"expires_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:4:{s:39:\"personal_access_tokens_expires_at_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:10:\"expires_at\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:35:\"personal_access_tokens_token_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:5:\"token\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:56:\"personal_access_tokens_tokenable_type_tokenable_id_index\";a:4:{s:7:\"columns\";a:2:{i:0;s:14:\"tokenable_type\";i:1;s:12:\"tokenable_id\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:8:\"sessions\";a:5:{s:7:\"columns\";a:6:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:7:\"user_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"ip_address\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"user_agent\";a:1:{s:4:\"type\";s:4:\"text\";}s:7:\"payload\";a:1:{s:4:\"type\";s:4:\"text\";}s:13:\"last_activity\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:3:{s:28:\"sessions_last_activity_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:13:\"last_activity\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:22:\"sessions_user_id_index\";a:4:{s:7:\"columns\";a:1:{i:0;s:7:\"user_id\";}s:4:\"type\";N;s:9:\"is_unique\";b:0;s:10:\"is_primary\";b:0;}s:27:\"sqlite_autoindex_sessions_1\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:10:\"suit_cases\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:5:\"title\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"lawyer_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"start_date\";a:1:{s:4:\"type\";s:4:\"date\";}s:8:\"end_date\";a:1:{s:4:\"type\";s:4:\"date\";}s:7:\"details\";a:1:{s:4:\"type\";s:4:\"text\";}s:6:\"status\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:12:\"case_type_id\";a:1:{s:4:\"type\";s:7:\"integer\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"case_type_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"case_types\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:8:\"set null\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:9:\"lawyer_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:5:\"users\";a:5:{s:7:\"columns\";a:10:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:5:\"email\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:17:\"email_verified_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:8:\"password\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:14:\"remember_token\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:4:\"role\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:3:\"tag\";a:1:{s:4:\"type\";s:7:\"varchar\";}}s:7:\"indexes\";a:3:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}s:18:\"users_email_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:5:\"email\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:16:\"users_tag_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:3:\"tag\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}s:6:\"videos\";a:5:{s:7:\"columns\";a:9:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:12:\"suit_case_id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:9:\"file_path\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:9:\"mime_type\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:4:\"size\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_by\";a:1:{s:4:\"type\";s:7:\"integer\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:1:{s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:2:{i:0;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:10:\"created_by\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:5:\"users\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}i:1;a:7:{s:4:\"name\";N;s:7:\"columns\";a:1:{i:0;s:12:\"suit_case_id\";}s:14:\"foreign_schema\";s:4:\"main\";s:13:\"foreign_table\";s:10:\"suit_cases\";s:15:\"foreign_columns\";a:1:{i:0;s:2:\"id\";}s:9:\"on_update\";s:9:\"no action\";s:9:\"on_delete\";s:7:\"cascade\";}}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}}s:6:\"global\";a:4:{s:5:\"views\";a:0:{}s:17:\"stored_procedures\";a:0:{}s:9:\"functions\";a:0:{}s:9:\"sequences\";a:0:{}}}",
+            "expiration": 1771011485
+        },
+        {
+            "key": "laravel-cache-boost:mcp:database-schema:sqlite:case_types",
+            "value": "a:3:{s:6:\"engine\";s:6:\"sqlite\";s:6:\"tables\";a:1:{s:10:\"case_types\";a:5:{s:7:\"columns\";a:5:{s:2:\"id\";a:1:{s:4:\"type\";s:7:\"integer\";}s:4:\"name\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:11:\"description\";a:1:{s:4:\"type\";s:7:\"varchar\";}s:10:\"created_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}s:10:\"updated_at\";a:1:{s:4:\"type\";s:8:\"datetime\";}}s:7:\"indexes\";a:2:{s:22:\"case_types_name_unique\";a:4:{s:7:\"columns\";a:1:{i:0;s:4:\"name\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:0;}s:7:\"primary\";a:4:{s:7:\"columns\";a:1:{i:0;s:2:\"id\";}s:4:\"type\";N;s:9:\"is_unique\";b:1;s:10:\"is_primary\";b:1;}}s:12:\"foreign_keys\";a:0:{}s:8:\"triggers\";a:0:{}s:17:\"check_constraints\";a:0:{}}}s:6:\"global\";a:4:{s:5:\"views\";a:0:{}s:17:\"stored_procedures\";a:0:{}s:9:\"functions\";a:0:{}s:9:\"sequences\";a:0:{}}}",
+            "expiration": 1771454455
+        },
+        {
+            "key": "laravel-cache-boost.roster.scan",
+            "value": "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",
+            "expiration": 1771692798
+        }
+    ],
+    "case_client": [
+        {
+            "id": 1,
+            "suit_case_id": 1,
+            "client_id": 1,
+            "created_at": "2026-02-11 19:46:28",
+            "updated_at": "2026-02-11 19:46:28"
+        }
+    ],
+    "case_types": [
+        {
+            "id": 1,
+            "name": "Civil",
+            "description": "Migrated from legacy string field",
+            "created_at": "2026-02-06 19:27:13",
+            "updated_at": "2026-02-06 19:27:13",
+            "eventColor": null
+        }
+    ],
+    "clients": [
+        {
+            "id": 1,
+            "first_name": "Rodoolfo",
+            "last_name": "Alonso",
+            "identification_number": "4344343",
+            "email": "rodolfito@gmail.com",
+            "phone": "23314134",
+            "address": null,
+            "type": "person",
+            "status": "active",
+            "notes": null,
+            "created_at": "2026-02-10 19:41:08",
+            "updated_at": "2026-02-10 19:41:08",
+            "deleted_at": null
+        }
+    ],
+    "document_client": [
+        {
+            "id": 1,
+            "document_id": 1,
+            "client_id": 1,
+            "created_at": "2026-02-11 19:51:01",
+            "updated_at": "2026-02-11 19:51:01"
+        }
+    ],
+    "document_versions": [
+        {
+            "id": 1,
+            "document_id": 1,
+            "version_number": 1,
+            "file_path": "secure_docs\/b6ddb018-4a29-4ac7-bef4-1c351707e22e",
+            "mime_type": "text\/plain",
+            "size": 22,
+            "encryption_iv": "Hql2i9fZOe22LDvrQ3eZSQ==",
+            "checksum": "b68d35e49fd89abdcae3d1a993d04058c5f8d57350abeeb90f291c8217c7df80",
+            "created_by": 1,
+            "created_at": "2026-02-06 20:01:56",
+            "updated_at": "2026-02-06 20:01:56"
+        },
+        {
+            "id": 2,
+            "document_id": 1,
+            "version_number": 2,
+            "file_path": "secure_docs\/4981387a-c289-49c8-bbe5-ec8b5795cd78",
+            "mime_type": "text\/plain",
+            "size": 49,
+            "encryption_iv": "kb+TiJj53KQbYwAt9uWl7Q==",
+            "checksum": "7afb6473098319f8142cb46499997bf606376ddb52bdb2bda0163b3ab843b4bc",
+            "created_by": 1,
+            "created_at": "2026-02-07 03:07:35",
+            "updated_at": "2026-02-07 03:07:35"
+        }
+    ],
+    "documents": [
+        {
+            "id": 1,
+            "name": "FixedDoc3",
+            "user_id": 1,
+            "suit_case_id": null,
+            "event_id": null,
+            "is_locked": 0,
+            "locked_by": null,
+            "locked_at": null,
+            "created_at": "2026-02-06 20:01:56",
+            "updated_at": "2026-02-07 03:07:38"
+        }
+    ],
+    "events": [
+        {
+            "id": 1,
+            "agenda_id": 1,
+            "suit_case_id": null,
+            "title": "Audiencia locura",
+            "description": "Audiencia locura",
+            "date": "2026-02-04 00:00:00",
+            "time": "2026-02-13 00:00:00",
+            "created_at": "2026-02-13 20:40:19",
+            "updated_at": "2026-02-13 20:40:19"
+        }
+    ],
+    "personal_access_tokens": [
+        {
+            "id": 1,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "6faaf066f037792c12d29c9e0f6fdb3c58b971569d273d6de72c67852a652e40",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-11 19:38:39",
+            "expires_at": null,
+            "created_at": "2026-02-10 19:40:48",
+            "updated_at": "2026-02-11 19:38:39"
+        },
+        {
+            "id": 2,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "62bd9cc2cda6c4a8018e5f9c369835d511fcf3e7792e6d8c966a1eb3925ab771",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-11 19:42:14",
+            "expires_at": null,
+            "created_at": "2026-02-11 19:41:30",
+            "updated_at": "2026-02-11 19:42:14"
+        },
+        {
+            "id": 3,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "9340c6e29ffb60e39e55792be90e7d051a1b030e62eef3638d855bf7fc45d753",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-11 19:51:01",
+            "expires_at": null,
+            "created_at": "2026-02-11 19:42:41",
+            "updated_at": "2026-02-11 19:51:01"
+        },
+        {
+            "id": 4,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "6b2b8d48d56ac8e61b80e1f844ef6e8e261094917daed64a126dde3c02997a95",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-13 20:29:08",
+            "expires_at": null,
+            "created_at": "2026-02-13 20:29:08",
+            "updated_at": "2026-02-13 20:29:08"
+        },
+        {
+            "id": 7,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "8079b6d85ee174cddc8ab8f2e29510850fd9970470503bf31aa1c5f0f4630d20",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-19 20:39:05",
+            "expires_at": null,
+            "created_at": "2026-02-13 20:43:48",
+            "updated_at": "2026-02-19 20:39:05"
+        },
+        {
+            "id": 8,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "8c7d7295cf4108d98df171f1c51deba8ff123a7f5395bd7380a9a84a93697531",
+            "abilities": "[\"*\"]",
+            "last_used_at": "2026-02-19 19:29:25",
+            "expires_at": null,
+            "created_at": "2026-02-19 19:23:44",
+            "updated_at": "2026-02-19 19:29:25"
+        },
+        {
+            "id": 9,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "edbb3c8a15668aa06d9f1ab5a07cb60e263a8bd6db5ff9061fcff6022d5bf710",
+            "abilities": "[\"*\"]",
+            "last_used_at": null,
+            "expires_at": null,
+            "created_at": "2026-02-19 19:48:06",
+            "updated_at": "2026-02-19 19:48:06"
+        },
+        {
+            "id": 10,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "5df2cd45d58990b91fc4d15d3605fc29b6c24d664321aa5a04e5db86bab61658",
+            "abilities": "[\"*\"]",
+            "last_used_at": null,
+            "expires_at": null,
+            "created_at": "2026-02-19 19:50:08",
+            "updated_at": "2026-02-19 19:50:08"
+        },
+        {
+            "id": 11,
+            "tokenable_type": "App\\Models\\User",
+            "tokenable_id": 1,
+            "name": "auth_token",
+            "token": "d2dde1aa48a63f15b9d165980dbb63b7eac5108bbe89c150bd16996437eccc8e",
+            "abilities": "[\"*\"]",
+            "last_used_at": null,
+            "expires_at": null,
+            "created_at": "2026-02-19 19:50:18",
+            "updated_at": "2026-02-19 19:50:18"
+        }
+    ],
+    "suit_cases": [
+        {
+            "id": 1,
+            "title": "Caso desalojo",
+            "lawyer_id": 1,
+            "start_date": "2020-02-05",
+            "end_date": null,
+            "details": null,
+            "status": "active",
+            "created_at": "2026-02-05 00:46:07",
+            "updated_at": "2026-02-05 00:46:07",
+            "case_type_id": 1
+        }
+    ],
+    "users": [
+        {
+            "id": 1,
+            "name": "user",
+            "email": "user@example.com",
+            "email_verified_at": null,
+            "password": "$2y$12$OaLAxk6oGXYLbvO\/O8qMTuJ9V2exeModDlWFJXwORYdNMK0X7YPeS",
+            "remember_token": null,
+            "created_at": "2026-02-05 00:20:31",
+            "updated_at": "2026-02-05 00:20:31",
+            "role": "lawyer",
+            "tag": "user"
+        },
+        {
+            "id": 2,
+            "name": "admin",
+            "email": "admin@example.com",
+            "email_verified_at": null,
+            "password": "$2y$12$r2r7r4D8Fig3Zmuut99cqO0RRWSZXAkZnyg\/EJRspYpCQhvWVMmxi",
+            "remember_token": null,
+            "created_at": "2026-02-05 00:20:46",
+            "updated_at": "2026-02-05 00:20:46",
+            "role": "admin",
+            "tag": "admin"
+        },
+        {
+            "id": 3,
+            "name": "Jazmin Kuhlman",
+            "email": "curl_test@example.com",
+            "email_verified_at": "2026-02-12 20:05:46",
+            "password": "$2y$12$jnZ0nz9UZ4Pvytw\/YMBWg.1QZZ424iAxm1ExGOSBoZXOewbEyWb6e",
+            "remember_token": "neN02A4vGs",
+            "created_at": "2026-02-12 20:05:46",
+            "updated_at": "2026-02-12 20:05:46",
+            "role": "lawyer",
+            "tag": "#PPMY1287"
+        }
+    ]
+}
