@@ -1,0 +1,670 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MenuConfiguraciones</class>
+ <widget class="QDialog" name="MenuConfiguraciones">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>640</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Configuración</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex">
+      <number>0</number>
+     </property>
+
+     <!-- ===================== TAB BACKUP ===================== -->
+     <widget class="QWidget" name="BackupSettings">
+      <attribute name="title">
+       <string>Backup</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_backup">
+       <item>
+        <widget class="QGroupBox" name="grpIntervaloBackup">
+         <property name="title">
+          <string>Intervalo de backups</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_backup">
+          <item>
+           <widget class="QLabel" name="lblCadaBackup">
+            <property name="text">
+             <string>Cada</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spnIntervaloBackupValor">
+            <property name="minimum">
+             <number>1</number>
+            </property>
+            <property name="maximum">
+             <number>999</number>
+            </property>
+            <property name="value">
+             <number>2</number>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="cmbIntervaloBackupUnidad">
+            <item><property name="text"><string>Minutos</string></property></item>
+            <item><property name="text"><string>Horas</string></property></item>
+            <item><property name="text"><string>Días</string></property></item>
+            <item><property name="text"><string>Semanas</string></property></item>
+            <item><property name="text"><string>Meses</string></property></item>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacerBackupH">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpRotacion">
+         <property name="title">
+          <string>Rotación de backups</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_rotacion">
+          <item>
+           <widget class="QLabel" name="lblRotacion">
+            <property name="text">
+             <string>Máximo de backups guardados:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QSpinBox" name="spnRotacion">
+            <property name="minimum"><number>1</number></property>
+            <property name="maximum"><number>100</number></property>
+            <property name="value"><number>5</number></property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacerRotacionH">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpRutaBackups">
+         <property name="title">
+          <string>Ubicación de backups de BD</string>
+         </property>
+         <layout class="QHBoxLayout" name="horizontalLayout_rutaBackups">
+          <item>
+           <widget class="QLineEdit" name="edtRutaBackups">
+            <property name="readOnly"><bool>true</bool></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnCambiarRutaBackups">
+            <property name="text"><string>Cambiar...</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnRecuperarBackup">
+         <property name="text"><string>Recuperar backup</string></property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="btnCrearBackup">
+         <property name="text"><string>Crear backup ahora</string></property>
+        </widget>
+       </item>
+
+       <!-- SECCIÓN: BACKUP DE STORAGE -->
+       <item>
+        <widget class="QGroupBox" name="grpStorageBackup">
+         <property name="title">
+          <string>Backup de storage</string>
+         </property>
+         <layout class="QVBoxLayout" name="verticalLayout_storageBackup">
+          <item>
+           <widget class="QCheckBox" name="chkStorageBackupActivo">
+            <property name="text">
+             <string>Habilitar backup automático de storage</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLabel" name="lblStorageBackupAviso">
+            <property name="text">
+             <string>⚠ Cada backup copia todo el directorio storage/. Puede consumir mucho espacio en disco.</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">color: #CC6600;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_storageIntervalo">
+            <item>
+             <widget class="QLabel" name="lblStorageIntervalo">
+              <property name="text"><string>Intervalo:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSpinBox" name="spnStorageBackupValor">
+              <property name="minimum"><number>1</number></property>
+              <property name="maximum"><number>999</number></property>
+              <property name="value"><number>1</number></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="cmbStorageBackupUnidad">
+              <item><property name="text"><string>Horas</string></property></item>
+              <item><property name="text"><string>Días</string></property></item>
+              <item><property name="text"><string>Semanas</string></property></item>
+             </widget>
+            </item>
+            <item>
+             <spacer name="spacerStorageIntervaloH">
+              <property name="orientation"><enum>Qt::Horizontal</enum></property>
+              <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="horizontalLayout_storageDestino">
+            <item>
+             <widget class="QLabel" name="lblStorageDestino">
+              <property name="text"><string>Destino:</string></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLineEdit" name="edtRutaStorageBackup">
+              <property name="readOnly"><bool>true</bool></property>
+              <property name="placeholderText">
+               <string>Seleccioná una carpeta de destino...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="btnCambiarRutaStorageBackup">
+              <property name="text"><string>Cambiar...</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QPushButton" name="btnCrearStorageBackup">
+            <property name="text"><string>Backup de storage ahora</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+
+       <item>
+        <spacer name="spacerBackupV">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- ===================== TAB SERVER ===================== -->
+     <widget class="QWidget" name="ServerSettings">
+      <attribute name="title">
+       <string>Server</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_server">
+       <item>
+        <widget class="QScrollArea" name="scrollServer">
+         <property name="frameShape">
+          <enum>QFrame::NoFrame</enum>
+         </property>
+         <property name="widgetResizable">
+          <bool>true</bool>
+         </property>
+         <widget class="QWidget" name="scrollServerContents">
+          <property name="geometry">
+           <rect><x>0</x><y>0</y><width>620</width><height>700</height></rect>
+          </property>
+          <layout class="QVBoxLayout" name="verticalLayout_serverContents">
+           <item>
+            <widget class="QGroupBox" name="grpTls">
+             <property name="title"><string>TLS</string></property>
+             <layout class="QVBoxLayout" name="verticalLayout_tls">
+              <item>
+               <widget class="QCheckBox" name="chkTls">
+                <property name="text"><string>Activar TLS interno</string></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="grpServidor">
+             <property name="title"><string>Servidor</string></property>
+             <layout class="QFormLayout" name="formLayoutServidor">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblHostname">
+                <property name="text"><string>Hostname:</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="edtHostname">
+                <property name="placeholderText"><string>Vacío = IP local</string></property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblPuertoServidor">
+                <property name="text"><string>Puerto:</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QSpinBox" name="spnPuertoServidor">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>65535</number></property>
+                <property name="value"><number>8443</number></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="grpBaseDeDatos">
+             <property name="title"><string>Base de datos</string></property>
+             <layout class="QFormLayout" name="formLayoutBD">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblDbHost"><property name="text"><string>Host:</string></property></widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QLineEdit" name="edtDbHost"/>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblDbPuerto"><property name="text"><string>Puerto:</string></property></widget>
+              </item>
+              <item row="1" column="1">
+               <widget class="QSpinBox" name="spnDbPuerto">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>65535</number></property>
+                <property name="value"><number>5432</number></property>
+               </widget>
+              </item>
+              <item row="2" column="0">
+               <widget class="QLabel" name="lblDbNombre"><property name="text"><string>Base de datos:</string></property></widget>
+              </item>
+              <item row="2" column="1">
+               <widget class="QLineEdit" name="edtDbNombre"/>
+              </item>
+              <item row="3" column="0">
+               <widget class="QLabel" name="lblDbUsuario"><property name="text"><string>Usuario:</string></property></widget>
+              </item>
+              <item row="3" column="1">
+               <widget class="QLineEdit" name="edtDbUsuario"/>
+              </item>
+              <item row="4" column="0">
+               <widget class="QLabel" name="lblDbPassword"><property name="text"><string>Contraseña:</string></property></widget>
+              </item>
+              <item row="4" column="1">
+               <widget class="QLineEdit" name="edtDbPassword">
+                <property name="echoMode"><enum>QLineEdit::Password</enum></property>
+               </widget>
+              </item>
+             </layout>
+            </widget>
+           </item>
+           <item>
+            <widget class="QGroupBox" name="grpLimpieza">
+             <property name="title"><string>Limpieza de archivos</string></property>
+             <layout class="QFormLayout" name="formLayoutLimpieza">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblFileCleanupDays">
+                <property name="text"><string>Días de antigüedad:</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <widget class="QSpinBox" name="spnFileCleanupDays">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>3650</number></property>
+                <property name="value"><number>30</number></property>
+               </widget>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblIntervaloLimpieza">
+                <property name="text"><string>Intervalo de limpieza:</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="horizontalLayout_limpieza">
+                <item>
+                 <widget class="QSpinBox" name="spnLimpiezaValor">
+                  <property name="minimum"><number>1</number></property>
+                  <property name="maximum"><number>999</number></property>
+                  <property name="value"><number>1</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QComboBox" name="cmbLimpiezaUnidad">
+                  <item><property name="text"><string>Minutos</string></property></item>
+                  <item><property name="text"><string>Horas</string></property></item>
+                  <item><property name="text"><string>Días</string></property></item>
+                  <item><property name="text"><string>Semanas</string></property></item>
+                  <item><property name="text"><string>Meses</string></property></item>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <!-- SECCIÓN: SANCTUM -->
+           <item>
+            <widget class="QGroupBox" name="grpSanctum">
+             <property name="title"><string>Sesiones (Sanctum)</string></property>
+             <layout class="QHBoxLayout" name="horizontalLayout_sanctum">
+              <item>
+               <widget class="QLabel" name="lblExpiracionSanctum">
+                <property name="text"><string>Duración de sesión:</string></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="cmbExpiracionSanctum">
+                <item><property name="text"><string>Indefinida</string></property></item>
+                <item><property name="text"><string>Personalizada</string></property></item>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSpinBox" name="spnExpiracionSanctum">
+                <property name="minimum"><number>1</number></property>
+                <property name="maximum"><number>99999</number></property>
+                <property name="value"><number>1440</number></property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="cmbExpiracionUnidad">
+                <item><property name="text"><string>Minutos</string></property></item>
+                <item><property name="text"><string>Horas</string></property></item>
+                <item><property name="text"><string>Días</string></property></item>
+                <item><property name="text"><string>Semanas</string></property></item>
+               </widget>
+              </item>
+              <item>
+               <spacer name="spacerSanctumH">
+                <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <!-- SECCIÓN: RUTAS DE ALMACENAMIENTO -->
+           <item>
+            <widget class="QGroupBox" name="grpRutasAlmacenamiento">
+             <property name="title"><string>Rutas de almacenamiento (storage)</string></property>
+             <layout class="QFormLayout" name="formLayoutStorage">
+              <item row="0" column="0">
+               <widget class="QLabel" name="lblRutaPrivada">
+                <property name="text"><string>Disco privado:</string></property>
+               </widget>
+              </item>
+              <item row="0" column="1">
+               <layout class="QHBoxLayout" name="horizontalLayout_rutaPrivada">
+                <item>
+                 <widget class="QLineEdit" name="edtRutaPrivada">
+                  <property name="placeholderText">
+                   <string>Por defecto (storage/app/private)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnExplorarPrivada">
+                  <property name="text"><string>Explorar...</string></property>
+                  <property name="maximumWidth"><number>90</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnRestablecerPrivada">
+                  <property name="text"><string>Por defecto</string></property>
+                  <property name="maximumWidth"><number>90</number></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+              <item row="1" column="0">
+               <widget class="QLabel" name="lblRutaPublica">
+                <property name="text"><string>Disco público:</string></property>
+               </widget>
+              </item>
+              <item row="1" column="1">
+               <layout class="QHBoxLayout" name="horizontalLayout_rutaPublica">
+                <item>
+                 <widget class="QLineEdit" name="edtRutaPublica">
+                  <property name="placeholderText">
+                   <string>Por defecto (storage/app/public)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnExplorarPublica">
+                  <property name="text"><string>Explorar...</string></property>
+                  <property name="maximumWidth"><number>90</number></property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnRestablecerPublica">
+                  <property name="text"><string>Por defecto</string></property>
+                  <property name="maximumWidth"><number>90</number></property>
+                 </widget>
+                </item>
+               </layout>
+              </item>
+             </layout>
+            </widget>
+           </item>
+
+           <item>
+            <spacer name="spacerServerV">
+             <property name="orientation"><enum>Qt::Vertical</enum></property>
+             <property name="sizeHint" stdset="0"><size><width>20</width><height>20</height></size></property>
+            </spacer>
+           </item>
+          </layout>
+         </widget>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- ===================== TAB APLICACION ===================== -->
+     <widget class="QWidget" name="AplicacionSettings">
+      <attribute name="title">
+       <string>Aplicación</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_aplicacion">
+       <item>
+        <widget class="QGroupBox" name="grpModoInicio">
+         <property name="title"><string>Modo de inicio</string></property>
+         <layout class="QHBoxLayout" name="horizontalLayout_modoInicio">
+          <item>
+           <widget class="QLabel" name="lblModoInicio">
+            <property name="text"><string>Al abrir la aplicación:</string></property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QComboBox" name="cmbModoInicio">
+            <item><property name="text"><string>Normal</string></property></item>
+            <item><property name="text"><string>Minimizado</string></property></item>
+            <item><property name="text"><string>Maximizado</string></property></item>
+           </widget>
+          </item>
+          <item>
+           <spacer name="spacerModoInicioH">
+            <property name="orientation"><enum>Qt::Horizontal</enum></property>
+            <property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property>
+           </spacer>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpInicioAutomatico">
+         <property name="title"><string>Inicio automático</string></property>
+         <layout class="QVBoxLayout" name="verticalLayout_inicioAuto">
+          <item>
+           <widget class="QCheckBox" name="chkInicioConSistema">
+            <property name="text"><string>Iniciar con el sistema operativo</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="spacerAplicacionV">
+         <property name="orientation"><enum>Qt::Vertical</enum></property>
+         <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+        </spacer>
+       </item>
+      </layout>
+     </widget>
+
+     <!-- ===================== TAB PHP ===================== -->
+     <widget class="QWidget" name="PhpSettings">
+      <attribute name="title">
+       <string>PHP</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="verticalLayout_php">
+       <item>
+        <widget class="QGroupBox" name="grpExtensiones">
+         <property name="title"><string>Extensiones</string></property>
+         <layout class="QVBoxLayout" name="verticalLayout_ext">
+          <item>
+           <widget class="QScrollArea" name="scrollAreaExtensiones">
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="widgetExtensiones">
+             <property name="geometry">
+              <rect><x>0</x><y>0</y><width>600</width><height>280</height></rect>
+             </property>
+            </widget>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="grpRecursos">
+         <property name="title"><string>Límites de recursos</string></property>
+         <layout class="QFormLayout" name="formLayoutRecursos">
+          <item row="0" column="0">
+           <widget class="QLabel" name="lblMaxExecTime">
+            <property name="text"><string>Tiempo máx. de ejecución:</string></property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <layout class="QHBoxLayout" name="horizontalLayout_execTime">
+            <item>
+             <widget class="QSpinBox" name="spnMaxExecTime">
+              <property name="minimum"><number>0</number></property>
+              <property name="maximum"><number>3600</number></property>
+              <property name="value"><number>30</number></property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="lblSegundos">
+              <property name="text"><string>segundos (0 = sin límite)</string></property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="lblMemoryLimit">
+            <property name="text"><string>Límite de memoria:</string></property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="edtMemoryLimit">
+            <property name="placeholderText"><string>ej: 128M</string></property>
+           </widget>
+          </item>
+          <item row="2" column="0">
+           <widget class="QLabel" name="lblPostMaxSize">
+            <property name="text"><string>Tamaño máx. de POST:</string></property>
+           </widget>
+          </item>
+          <item row="2" column="1">
+           <widget class="QLineEdit" name="edtPostMaxSize">
+            <property name="placeholderText"><string>ej: 8M</string></property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="lblUploadMaxSize">
+            <property name="text"><string>Tamaño máx. de subida:</string></property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QLineEdit" name="edtUploadMaxSize">
+            <property name="placeholderText"><string>ej: 100M</string></property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+
+    </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation">
+      <enum>Qt::Orientation::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::StandardButton::Cancel|QDialogButtonBox::StandardButton::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>accepted()</signal>
+   <receiver>MenuConfiguraciones</receiver>
+   <slot>accept()</slot>
+   <hints>
+    <hint type="sourcelabel"><x>248</x><y>254</y></hint>
+    <hint type="destinationlabel"><x>157</x><y>274</y></hint>
+   </hints>
+  </connection>
+  <connection>
+   <sender>buttonBox</sender>
+   <signal>rejected()</signal>
+   <receiver>MenuConfiguraciones</receiver>
+   <slot>reject()</slot>
+   <hints>
+    <hint type="sourcelabel"><x>316</x><y>260</y></hint>
+    <hint type="destinationlabel"><x>286</x><y>274</y></hint>
+   </hints>
+  </connection>
+ </connections>
+</ui>
