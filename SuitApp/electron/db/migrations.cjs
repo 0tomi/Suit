@@ -586,6 +586,301 @@ function runMigrations(dbInstance) {
         `, 19, 'create-public-file-permissions');
         setConfigValue(dbInstance, 'schema_version', '19');
     }
+
+    if (version < 20) {
+        // Agrega campo is_owner_or_admin calculado por el backend por sesión
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE public_files ADD COLUMN is_owner_or_admin INTEGER DEFAULT 0',
+            20, 'public-files-add-is-owner-or-admin'
+        );
+        setConfigValue(dbInstance, 'schema_version', '20');
+    }
+
+    if (version < 21) {
+        // Elimina is_owner_or_admin del cache: es un campo inferible (user.role === 'admin' || file.user_id === user.id)
+        // que no tiene sentido persistir en SQLite ya que cambia por sesión/usuario.
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE public_files DROP COLUMN is_owner_or_admin',
+            21, 'public-files-drop-is-owner-or-admin'
+        );
+        setConfigValue(dbInstance, 'schema_version', '21');
+    }
+
+    if (version < 22) {
+        // Migración v22: tablas de catálogos judiciales nuevos (jurisdicciones, dependencias_judiciales).
+        // Además limpia el caché de radicaciones porque el campo cambió de `nombre_lugar` a `tipo`,
+        // forzando un re-sync completo desde la API con el mapeo correcto.
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS jurisdicciones (
+                id        INTEGER PRIMARY KEY,
+                nombre    TEXT,
+                data_json TEXT,
+                synced_at TEXT
+            )
+        `, 22, 'create-jurisdicciones');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS dependencias_judiciales (
+                id              INTEGER PRIMARY KEY,
+                jurisdiccion_id INTEGER,
+                competencia_id  INTEGER,
+                nombre_juzgado  TEXT,
+                data_json       TEXT,
+                synced_at       TEXT
+            )
+        `, 22, 'create-dependencias-judiciales');
+        runTolerantMigrationSql(dbInstance, 'DELETE FROM radicaciones', 22, 'clear-radicaciones-cache');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource = 'radicaciones'", 22, 'clear-radicaciones-sync-meta');
+        setConfigValue(dbInstance, 'schema_version', '22');
+
+                // Migración v22: agrega campo status a la tabla documents.
+        // Valor por defecto 'Borrador' según la implementación de la API.
+        runTolerantMigrationSql(dbInstance,
+            "ALTER TABLE documents ADD COLUMN status TEXT DEFAULT 'Borrador'",
+            22, 'documents-add-status'
+        );
+        setConfigValue(dbInstance, 'schema_version', '22');
+    }
+
+    if (version < 23) {
+        // Migración v23: agrega dependencia_id a la tabla cases.
+        // La API ahora devuelve este campo en los endpoints de casos (sincronización offline).
+        // Se limpia el caché de casos para que el próximo sync traiga los datos con el nuevo campo.
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE cases ADD COLUMN dependencia_id INTEGER',
+            23, 'add-cases-dependencia-id'
+        );
+        runTolerantMigrationSql(dbInstance, 'DELETE FROM cases', 23, 'clear-cases-cache');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource = 'cases'", 23, 'clear-cases-sync-meta');
+        setConfigValue(dbInstance, 'schema_version', '23');
+    }
+
+    if (version < 24) {
+        // Migración v24: tabla competencias (fueros judiciales).
+        // Cacheada localmente para evitar llamadas a la API al filtrar dependencias por jurisdicción.
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS competencias (
+                id        INTEGER PRIMARY KEY,
+                fuero     TEXT,
+                data_json TEXT,
+                synced_at TEXT
+            )
+        `, 24, 'create-competencias');
+        setConfigValue(dbInstance, 'schema_version', '24');
+    }
+
+    if (version < 25) {
+        // Migración v25: agrega radicacion_id a dependencias_judiciales.
+        // Se limpia el caché para forzar un re-sync con la nueva estructura de la API.
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE dependencias_judiciales ADD COLUMN radicacion_id INTEGER',
+            25, 'add-dependencias-radicacion-id'
+        );
+        runTolerantMigrationSql(dbInstance, 'DELETE FROM dependencias_judiciales', 25, 'clear-dependencias-cache');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource = 'dependencias_judiciales'", 25, 'clear-dependencias-sync-meta');
+        setConfigValue(dbInstance, 'schema_version', '25');
+    }
+
+    if (version < 26) {
+        // Asegurar que la tabla documents tenga todas las columnas necesarias.
+        // La v22 falló para algunos usuarios porque se coló en un bloque que ya habían pasado.
+        const existingColumns = new Set(
+            dbInstance.prepare('PRAGMA table_info(documents)').all().map(c => c.name)
+        );
+
+        const columnsToEnsure = [
+            { name: 'status', type: "TEXT DEFAULT 'Borrador'" },
+            { name: 'data_json', type: 'TEXT' },
+            { name: 'user_id', type: 'INTEGER' },
+            { name: 'created_at', type: 'TEXT' },
+            { name: 'updated_at', type: 'TEXT' },
+            { name: 'locker_name', type: 'TEXT' },
+            { name: 'latest_version_number', type: 'INTEGER' },
+            { name: 'latest_version_created_by', type: 'INTEGER' },
+            { name: 'latest_version_creator_name', type: 'TEXT' },
+            { name: 'latest_version_creator_tag', type: 'TEXT' },
+        ];
+
+        for (const col of columnsToEnsure) {
+            if (!existingColumns.has(col.name)) {
+                logger.info(`Adding missing column "${col.name}" to documents table (v26)`);
+                runTolerantMigrationSql(dbInstance,
+                    `ALTER TABLE documents ADD COLUMN ${col.name} ${col.type}`,
+                    26, `documents-add-${col.name}-v26`
+                );
+            } else {
+                logger.info(`Column "${col.name}" already exists in documents table, skipping (v26)`);
+            }
+        }
+
+        // Limpiamos cache de documentos para sincronizar de nuevo con la estructura completa
+        runTolerantMigrationSql(dbInstance, 'DELETE FROM documents', 26, 'clear-documents-cache-v26');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource = 'documents'", 26, 'clear-documents-sync-meta-v26');
+
+        setConfigValue(dbInstance, 'schema_version', '26');
+    }
+
+    if (version < 27) {
+        // Migración v27: sistema de Requisitos para Plantillas.
+        // requisitos: catálogo de campos mandatorios tipados (client, user, case, etc.).
+        // plantilla_requisitos: relación M:N entre plantillas y sus requisitos, con
+        //   id_campo como identificador único del campo en el frontend.
+        // Los requisitos se cachean una vez al inicio (seed-once) y se leen desde SQLite.
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS requisitos (
+                id         INTEGER PRIMARY KEY,
+                type       TEXT,
+                title      TEXT,
+                deleted_at TEXT,
+                updated_at TEXT,
+                synced_at  TEXT
+            )
+        `, 27, 'create-requisitos');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS plantilla_requisitos (
+                id           INTEGER PRIMARY KEY,
+                template_id  INTEGER,
+                requisito_id INTEGER,
+                id_campo     TEXT,
+                deleted_at   TEXT,
+                synced_at    TEXT
+            )
+        `, 27, 'create-plantilla-requisitos');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE INDEX IF NOT EXISTS idx_plantilla_requisitos_template
+                ON plantilla_requisitos (template_id)
+        `, 27, 'idx-plantilla-requisitos-template');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource = 'requisitos'", 27, 'clear-requisitos-sync-meta');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource LIKE 'template_requirements:%'", 27, 'clear-template-requirements-sync-meta');
+        setConfigValue(dbInstance, 'schema_version', '27');
+    }
+
+    if (version < 28) {
+        // Migración v28: id_campo en plantilla_requisitos cambia de TEXT a INTEGER.
+        // Los placeholders en el cuerpo HTML de plantillas son numéricos (#1#, #2#, #n#).
+        // SQLite no soporta ALTER COLUMN, por lo que se recrea la tabla completa.
+        // Al ser caché pura de la API, no hay pérdida de datos: el próximo sync la repopula.
+        runTolerantMigrationSql(dbInstance,
+            'DROP TABLE IF EXISTS plantilla_requisitos',
+            28, 'drop-plantilla-requisitos'
+        );
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE plantilla_requisitos (
+                id           INTEGER PRIMARY KEY,
+                template_id  INTEGER,
+                requisito_id INTEGER,
+                id_campo     INTEGER,
+                deleted_at   TEXT,
+                synced_at    TEXT
+            )
+        `, 28, 'recreate-plantilla-requisitos-integer-id-campo');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE INDEX IF NOT EXISTS idx_plantilla_requisitos_template
+                ON plantilla_requisitos (template_id)
+        `, 28, 'idx-plantilla-requisitos-template-v28');
+        runTolerantMigrationSql(dbInstance,
+            "DELETE FROM sync_meta WHERE resource LIKE 'template_requirements:%'",
+            28, 'clear-template-requirements-sync-meta-v28'
+        );
+        setConfigValue(dbInstance, 'schema_version', '28');
+    }
+
+    if (version < 29) {
+        // Migración v29: agrega género a la caché local de clientes para reflejar el contrato actual de la API.
+        runTolerantMigrationSql(dbInstance, "ALTER TABLE clients ADD COLUMN gender TEXT DEFAULT 'X'", 29, 'add-clients-gender');
+        setConfigValue(dbInstance, 'schema_version', '29');
+    }
+
+    if (version < 30) {
+        // Migración v30: agrega NEntidad a plantilla_requisitos.
+        // NEntidad distingue múltiples instancias del mismo tipo de entidad en una plantilla
+        // (ej: cliente 1 vs cliente 2). Valor por defecto 1 para mantener compatibilidad.
+        // Se limpia el caché de requisitos para refetch desde la API con el nuevo campo.
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE plantilla_requisitos ADD COLUMN NEntidad INTEGER DEFAULT 1',
+            30, 'add-plantilla-requisitos-NEntidad'
+        );
+        runTolerantMigrationSql(dbInstance,
+            "DELETE FROM sync_meta WHERE resource LIKE 'template_requirements:%'",
+            30, 'clear-template-requirements-sync-meta-v30'
+        );
+        setConfigValue(dbInstance, 'schema_version', '30');
+    }
+
+    if (version < 31) {
+        // Migración v31: agrega campo `note` (TEXT, nullable) a plantilla_requisitos.
+        // Permite al diseñador de la plantilla adjuntar una nota por campo que orienta
+        // al usuario al momento de usar la plantilla (ej: "Indicar tribunal de origen").
+        // Se limpia el caché de requisitos para que el próximo uso fuerce un re-fetch
+        // desde la API que ya incluye el campo note en la respuesta.
+        runTolerantMigrationSql(dbInstance,
+            'ALTER TABLE plantilla_requisitos ADD COLUMN note TEXT',
+            31, 'add-plantilla-requisitos-note'
+        );
+        runTolerantMigrationSql(dbInstance,
+            "DELETE FROM sync_meta WHERE resource LIKE 'template_requirements:%'",
+            31, 'clear-template-requirements-sync-meta-v31'
+        );
+        setConfigValue(dbInstance, 'schema_version', '31');
+    }
+
+    if (version < 32) {
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS document_versions (
+                id             INTEGER PRIMARY KEY,
+                document_id    INTEGER NOT NULL,
+                version_number INTEGER,
+                mime_type      TEXT,
+                size           INTEGER,
+                created_by     INTEGER,
+                creator_name   TEXT,
+                creator_tag    TEXT,
+                created_at     TEXT,
+                updated_at     TEXT,
+                content        TEXT,
+                data_json      TEXT,
+                synced_at      TEXT
+            )
+        `, 32, 'create-document-versions');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE INDEX IF NOT EXISTS idx_document_versions_document
+                ON document_versions (document_id)
+        `, 32, 'idx-document-versions-document');
+        setConfigValue(dbInstance, 'schema_version', '32');
+    }
+
+    if (version < 33) {
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS document_query_cache (
+                id                TEXT PRIMARY KEY,
+                cache_key         TEXT NOT NULL,
+                mode              TEXT NOT NULL,
+                page              INTEGER NOT NULL DEFAULT 1,
+                params_json       TEXT,
+                document_ids_json TEXT NOT NULL,
+                total_pages       INTEGER,
+                total_documents   INTEGER,
+                per_page          INTEGER,
+                cached_at         TEXT NOT NULL,
+                synced_at         TEXT
+            )
+        `, 33, 'create-document-query-cache');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE INDEX IF NOT EXISTS idx_document_query_cache_lookup
+                ON document_query_cache (cache_key, page)
+        `, 33, 'idx-document-query-cache-lookup');
+        setConfigValue(dbInstance, 'schema_version', '33');
+    }
+
+    if (version < 34) {
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS case_tipo_expediente (
+                suit_case_id       INTEGER NOT NULL,
+                tipo_expediente_id INTEGER NOT NULL,
+                PRIMARY KEY (suit_case_id, tipo_expediente_id)
+            )
+        `, 34, 'create-case-tipo-expediente');
+        setConfigValue(dbInstance, 'schema_version', '34');
+    }
 }
 
 module.exports = {

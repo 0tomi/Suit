@@ -1,7 +1,7 @@
 import { useDeferredValue, useId, useMemo, useRef, useState } from 'react';
 import { Check, Search, X } from 'lucide-react';
 
-const MAX_RESULTS = 8;
+const DEFAULT_MAX_RESULTS = 8;
 
 const FilterAutosuggest = ({
     label,
@@ -11,6 +11,10 @@ const FilterAutosuggest = ({
     onChange,
     onClear,
     emptyMessage,
+    onQueryChange,
+    onFocus,
+    onBlur,
+    maxResults = DEFAULT_MAX_RESULTS,
 }) => {
     const inputId = useId();
     const wrapperRef = useRef(null);
@@ -22,6 +26,7 @@ const FilterAutosuggest = ({
         () => options.find((option) => option.value === value) ?? null,
         [options, value]
     );
+
     const deferredQuery = useDeferredValue(query.trim().toLowerCase());
     const inputValue = isOpen ? query : (selectedOption?.label ?? '');
     const normalizedSelectedLabel = useMemo(
@@ -30,15 +35,18 @@ const FilterAutosuggest = ({
     );
 
     const filteredOptions = useMemo(() => {
+        if (onQueryChange) {
+            return options.slice(0, maxResults);
+        }
         // Al abrir con una opción ya seleccionada, mostramos el listado completo
         // en lugar de filtrar por la etiqueta visible del valor actual.
         const effectiveQuery = deferredQuery === normalizedSelectedLabel ? '' : deferredQuery;
-        if (!effectiveQuery) return options.slice(0, MAX_RESULTS);
+        if (!effectiveQuery) return options.slice(0, maxResults);
 
         return options
             .filter((option) => option.label.toLowerCase().includes(effectiveQuery))
-            .slice(0, MAX_RESULTS);
-    }, [deferredQuery, normalizedSelectedLabel, options]);
+            .slice(0, maxResults);
+    }, [deferredQuery, normalizedSelectedLabel, options, onQueryChange, maxResults]);
 
     const resetToSelection = () => {
         setQuery(selectedOption?.label ?? '');
@@ -62,14 +70,21 @@ const FilterAutosuggest = ({
     };
 
     const handleSelect = (option) => {
-        onChange(option.value);
+        onChange(option.value, option);
         setQuery(option.label);
+        if (onQueryChange) {
+            onQueryChange(option.label);
+        }
         setIsOpen(false);
         setHighlightedIndex(0);
     };
 
     const handleInputChange = (event) => {
-        setQuery(event.target.value);
+        const newQuery = event.target.value;
+        setQuery(newQuery);
+        if (onQueryChange) {
+            onQueryChange(newQuery);
+        }
         setIsOpen(true);
         setHighlightedIndex(0);
     };
@@ -109,10 +124,22 @@ const FilterAutosuggest = ({
                     type="text"
                     value={inputValue}
                     onChange={handleInputChange}
-                    onFocus={() => {
+                    onFocus={(e) => {
                         setQuery(selectedOption?.label ?? '');
                         setIsOpen(true);
                         setHighlightedIndex(0);
+                        // Si ya había una opción elegida, dejamos el texto seleccionado
+                        // para que el siguiente tipeo reemplace la etiqueta y actúe como búsqueda.
+                        if (selectedOption?.label) {
+                            requestAnimationFrame(() => {
+                                e.target.select();
+                            });
+                        }
+                        if (onFocus) onFocus(e);
+                    }}
+                    onBlur={(e) => {
+                        closeIfFocusLeft();
+                        if (onBlur) onBlur(e);
                     }}
                     onKeyDown={handleKeyDown}
                     placeholder={placeholder}

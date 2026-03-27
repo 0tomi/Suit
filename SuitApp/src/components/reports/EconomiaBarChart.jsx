@@ -33,7 +33,7 @@ function BarsView({ data, peakValue, gradientFrom, gradientVia, gradientTo, grad
     return (
         <div className="mt-6 grid grid-cols-12 items-end gap-2 h-[160px]">
             {data.map((bucket) => {
-                const height = Math.max(10, Math.round((bucket.value / peakValue) * 130));
+                const height = bucket.value > 0 ? Math.max(10, Math.round((bucket.value / peakValue) * 130)) : 0;
                 return (
                     <div key={bucket.key} className="group relative flex flex-col items-center gap-2 h-full justify-end">
                         <div className="absolute -top-6 opacity-0 transition-all group-hover:opacity-100 group-hover:-top-8 z-10 pointer-events-none">
@@ -46,7 +46,7 @@ function BarsView({ data, peakValue, gradientFrom, gradientVia, gradientTo, grad
                             className={`w-full min-w-[10px] rounded-t-xl bg-gradient-to-t ${gradientFrom} ${gradientVia} ${gradientTo} transition-all duration-500 ease-out ${gradientHoverTo} hover:scale-x-110 shadow-[0_4px_12px_-4px_rgba(15,23,42,0.4)]`}
                             style={{ height: `${height}px` }}
                         />
-                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 group-hover:text-slate-900 transition-colors">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--text-tertiary) group-hover:text-(--text-primary) transition-colors">
                             {bucket.shortLabel}
                         </div>
                     </div>
@@ -113,7 +113,7 @@ function LineView({ data, peakValue, lineColor }) {
             {/* Labels del eje X */}
             <div className="grid grid-cols-12 gap-2 mt-1">
                 {data.map((bucket) => (
-                    <div key={bucket.key} className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 text-center">
+                    <div key={bucket.key} className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--text-tertiary) text-center">
                         {bucket.shortLabel}
                     </div>
                 ))}
@@ -133,26 +133,27 @@ export function EconomiaBarChart({
     lineColor = '#6366f1',
 }) {
     const [chartType, setChartType] = useState('bars');
-    const peakValue = Math.max(1, ...data.map((b) => b.value));
+    const realPeakValue = Math.max(0, ...data.map((b) => b.value));
+    const peakValue = Math.max(1, realPeakValue); // Proteccion contra division por cero
     const isBars = chartType === 'bars';
 
     return (
-        <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
-            <div className="flex items-start justify-between gap-4">
-                <div>
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">{title}</h2>
-                    <p className="mt-1 text-sm text-slate-500 font-medium">{helper}</p>
+        <div className="relative overflow-hidden rounded-[32px] border border-(--border-default) bg-(--bg-card) p-6 shadow-[0_8px_30px_rgb(0,0,0,0.04)] transition-all duration-300 hover:shadow-[0_20px_50px_rgba(0,0,0,0.08)] group">
+            <div className="relative flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                    <h2 className="text-xl font-bold text-(--text-primary) tracking-tight">{title}</h2>
+                    <p className="text-sm text-(--text-secondary) font-medium opacity-80">{helper}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-right shadow-inner">
-                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Pico</p>
-                        <p className="text-sm font-bold text-slate-900 leading-none mt-1">{formatCurrency(peakValue)}</p>
+                    <div className="rounded-2xl border border-(--border-subtle) bg-(--bg-card-hover) px-3 py-2 text-right shadow-sm group-hover:bg-white dark:group-hover:bg-slate-800 transition-colors">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-(--text-tertiary)">Pico</p>
+                        <p className="text-sm font-bold text-(--text-primary) leading-none mt-1">{formatCurrency(realPeakValue)}</p>
                     </div>
                     {/* Botón de rotación — mismo tamaño que el recuadro Pico */}
                     <button
                         onClick={() => setChartType(isBars ? 'line' : 'bars')}
                         title={isBars ? 'Cambiar a línea' : 'Cambiar a barras'}
-                        className="self-stretch rounded-2xl border border-slate-200 bg-slate-50/50 px-3 shadow-inner text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center"
+                        className="self-stretch rounded-2xl border border-(--border-subtle) bg-(--bg-card-hover) px-3 shadow-sm text-(--text-secondary) transition-all hover:bg-white dark:hover:bg-slate-800 hover:text-blue-600 flex items-center justify-center group-hover:shadow-md"
                     >
                         {isBars ? <LineChart className="h-4 w-4" /> : <BarChart2 className="h-4 w-4" />}
                     </button>

@@ -2,7 +2,7 @@
   "name": "suitapp",
   "productName": "SuitAPP",
   "private": true,
-  "version": "0.8.1",
+  "version": "1.0.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -34,14 +34,10 @@
     "test:unit:watch": "vitest"
   },
   "dependencies": {
-    "@radix-ui/react-scroll-area": "^1.2.10",
-    "@tiptap/extension-image": "^3.20.1",
     "better-sqlite3": "^12.6.2",
-    "date-fns": "^4.1.0",
-    "embla-carousel-react": "^8.6.0",
-    "react-photo-album": "^3.5.1",
-    "vaul": "^1.1.2",
-    "yet-another-react-lightbox": "^3.29.1"
+    "font-list": "^2.0.2",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^5.5.207"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
@@ -49,6 +45,7 @@
     "@playwright/test": "^1.58.2",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-scroll-area": "^1.2.10",
     "@radix-ui/react-select": "^2.2.6",
     "@radix-ui/react-toolbar": "^1.1.11",
     "@radix-ui/react-tooltip": "^1.2.8",
@@ -57,6 +54,7 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@tiptap/extension-bubble-menu": "^3.20.0",
+    "@tiptap/extension-image": "^3.20.1",
     "@tiptap/extension-character-count": "^3.20.1",
     "@tiptap/extension-color": "^3.20.0",
     "@tiptap/extension-font-family": "^3.20.0",
@@ -84,9 +82,11 @@
     "autoprefixer": "^10.4.24",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "date-fns": "^4.1.0",
     "dayjs": "^1.11.19",
     "electron": "^40.1.0",
     "electron-builder": "^26.8.1",
+    "embla-carousel-react": "^8.6.0",
     "eslint": "^9.39.2",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.0",
@@ -94,19 +94,25 @@
     "jsdom": "^28.1.0",
     "lucide-react": "^0.563.0",
     "postcss": "^8.5.6",
+    "qrcode": "^1.5.4",
+    "radix-ui": "^1.4.3",
     "react": "^19.2.4",
     "react-big-calendar": "^1.19.4",
     "react-dom": "^19.2.4",
+    "react-photo-album": "^3.5.1",
     "react-router-dom": "^7.13.0",
     "sileo": "^0.1.5",
     "tailwindcss": "^4.1.18",
     "tippy.js": "^6.3.7",
+    "vaul": "^1.1.2",
     "vite": "^7.3.1",
     "vitest": "^4.0.18",
-    "wait-on": "^9.0.3"
+    "wait-on": "^9.0.3",
+    "yet-another-react-lightbox": "^3.29.1"
   },
   "overrides": {
-    "tar": "7.5.11"
+    "tar": "7.5.11",
+    "brace-expansion": ">=5.0.5"
   },
   "build": {
     "appId": "com.suitapp.desktop",
@@ -119,7 +125,17 @@
       "electron/**/*",
       "dist-renderer/**/*",
       "build/**/*",
-      "package.json"
+      "package.json",
+      "!**/node_modules/**/@types/**",
+      "!**/node_modules/**/*.md",
+      "!**/node_modules/**/*.ts",
+      "!**/node_modules/**/LICENSE*",
+      "!**/node_modules/**/CHANGELOG*",
+      "!**/node_modules/**/.github/**",
+      "!**/node_modules/**/docs/**",
+      "!**/node_modules/**/test/**",
+      "!**/node_modules/**/tests/**",
+      "!**/node_modules/**/__tests__/**"
     ],
     "extraResources": [
       {

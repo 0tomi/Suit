@@ -19,6 +19,7 @@ export default function FindReplacePanel({
     onReplaceAll,
     onToggleReplaceMode,
     onClose,
+    pageWidthPx = 794,
 }) {
     const searchInputRef = useRef(null);
 
@@ -35,7 +36,8 @@ export default function FindReplacePanel({
 
     return (
         <div
-            className="mb-4 w-full max-w-[794px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 shadow-sm"
+            className="mb-4 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 shadow-sm"
+            style={{ maxWidth: `${pageWidthPx}px` }}
             data-testid="editor-find-replace-panel"
         >
             <div className="flex flex-col gap-3">

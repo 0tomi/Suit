@@ -5,7 +5,6 @@ import {
     unlinkParteFromCaso,
 } from '../services/parteService.js';
 import { createLogger } from '../services/logService.js';
-import { buildParteCasoRow } from '../services/cache/parteCasoRow.js';
 
 const logger = createLogger('hook:use-partes-caso');
 
@@ -43,15 +42,9 @@ async function readPartesFromCache(caseId) {
  *
  * Estrategia de caché:
  * - La tabla pivot `parte_caso` refleja localmente las asociaciones.
- * - Al cargar, sincroniza desde la API y actualiza el pivot en SQLite.
+ * - Al cargar, consulta el backend interno, que sincroniza API + SQLite.
  * - `partesCaso` contiene los objetos Parte completos (con rol) del caso actual.
  * - Si la API falla, se sirve desde SQLite con flag `isStale: true`.
- *
- * PAR-4 fix: las escrituras al pivot usan operaciones atómicas (`deleteWhere`)
- * en vez de la secuencia no-atómica `clearTable + upsertMany`, eliminando la
- * race condition que podía corromper filas de otros casos.
- *
- * PAR-5 fix: el bloque catch implementa fallback offline desde SQLite.
  *
  * @param {number|string} caseId — ID del caso.
  */
@@ -66,12 +59,8 @@ export function usePartesCaso(caseId, {
     const requestGenerationRef = useRef(0);
 
     /**
-     * Sincroniza desde la API y actualiza la caché pivot `parte_caso`.
-     *
-     * PAR-4: En vez de clearTable (borra TODO el pivot) + upsertMany,
-     * usamos deleteWhere({ suit_case_id: caseId }) para borrar solo las filas
-     * del caso actual, seguido de upsertMany con los nuevos datos.
-     * Esto evita afectar filas de otros casos en operaciones concurrentes.
+     * Carga las partes del caso desde el backend interno.
+     * Si el backend no puede resolver la request, se degrada a SQLite local.
      */
     const loadData = useCallback(async (generation) => {
         if (!caseId) {
@@ -104,17 +93,6 @@ export function usePartesCaso(caseId, {
 
             const apiData = await getPartesByCaso(caseId);
             if (requestGenerationRef.current !== generation) return;
-
-            // PAR-4: Actualizar pivot de forma atómica solo para este caso.
-            // deleteWhere elimina exactamente las filas del caso actual sin
-            // tocar otros casos, evitando la race condition del clearTable global.
-            if (Array.isArray(apiData) && window.electronAPI) {
-                await window.electronAPI.db.deleteWhere('parte_caso', { suit_case_id: caseId });
-                const newPivot = apiData.map((p) => buildParteCasoRow(p.id, caseId));
-                if (newPivot.length > 0) {
-                    await window.electronAPI.db.upsertMany('parte_caso', newPivot);
-                }
-            }
 
             if (requestGenerationRef.current !== generation) return;
             setPartesCaso(Array.isArray(apiData) ? apiData : []);
@@ -162,8 +140,9 @@ export function usePartesCaso(caseId, {
      */
     const linkParte = useCallback(async (parteId) => {
         const result = await linkParteToCaso(caseId, parteId);
-        if (window.electronAPI) {
-            await window.electronAPI.db.upsertMany('parte_caso', [buildParteCasoRow(parteId, caseId)]);
+        if (!result?.ok) {
+            void logger.warn('linkParte failed', { caseId, parteId, error: result?.error || null });
+            return result;
         }
         await reload();
         return result;
@@ -178,15 +157,12 @@ export function usePartesCaso(caseId, {
      */
     const unlinkParte = useCallback(async (parteId) => {
         const result = await unlinkParteFromCaso(caseId, parteId);
+        if (!result?.ok) {
+            void logger.warn('unlinkParte failed', { caseId, parteId, error: result?.error || null });
+            return result;
+        }
         // Actualización optimista del estado local
         setPartesCaso((prev) => prev.filter((p) => String(p.id) !== String(parteId)));
-        // PAR-4: DELETE atómico de la fila exacta en el pivot
-        if (window.electronAPI) {
-            await window.electronAPI.db.deleteWhere('parte_caso', {
-                parte_id: parteId,
-                suit_case_id: caseId,
-            });
-        }
         return result;
     }, [caseId]);
 

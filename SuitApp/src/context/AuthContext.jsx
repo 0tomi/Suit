@@ -6,6 +6,7 @@ import { loadSaved, savePersistent, deletePersistent } from '../utils/platform.j
 import { resetNotificationSyncInFlightState } from '../services/eventNotificationService.js';
 import { resetAgendaMonthSyncInFlightState } from '../services/sync/agendaMonthSyncService.js';
 import { resetSyncInFlightState } from '../services/sync/syncCore.js';
+import { reset as schedulerReset } from '../services/sync/SyncScheduler.js';
 import { createLogger } from '../services/logService.js';
 import { useApi } from './ApiContext';
 import { startupMark } from '../utils/startupMetrics.js';
@@ -30,6 +31,7 @@ function resetInFlightClientState() {
     resetSyncInFlightState();
     resetAgendaMonthSyncInFlightState();
     resetNotificationSyncInFlightState();
+    schedulerReset();
 }
 
 function authReducer(state, action) {

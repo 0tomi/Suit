@@ -2,11 +2,12 @@ import { useId, useState } from 'react';
 import { X, UserPlus } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
 import { createClient } from '../../services/clientService';
 import { useClients } from '../../context/ClientsContext';
 import { showAppToast } from '../ui/show-app-toast';
-import { buildClientCacheRow } from '../../services/sync/clientSyncService.js';
 import { createLogger } from '../../services/logService.js';
+import { CLIENT_GENDER_OPTIONS, DEFAULT_CLIENT_GENDER } from '../../constants/clientGender.js';
 const logger = createLogger('new-client-modal');
 
 const INITIAL_FORM = {
@@ -17,6 +18,7 @@ const INITIAL_FORM = {
     phone: '',
     address: '',
     type: 'person',
+    gender: DEFAULT_CLIENT_GENDER,
     notes: '',
 };
 
@@ -47,6 +49,9 @@ export const NewClientModal = ({ open = false, onClose, closeModal, onSuccess })
         if (!formData.last_name?.trim()) {
             errors.last_name = 'El apellido es obligatorio.';
         }
+        if (!formData.gender) {
+            errors.gender = 'El género es obligatorio.';
+        }
         if (formData.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
             errors.email = 'El formato del email no es válido.';
         }
@@ -75,39 +80,20 @@ export const NewClientModal = ({ open = false, onClose, closeModal, onSuccess })
         }
 
         setLoading(true);
-        const payload = {
-            ...formData,
-            identification_number: formData.identification_number?.trim() || null,
-            email: formData.email?.trim() || null,
-            phone: formData.phone?.trim() || null,
-            address: formData.address?.trim() || null,
-            notes: formData.notes?.trim() || null,
-        };
 
         try {
-            const result = await createClient(payload);
+            const result = await createClient(formData);
             if (result.ok) {
                 const createdClient = extractClientFromResponse(result.data);
                 const createdClientPayload = createdClient
-                    ? { ...payload, ...createdClient }
+                    ? { ...formData, ...createdClient }
                     : null;
 
                 try {
-                    if (createdClient?.id && window.electronAPI?.db) {
-                        const clientForCache = {
-                            status: 'active',
-                            ...payload,
-                            ...createdClient,
-                        };
-
-                        await window.electronAPI.db.upsertMany('clients', [buildClientCacheRow(clientForCache)]);
-                        await loadLocalData();
-                        void refreshClients();
-                    } else {
-                        await refreshClients();
-                    }
+                    await loadLocalData();
+                    void refreshClients();
                 } catch (cacheError) {
-                    void logger.warn('Local client cache update failed, falling back to refresh', cacheError);
+                    void logger.warn('Local client refresh failed after create, falling back to refresh', cacheError);
                     await refreshClients();
                 }
 
@@ -215,6 +201,28 @@ export const NewClientModal = ({ open = false, onClose, closeModal, onSuccess })
 
             <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
+                    <label htmlFor={`${formId}-gender`} className="text-sm font-medium text-(--text-secondary)">Género *</label>
+                    <Select
+                        value={formData.gender}
+                        onValueChange={(value) => {
+                            setFieldErrors(prev => ({ ...prev, gender: undefined }));
+                            setFormData(prev => ({ ...prev, gender: value }));
+                        }}
+                    >
+                        <SelectTrigger id={`${formId}-gender`} aria-label="Género" className={fieldErrors.gender ? 'border-red-500 focus-visible:ring-red-500' : ''}>
+                            <SelectValue placeholder="Seleccionar género..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {CLIENT_GENDER_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    {fieldErrors.gender && <p className="text-xs text-red-500 mt-1">{fieldErrors.gender}</p>}
+                </div>
+                <div className="space-y-2">
                     <label htmlFor={`${formId}-email`} className="text-sm font-medium text-(--text-secondary)">Email</label>
                     <input
                         id={`${formId}-email`}
@@ -229,17 +237,18 @@ export const NewClientModal = ({ open = false, onClose, closeModal, onSuccess })
                     />
                     {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
                 </div>
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-phone`} className="text-sm font-medium text-(--text-secondary)">Teléfono</label>
-                    <input
-                        id={`${formId}-phone`}
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
-                        placeholder="Ej: 1123456789"
-                    />
-                </div>
+            </div>
+
+            <div className="space-y-2">
+                <label htmlFor={`${formId}-phone`} className="text-sm font-medium text-(--text-secondary)">Teléfono</label>
+                <input
+                    id={`${formId}-phone`}
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleInputChange}
+                    className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
+                    placeholder="Ej: 1123456789"
+                />
             </div>
 
             <div className="space-y-2">

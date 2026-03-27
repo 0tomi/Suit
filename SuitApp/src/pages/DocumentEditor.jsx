@@ -1,26 +1,32 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import TiptapEditor from '../components/Editor/TiptapEditor';
+import MarginsModal from '../components/Editor/MarginsModal.jsx';
+import { loadMarginPreference, DEFAULT_MARGINS, buildPrintPageCss, normalizeMargins } from '../components/Editor/marginsUtils.js';
 import DocumentEditorAlerts from '../components/Editor/DocumentEditorAlerts.jsx';
 import DocumentEditorHeader from '../components/Editor/DocumentEditorHeader.jsx';
+import DraftingToolsSidebar from '../components/Editor/DraftingToolsSidebar.jsx';
 import DocumentSettingsModal from '../components/DocumentSettingsModal';
 import { useDocuments } from '../context/DocumentsContext';
 import { useAuth } from '../context/AuthContext';
 import { useDocumentLoader } from '../hooks/useDocumentLoader.js';
 import { useDocumentLock } from '../hooks/useDocumentLock.js';
-import { createDocument, updateDocument, deleteDocument, getDocumentLockStatus, getDocumentVersionContent } from '../services/documentService.js';
+import { createDocument, updateDocument, deleteDocument, getDocumentLastModified, getDocumentLockStatus } from '../services/documentService.js';
+import { invalidateDocumentListingCache } from '../services/documentListingBackendService.js';
 import { getTemplate } from '../services/templateService.js';
 import { buildDocumentEditPath } from '../utils/appRoutes.js';
 import { normalizeDocumentPayload } from '../utils/documentUtils.js';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges.js';
 import { useDocumentEditorUIState } from '../hooks/useDocumentEditorUIState.js';
+import { useTabTitle } from '../hooks/useTabTitle.js';
 import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
 import useAutosave from '../hooks/useAutosave.js';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { showAppToast } from '../components/ui/show-app-toast.jsx';
 import { createLogger } from '../services/logService.js';
+import { getDocumentVersionContentCached } from '../services/documentVersionCacheService.js';
 const logger = createLogger('page:document-editor');
 
 
@@ -33,11 +39,6 @@ const getFileNameFromPath = (value) => {
     if (!value) return '';
     return String(value).split(/[\\/]/).pop() || '';
 };
-
-function getPdfBaseFontFamily() {
-    if (typeof window === 'undefined') return undefined;
-    return window.getComputedStyle(document.body).fontFamily || undefined;
-}
 
 function resolveVersionNumber(searchParams, fallbackMeta = null) {
     const rawVersionNumber = searchParams.get('versionNumber');
@@ -57,9 +58,95 @@ function sanitizeNavigationState(state) {
     };
 }
 
+function buildSaveFailureCacheMeta(currentMeta, message) {
+    return {
+        ...(currentMeta || {}),
+        pending_local_save: true,
+        pending_local_save_error: message,
+        pending_local_save_at: new Date().toISOString(),
+    };
+}
+
+function buildSuccessfulSaveMeta({ currentMeta, responsePayload, documentId, title }) {
+    const normalizedPayload = normalizeDocumentPayload(responsePayload) || null;
+    const isVersionPayload = Number(normalizedPayload?.document_id) === Number(documentId);
+
+    if (isVersionPayload) {
+        return {
+            ...(currentMeta || {}),
+            id: Number(documentId),
+            name: currentMeta?.name || currentMeta?.title || title,
+            title: currentMeta?.title || currentMeta?.name || title,
+            updated_at: normalizedPayload.created_at || currentMeta?.updated_at || null,
+            latest_version_number: normalizedPayload.version_number ?? currentMeta?.latest_version_number ?? null,
+            pending_local_save: false,
+            pending_local_save_error: null,
+            pending_local_save_at: null,
+        };
+    }
+
+    return {
+        ...(normalizedPayload || currentMeta || {}),
+        id: Number(documentId),
+        pending_local_save: false,
+        pending_local_save_error: null,
+        pending_local_save_at: null,
+    };
+}
+
+function isRemoteTimestampNewer(remoteUpdatedAt, localUpdatedAt) {
+    if (!remoteUpdatedAt) return false;
+    if (!localUpdatedAt) return true;
+
+    const remoteTime = new Date(remoteUpdatedAt).getTime();
+    const localTime = new Date(localUpdatedAt).getTime();
+
+    if (!Number.isFinite(remoteTime) || !Number.isFinite(localTime)) {
+        return remoteUpdatedAt !== localUpdatedAt;
+    }
+
+    return remoteTime > localTime;
+}
+
+function getEditorToastTitle(message) {
+    const text = String(message?.text || '').toLowerCase();
+
+    if (text.includes('guardado')) {
+        return message?.type === 'success' ? 'Documento guardado' : 'Error al guardar';
+    }
+
+    if (text.includes('creado')) {
+        return message?.type === 'success' ? 'Documento creado' : 'Error al crear';
+    }
+
+    if (text.includes('modelo')) {
+        return message?.type === 'success' ? 'Modelo cargado' : 'Error al cargar modelo';
+    }
+
+    if (text.includes('versión')) {
+        return message?.type === 'success' ? 'Versión cargada' : 'Error de versión';
+    }
+
+    return message?.type === 'success' ? 'Documento' : 'Error en documento';
+}
+
 function DocumentEditorContent({ id, db, templateId, versionId, versionNumberParam, initialCaseId }) {
     const navigate = useNavigate();
     const location = useLocation();
+    // Captura el estado inicial de navegación una sola vez para el efecto de carga de plantilla.
+    // Usar un ref evita que el efecto se re-ejecute si location cambia después del montaje.
+    const initialLocationStateRef = useRef(location.state);
+    const initialPrefill = initialLocationStateRef.current;
+    const hasInitialPrefillContent = initialPrefill != null && 'prefillContent' in initialPrefill;
+    const initialPrefillContent = hasInitialPrefillContent
+        ? (typeof initialPrefill.prefillContent === 'string' ? initialPrefill.prefillContent : '')
+        : undefined;
+    const initialPrefillTitle = typeof initialPrefill?.prefillTitle === 'string'
+        ? initialPrefill.prefillTitle
+        : '';
+    const defaultFont = typeof initialPrefill?.defaultFont === 'string'
+        ? initialPrefill.defaultFont
+        : null;
     const { documents, refreshDocuments: refreshAll } = useDocuments();
     const { user } = useAuth();
 
@@ -80,8 +167,38 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         isLoading,
         saveMessage,
         setSaveMessage,
+        refreshDocument,
         upsertDocumentCache,
-    } = useDocumentLoader({ id, db, documents });
+    } = useDocumentLoader({
+        id,
+        db,
+        documents,
+        initialTitle: initialPrefillTitle,
+        initialContent: initialPrefillContent,
+    });
+
+    // Actualiza el label del tab con el nombre del documento (o label genérico si es nuevo)
+    useTabTitle(title || (id ? 'Cargando...' : 'Nuevo documento'));
+
+    const syncMetadataAfterLock = useCallback(async () => {
+        if (!id) return;
+
+        const remoteMetadata = await getDocumentLastModified(id);
+        const remoteUpdatedAt = remoteMetadata?.last_modified ?? null;
+
+        if (!remoteUpdatedAt) {
+            void logger.warn('document lock acquired without remote last-modified timestamp', { documentId: id });
+            return;
+        }
+
+        if (isRemoteTimestampNewer(remoteUpdatedAt, docMeta?.updated_at)) {
+            await refreshDocument();
+            setSaveMessage({
+                type: 'success',
+                text: 'El documento se actualizó con la última versión antes de habilitar la edición.',
+            });
+        }
+    }, [docMeta, id, refreshDocument, setSaveMessage]);
 
     const {
         isEditing,
@@ -89,9 +206,24 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         isLockedByOther,
         lockerName,
         enableEdit,
-    } = useDocumentLock({ id, setSaveMessage });
+        exitEditMode,
+    } = useDocumentLock({
+        id,
+        setSaveMessage,
+        onLockAcquired: syncMetadataAfterLock,
+    });
 
     const isViewingHistoricalVersion = Boolean(id && versionId);
+
+    useEffect(() => {
+        if (!saveMessage?.text) return;
+
+        showAppToast({
+            title: getEditorToastTitle(saveMessage),
+            description: saveMessage.text,
+            variant: saveMessage.type === 'success' ? 'success' : 'danger',
+        });
+    }, [saveMessage]);
 
     useEffect(() => {
         if (!id || !versionId) {
@@ -106,7 +238,11 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
             // para abrir una versión puntual sin convertirla en la última hasta guardar.
             startVersionLoad();
             try {
-                const historicalContent = await getDocumentVersionContent(id, versionId);
+                const historicalContent = await getDocumentVersionContentCached(id, versionId, {
+                    id: versionId,
+                    document_id: id,
+                    version_number: versionNumberParam,
+                });
 
                 if (cancelled) return;
 
@@ -127,12 +263,12 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                     type: 'error',
                     text: 'No se pudo obtener el contenido de la versión seleccionada.',
                 });
-            } catch (error) {
+            } catch {
                 if (!cancelled) {
                     loadVersionFail();
                     setSaveMessage({
                         type: 'error',
-                        text: `No se pudo cargar la versión histórica: ${error.message}`,
+                        text: 'No se pudo cargar la versión seleccionada.',
                     });
                 }
             }
@@ -143,7 +279,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         return () => {
             cancelled = true;
         };
-    }, [id, setContent, setSaveMessage, versionId, versionNumberParam]);
+    }, [id, setContent, setSaveMessage, versionId, versionNumberParam, clearVersionMeta, loadVersionFail, loadVersionSuccess, startVersionLoad]);
 
     // Autoguardado local (SQLite): preserva el contenido sin llamar a la API
     // para no crear versiones nuevas en cada keystroke.
@@ -167,6 +303,19 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
 
     useEffect(() => {
         if (id || !templateId) return undefined;
+
+        // Si el usuario llegó desde UseTemplateModal con contenido ya rellenado,
+        // usarlo directamente sin volver a llamar a la API.
+        const prefill = initialLocationStateRef.current;
+        // Verificar con 'in' en vez de truthiness para manejar el caso de contenido vacío ('')
+        // que ocurre con "Cargar sin rellenar" (getEmptyTemplate devuelve HTML sin placeholders).
+        if (prefill != null && 'prefillContent' in prefill) {
+            setContent(prefill.prefillContent ?? '');
+            if (prefill.prefillTitle) setTitle(prefill.prefillTitle);
+            clearDirty();
+            setSaveMessage({ type: 'success', text: 'Modelo aplicado correctamente.' });
+            return undefined;
+        }
 
         let cancelled = false;
 
@@ -199,9 +348,14 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         return () => {
             cancelled = true;
         };
-    }, [id, setContent, setSaveMessage, setTitle, templateId]);
+    }, [id, setContent, setSaveMessage, setTitle, templateId, clearDirty]);
 
-    const { dialogProps: unsavedDialogProps } = useUnsavedChanges(isDirty, {
+    // Documento nuevo sin título ni contenido: no vale la pena advertir sobre cambios sin guardar.
+    const isPristineNewDraft = !id
+        && !title.trim()
+        && (content === '' || content?.trim() === '' || content === '<p></p>');
+
+    const { dialogProps: unsavedDialogProps } = useUnsavedChanges(isDirty && !isPristineNewDraft, {
         title: 'Cambios sin guardar',
         desc: 'Tienes cambios sin guardar en este documento. Si sales ahora, se perderán.',
         confirmText: 'Salir sin guardar',
@@ -214,14 +368,38 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         setDialogLoading,
     } = useConfirmDialog();
 
+    // Márgenes: heredar de la plantilla si viene de UseTemplateModal (prefillMargins),
+    // o cargar la preferencia guardada del usuario, o usar el default de 1 pulgada.
+    const [margins, setMargins] = useState(() => {
+        const prefill = initialLocationStateRef.current;
+        if (prefill?.prefillMargins) return normalizeMargins(prefill.prefillMargins);
+        return loadMarginPreference(user?.id) || null;
+    });
+    const [isMarginsModalOpen, setIsMarginsModalOpen] = useState(false);
+    const [marginsModalContext, setMarginsModalContext] = useState({ indentLevel: 0, onIndentChange: null });
+
+    // Ref al editor TipTap: permite obtener el HTML más fresco al guardar/exportar
+    // sin depender del estado React que puede estar desactualizado por el debounce de 300ms.
+    const editorRef = useRef(null);
+
+    // Estabiliza la referencia del callback para que React.memo en TiptapEditor no pierda
+    // la comparación y rerenderice el canvas completo en cada tecla presionada.
+    const handleOpenMarginsModal = useCallback((context) => {
+        setMarginsModalContext({
+            indentLevel: context?.indentLevel ?? 0,
+            onIndentChange: context?.onIndentChange ?? null,
+        });
+        setIsMarginsModalOpen(true);
+    }, []);
+
     // Memoizado para que React.memo en TiptapEditor no re-renderice por referencia nueva en cada render.
-    // La comparación newContent === content se eliminó: onChange solo se dispara desde edits internos
-    // del usuario, nunca desde setContent externo (bloqueado por isUpdatingFromOutside en TiptapEditor).
+    // Se usa forma funcional en setIsDirty para eliminar isDirty de las deps: así el callback es estable
+    // toda la sesión de edición y TiptapEditor no recibe una nueva referencia de onChange al primer keystroke.
     const handleEditorChange = useCallback((newContent) => {
         setContent(newContent);
         if (id && !isEditing) return;
-        if (!isDirty) setIsDirty(true);
-    }, [id, isEditing, isDirty]);
+        setIsDirty((prev) => prev || true);
+    }, [id, isEditing, setContent, setIsDirty]);
 
     const canDeleteDocument = Boolean(id) && Boolean(user?.role && user.role !== 'user');
     const deleteDisabled = isEditing || isLockedByOther;
@@ -241,11 +419,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
     }, [id, initialCaseId, setDocMeta]);
 
     const navigateBack = () => {
-        const normalizedContent = (content || '').trim();
-        const isPristineNewDraft = !id
-            && !title.trim()
-            && (normalizedContent === '' || normalizedContent === '<p></p>');
-
+        // isPristineNewDraft se computa arriba (junto al useUnsavedChanges) para compartir la lógica.
         if (isPristineNewDraft && isDirty) {
             flushSync(() => {
                 setIsDirty(false);
@@ -325,6 +499,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                         }
                     }
 
+                    await invalidateDocumentListingCache();
                     await refreshAll();
                     showAppToast({
                         title: 'Documento eliminado',
@@ -357,31 +532,82 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         setIsSaving(true);
         setSaveMessage(null);
 
+        // Usa el HTML más fresco del editor (evita guardar contenido stale del debounce).
+        const latestContent = editorRef.current?.getLatestContent() ?? content;
+
         try {
-            const result = await updateDocument(id, { content });
+            const result = await updateDocument(id, { content: latestContent });
 
             if (result.ok) {
+                let savedMeta = null;
                 try {
-                    const savedMeta = normalizeDocumentPayload(result.data) || docMeta;
-                    await upsertDocumentCache(Number(id), content, savedMeta);
+                    savedMeta = buildSuccessfulSaveMeta({
+                        currentMeta: docMeta,
+                        responsePayload: result.data,
+                        documentId: id,
+                        title,
+                    });
+                    // Sanitizar meta para evitar persistir campos extraños de la API (como event_id)
+                    const sanitized = {
+                        id: Number(id),
+                        name: savedMeta.name || savedMeta.title || title,
+                        title: savedMeta.title || savedMeta.name || title,
+                        status: savedMeta.status || docMeta?.status || 'Borrador',
+                        suit_case_id: savedMeta.suit_case_id || docMeta?.suit_case_id,
+                        updated_at: savedMeta.updated_at || docMeta?.updated_at || null,
+                        pending_local_save: false,
+                        pending_local_save_error: null,
+                        pending_local_save_at: null,
+                    };
+                    await upsertDocumentCache(Number(id), latestContent, sanitized);
                     if (savedMeta) {
                         setDocMeta(savedMeta);
                     }
                 } catch (err) {
-                    void logger.warn('no se pudo actualizar caché local tras guardar', err);
+                    void logger.error('no se pudo actualizar caché local tras guardar', err);
+                    showAppToast({
+                        title: 'Guardado parcial',
+                        description: 'El documento se guardó en el servidor, pero falló la actualización de la caché local.',
+                        variant: 'warning',
+                    });
                 }
 
                 setIsDirty(false);
+                // Salir del modo edición y liberar el lock en el servidor.
+                await exitEditMode();
                 setSaveMessage({ type: 'success', text: 'Documento guardado correctamente.' });
+                await invalidateDocumentListingCache();
                 await refreshAll();
                 if (versionId) {
                     navigate(buildDocumentEditPath(id), { replace: true, state: safeNavigationState });
                 }
             } else {
-                setSaveMessage({ type: 'error', text: result.data?.message || 'Error al guardar el documento.' });
+                const failureMessage = result.data?.message || result.error || 'Error al guardar el documento.';
+                void logger.error('document save rejected by api', {
+                    documentId: id,
+                    status: result.status,
+                    message: failureMessage,
+                    payloadKeys: ['content'],
+                });
+                try {
+                    await upsertDocumentCache(Number(id), latestContent, buildSaveFailureCacheMeta(docMeta, failureMessage));
+                } catch (cacheError) {
+                    void logger.error('no se pudo marcar la caché local como pendiente tras fallo de guardado', cacheError);
+                }
+                setSaveMessage({ type: 'error', text: failureMessage });
             }
         } catch (error) {
-            setSaveMessage({ type: 'error', text: `Error de red: ${error.message}` });
+            const failureMessage = `Error de red: ${error.message}`;
+            void logger.error('document save request failed', {
+                documentId: id,
+                error: error.message,
+            });
+            try {
+                await upsertDocumentCache(Number(id), latestContent, buildSaveFailureCacheMeta(docMeta, failureMessage));
+            } catch (cacheError) {
+                void logger.error('no se pudo marcar la caché local como pendiente tras error de red', cacheError);
+            }
+            setSaveMessage({ type: 'error', text: failureMessage });
         } finally {
             setIsSaving(false);
         }
@@ -403,7 +629,16 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
             const suitCaseId = Number.isFinite(normalizedCaseId) && normalizedCaseId > 0
                 ? normalizedCaseId
                 : null;
-            const result = await createDocument({ name: normalizedTitle, content, suit_case_id: suitCaseId });
+            const status = docMeta?.status || 'Borrador';
+            // Usa el HTML más fresco del editor para no crear el documento con contenido stale.
+            const latestContent = editorRef.current?.getLatestContent() ?? content;
+            const result = await createDocument({
+                name: normalizedTitle,
+                title: normalizedTitle,
+                content: latestContent,
+                suit_case_id: suitCaseId,
+                status,
+            });
 
             if (result.ok) {
                 flushSync(() => {
@@ -411,24 +646,26 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                 });
                 setSettingsOpen(false);
                 setSaveMessage({ type: 'success', text: 'Documento creado correctamente.' });
-                showAppToast({
-                    title: 'Documento creado',
-                    description: normalizedTitle,
-                    variant: 'success',
-                });
+                await invalidateDocumentListingCache();
                 await refreshAll();
 
-                const newId = result.data?.id || result.data?.data?.id;
-                if (newId) {
-                    navigate(buildDocumentEditPath(newId), { replace: true, state: safeNavigationState });
-                } else {
-                    navigate('/documents');
-                }
+                navigate('/documents');
             } else {
-                setSaveMessage({ type: 'error', text: result.data?.message || 'Error al crear el documento.' });
+                const failureMessage = result.data?.message || result.error || 'Error al crear el documento.';
+                void logger.error('document create rejected by api', {
+                    status: result.status,
+                    message: failureMessage,
+                    title: normalizedTitle,
+                });
+                setSaveMessage({ type: 'error', text: failureMessage });
             }
         } catch (error) {
-            setSaveMessage({ type: 'error', text: `Error de red: ${error.message}` });
+            const failureMessage = `Error de red: ${error.message}`;
+            void logger.error('document create request failed', {
+                error: error.message,
+                title: normalizedTitle,
+            });
+            setSaveMessage({ type: 'error', text: failureMessage });
         } finally {
             setIsSaving(false);
         }
@@ -449,10 +686,22 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         setIsExportingPdf(true);
 
         try {
+            const { getReportStyles } = await import('../utils/pdf/pdfStyleHelper.js');
+            const styles = getReportStyles();
+            
+            const m = normalizeMargins(margins || DEFAULT_MARGINS);
+            // Usa el HTML más fresco del editor para no exportar contenido stale.
+            const latestContent = editorRef.current?.getLatestContent() ?? content;
+            const wrappedHtml = `
+                <div class="prose prose-base max-w-none bg-white export-document" style="box-sizing: border-box; width: 100%; min-height: auto; margin: 0 auto;">
+                    ${latestContent}
+                </div>
+            `;
+
             const result = await window.electronAPI.documents.exportPdf({
                 title: title.trim() || (id ? `documento-${id}` : 'documento-sin-titulo'),
-                html: content,
-                fontFamily: getPdfBaseFontFamily(),
+                html: wrappedHtml,
+                styles: `${styles}\n${buildPrintPageCss(m)}\n.export-document { width: 100%; max-width: none; }`
             });
 
             if (result?.canceled) return;
@@ -468,6 +717,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                 variant: 'success',
             });
         } catch (error) {
+            void logger.error('Error exportando PDF desde editor', error);
             showAppToast({
                 title: 'Error al exportar PDF',
                 description: error.message || 'No se pudo exportar el documento a PDF.',
@@ -490,39 +740,57 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
     }
 
     return (
-        <div className="flex h-full w-full flex-col gap-5 px-2 pb-8 lg:px-4">
-            <DocumentEditorHeader
-                id={id}
-                title={title}
-                onTitleChange={setTitle}
-                isEditing={isEditing}
-                isCheckingEdit={isCheckingEdit}
-                isSaving={isSaving}
-                isExportingPdf={isExportingPdf}
-                isLockedByOther={isLockedByOther}
-                lastAutoSavedAt={lastAutoSavedAt}
-                historyVersionLabel={isViewingHistoricalVersion ? `v${versionMeta?.version_number || versionNumberParam || versionId}` : ''}
-                onBack={navigateBack}
-                onEnableEdit={enableEdit}
-                onExportPdf={handleExportPdf}
-                onSave={handleSave}
-            />
-
-            <DocumentEditorAlerts
-                id={id}
-                isEditing={isEditing}
-                isLockedByOther={isLockedByOther}
-                lockerName={lockerName}
-                saveMessage={saveMessage}
-            />
-
-            <div className="flex-1 pb-6">
-                <TiptapEditor
-                    content={content}
-                    onChange={handleEditorChange}
-                    readOnly={id ? !isEditing : false}
-                    placeholder="Escribe tu documento..."
+        <div className="flex h-full min-h-0 w-full flex-col overflow-hidden px-2 pb-4 lg:px-4">
+            <div className="shrink-0">
+                <DocumentEditorHeader
+                    id={id}
+                    title={title}
+                    status={docMeta?.status}
+                    onTitleChange={setTitle}
+                    isEditing={isEditing}
+                    isCheckingEdit={isCheckingEdit}
+                    isSaving={isSaving}
+                    isExportingPdf={isExportingPdf}
+                    isLockedByOther={isLockedByOther}
+                    lastAutoSavedAt={lastAutoSavedAt}
+                    historyVersionLabel={isViewingHistoricalVersion ? `v${versionMeta?.version_number || versionNumberParam || versionId}` : ''}
+                    onBack={navigateBack}
+                    onEnableEdit={enableEdit}
+                    onExportPdf={handleExportPdf}
+                    onSave={handleSave}
+                    onOpenSettings={() => setSettingsOpen(true)}
                 />
+            </div>
+
+            <div className="shrink-0 pt-5">
+                <DocumentEditorAlerts
+                    id={id}
+                    isEditing={isEditing}
+                    isLockedByOther={isLockedByOther}
+                    lockerName={lockerName}
+                />
+            </div>
+
+            <div className="mt-5 flex min-h-0 flex-1 overflow-hidden rounded-2xl border border-(--border-default) bg-(--bg-card)">
+                <div className="min-w-0 flex-1 overflow-auto px-4 py-4">
+                    <TiptapEditor
+                        ref={editorRef}
+                        content={content}
+                        onChange={handleEditorChange}
+                        readOnly={id ? !isEditing : false}
+                        placeholder="Escribe tu documento..."
+                        margins={margins}
+                        defaultFont={defaultFont}
+                        onMarginsChange={setMargins}
+                        onEditMargins={handleOpenMarginsModal}
+                    />
+                </div>
+
+                {!isViewingHistoricalVersion && (
+                    <DraftingToolsSidebar 
+                        caseId={docMeta?.suit_case_id ?? initialCaseId} 
+                    />
+                )}
             </div>
 
             <DocumentSettingsModal
@@ -531,7 +799,22 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                 documentData={id
                     ? (docMeta || { name: title, suit_case_id: null })
                     : { name: title, suit_case_id: docMeta?.suit_case_id ?? initialCaseId ?? null }}
-                onUpdate={(nextDocMeta) => setDocMeta(nextDocMeta)}
+                onUpdate={(nextDocMeta) => {
+                    // Sanitizar meta para evitar persistir campos extraños de la API (como event_id)
+                    const sanitized = {
+                        id: nextDocMeta.id,
+                        name: nextDocMeta.name,
+                        title: nextDocMeta.title || nextDocMeta.name,
+                        status: nextDocMeta.status,
+                        suit_case_id: nextDocMeta.suit_case_id,
+                        updated_at: nextDocMeta.updated_at,
+                        user_id: nextDocMeta.user_id,
+                    };
+                    setDocMeta(nextDocMeta);
+                    if (id) {
+                        void upsertDocumentCache(Number(id), content, sanitized);
+                    }
+                }}
                 onTitleChange={!id ? setTitle : undefined}
                 onConfirmCreate={!id ? handleCreateDocument : undefined}
                 creating={!id ? isSaving : false}
@@ -544,6 +827,15 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
             />
             {unsavedDialogProps.open && <ConfirmDialog {...unsavedDialogProps} />}
             <ConfirmDialog {...deleteDialogProps} />
+            <MarginsModal
+                open={isMarginsModalOpen}
+                onClose={() => setIsMarginsModalOpen(false)}
+                margins={margins}
+                onSave={setMargins}
+                userId={user?.id}
+                indentLevel={marginsModalContext.indentLevel}
+                onIndentChange={marginsModalContext.onIndentChange}
+            />
         </div>
     );
 }

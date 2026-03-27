@@ -30,11 +30,13 @@ import {
     Table as TableIcon,
     Underline as UnderlineIcon,
     Undo,
-    UserPlus,
+    Plus,
+    Layout,
 } from 'lucide-react';
 import * as Toolbar from '@radix-ui/react-toolbar';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/Tooltip';
 import LinkPopover from './LinkPopover';
+import { FontFamilyPicker } from './FontFamilyPicker';
 
 const toolbarButtonClasses = ({ isActive = false, disabled = false }) => [
     'p-2 rounded-lg transition-all duration-200 outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:cursor-not-allowed',
@@ -111,7 +113,7 @@ ToolbarButton.displayName = 'ToolbarButton';
 
 const EditorToolbar = ({
     editor,
-    onAddVariable,
+    onEditMargins,
     onInsertImage,
     onInsertPageBreak,
     onToggleSearch,
@@ -266,44 +268,62 @@ const EditorToolbar = ({
     );
 
     const alignmentSection = (
-        <Toolbar.ToggleGroup
-            type="single"
-            className={sectionClasses}
-            aria-label="Text alignment"
-        >
+        <div className={sectionClasses}>
+            <Toolbar.ToggleGroup
+                type="single"
+                aria-label="Text alignment"
+                className="flex items-center gap-1"
+                value={editor.isActive({ textAlign: 'left' }) ? 'left' : editor.isActive({ textAlign: 'center' }) ? 'center' : editor.isActive({ textAlign: 'right' }) ? 'right' : editor.isActive({ textAlign: 'justify' }) ? 'justify' : undefined}
+            >
+                <ToolbarButton
+                    value="left"
+                    onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                    isActive={editor.isActive({ textAlign: 'left' })}
+                    icon={AlignLeft}
+                    title="Alinear a la Izquierda"
+                    disabled={!canMutate}
+                />
+                <ToolbarButton
+                    value="center"
+                    onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                    isActive={editor.isActive({ textAlign: 'center' })}
+                    icon={AlignCenter}
+                    title="Centrar"
+                    disabled={!canMutate}
+                />
+                <ToolbarButton
+                    value="right"
+                    onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                    isActive={editor.isActive({ textAlign: 'right' })}
+                    icon={AlignRight}
+                    title="Alinear a la Derecha"
+                    disabled={!canMutate}
+                />
+                <ToolbarButton
+                    value="justify"
+                    onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+                    isActive={editor.isActive({ textAlign: 'justify' })}
+                    icon={AlignJustify}
+                    title="Justificar"
+                    disabled={!canMutate}
+                />
+            </Toolbar.ToggleGroup>
+
+            <div className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+
             <ToolbarButton
-                value="left"
-                onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                isActive={editor.isActive({ textAlign: 'left' })}
-                icon={AlignLeft}
-                title="Alinear a la Izquierda"
+                onClick={() => editor.chain().focus().indent().run()}
+                icon={IndentIncrease}
+                title="Aumentar sangría"
                 disabled={!canMutate}
             />
             <ToolbarButton
-                value="center"
-                onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                isActive={editor.isActive({ textAlign: 'center' })}
-                icon={AlignCenter}
-                title="Centrar"
+                onClick={() => editor.chain().focus().outdent().run()}
+                icon={IndentDecrease}
+                title="Reducir sangría"
                 disabled={!canMutate}
             />
-            <ToolbarButton
-                value="right"
-                onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                isActive={editor.isActive({ textAlign: 'right' })}
-                icon={AlignRight}
-                title="Alinear a la Derecha"
-                disabled={!canMutate}
-            />
-            <ToolbarButton
-                value="justify"
-                onClick={() => editor.chain().focus().setTextAlign('justify').run()}
-                isActive={editor.isActive({ textAlign: 'justify' })}
-                icon={AlignJustify}
-                title="Justificar"
-                disabled={!canMutate}
-            />
-        </Toolbar.ToggleGroup>
+        </div>
     );
 
     const structureSection = (
@@ -341,20 +361,11 @@ const EditorToolbar = ({
 
     const fontSection = (
         <div className={compactSectionClasses}>
-            <select
-                onChange={(event) => editor.chain().focus().setFontFamily(event.target.value).run()}
+            <FontFamilyPicker
                 value={editor.getAttributes('textStyle').fontFamily || ''}
-                className={`${fieldClasses(!canMutate)} w-40 sm:w-44`}
-                aria-label="Familia de fuente"
+                onChange={(font) => editor.chain().focus().setFontFamily(font).run()}
                 disabled={!canMutate}
-            >
-                <option value="" disabled>Fuente</option>
-                <option value="Arial">Arial</option>
-                <option value="Times New Roman">Times New Roman</option>
-                <option value="Georgia">Georgia</option>
-                <option value="Courier New">Courier New</option>
-                <option value="Trebuchet MS">Trebuchet MS</option>
-            </select>
+            />
 
             <select
                 onChange={(event) => {
@@ -429,41 +440,17 @@ const EditorToolbar = ({
 
     // Search y shortcuts siguen operativos en readOnly; el resto se apaga para
     // que la UI no prometa acciones que el editor no puede ejecutar.
-    const secondaryActionSection = (
-        <div className={compactSectionClasses}>
-            <ToolbarButton
-                onClick={onToggleSearch}
-                isActive={searchActive}
-                icon={Search}
-                title="Buscar y reemplazar"
-            />
-            <ToolbarButton
-                onClick={onOpenShortcuts}
-                icon={Keyboard}
-                title="Atajos de teclado"
-                data-testid="editor-shortcuts-trigger"
-            />
-            <ToolbarButton
-                onClick={() => editor.chain().focus().indent().run()}
-                icon={IndentIncrease}
-                title="Aumentar sangría"
-                disabled={!canMutate}
-            />
-            <ToolbarButton
-                onClick={() => editor.chain().focus().outdent().run()}
-                icon={IndentDecrease}
-                title="Reducir sangría"
-                disabled={!canMutate}
-            />
-            {onInsertImage ? (
+    const insertionSection = (
+        <div className={sectionClasses}>
+            {onInsertImage && (
                 <ToolbarButton
                     onClick={onInsertImage}
                     icon={ImagePlus}
                     title="Insertar imagen"
                     disabled={!canMutate}
                 />
-            ) : null}
-            {onInsertPageBreak ? (
+            )}
+            {onInsertPageBreak && (
                 <ToolbarButton
                     onClick={onInsertPageBreak}
                     icon={Scissors}
@@ -471,7 +458,7 @@ const EditorToolbar = ({
                     data-testid="editor-page-break-trigger"
                     disabled={!canMutate}
                 />
-            ) : null}
+            )}
             <ToolbarButton
                 onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
                 icon={TableIcon}
@@ -503,6 +490,23 @@ const EditorToolbar = ({
         </div>
     );
 
+    const utilitySection = (
+        <div className={sectionClasses}>
+            <ToolbarButton
+                onClick={onToggleSearch}
+                isActive={searchActive}
+                icon={Search}
+                title="Buscar y reemplazar"
+            />
+            <ToolbarButton
+                onClick={onOpenShortcuts}
+                icon={Keyboard}
+                title="Atajos de teclado"
+                data-testid="editor-shortcuts-trigger"
+            />
+        </div>
+    );
+
     return (
         <Toolbar.Root
             className="flex w-full flex-col gap-2 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-3 shadow-sm"
@@ -514,30 +518,31 @@ const EditorToolbar = ({
                 {textFormattingSection}
                 {blockSection}
                 {alignmentSection}
+                {onEditMargins && (
+                    <div className="flex shrink-0 justify-start">
+                        <Toolbar.Button asChild>
+                            <button
+                                onClick={() => onEditMargins?.()}
+                                disabled={!canMutate}
+                                className={[
+                                    'flex h-[42px] items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500',
+                                    canMutate ? 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/50' : 'cursor-not-allowed bg-amber-50 dark:bg-amber-900/20 text-amber-400 dark:text-amber-600 opacity-45',
+                                ].join(' ')}
+                            >
+                                <Layout size={16} />
+                                <span>Márgenes</span>
+                            </button>
+                        </Toolbar.Button>
+                    </div>
+                )}
                 {structureSection}
             </div>
 
             <div className={rowClasses} data-testid="editor-toolbar-row-secondary">
                 {fontSection}
-                {secondaryActionSection}
-
-                {onAddVariable ? (
-                    <div className="flex shrink-0 justify-start">
-                        <Toolbar.Button asChild>
-                            <button
-                                onClick={onAddVariable}
-                                disabled={!canMutate}
-                                className={[
-                                    'flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-blue-500',
-                                    canMutate ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50' : 'cursor-not-allowed bg-indigo-50 dark:bg-indigo-900/20 text-indigo-400 dark:text-indigo-600 opacity-45',
-                                ].join(' ')}
-                            >
-                                <UserPlus size={16} />
-                                <span>Variable</span>
-                            </button>
-                        </Toolbar.Button>
-                    </div>
-                ) : null}
+                <div className="mx-1 h-6 w-px bg-gray-200 dark:bg-gray-700 self-center hidden md:block" />
+                {insertionSection}
+                {utilitySection}
             </div>
         </Toolbar.Root>
     );

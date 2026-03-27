@@ -38,6 +38,21 @@ function resolveEventDate(eventItem) {
   );
 }
 
+function isDeadlineEvent(eventItem) {
+  const eventTypeName = String(
+    eventItem?.event_type?.name
+    || eventItem?.eventType?.name
+    || eventItem?.event_type_name
+    || ''
+  ).toLowerCase();
+
+  if (eventTypeName === 'vencimiento') {
+    return true;
+  }
+
+  return String(eventItem?.event_type_id ?? eventItem?.eventTypeId ?? '') === '2';
+}
+
 function resolveDeadlineDate(deadline) {
   return parseDateCandidate(deadline?.due_date || deadline?.dueDate || null);
 }
@@ -149,6 +164,7 @@ export function buildReportsMetrics({
   const activeCases = cases.filter((caseItem) => !isCaseClosed(caseItem));
   const pendingEvents = events
     .filter((eventItem) => {
+      if (isDeadlineEvent(eventItem)) return false;
       const eventDate = resolveEventDate(eventItem);
       return eventDate?.isValid() && (eventDate.isAfter(nowDate) || eventDate.isSame(nowDate));
     })
@@ -237,7 +253,7 @@ export function buildReportsMetrics({
         previousTotal: yearTotals.previous.total,
       },
       timeline: activityTimeline,
-      peakValue: Math.max(1, ...activityTimeline.map((bucket) => bucket.total)),
+      peakValue: Math.max(0, ...activityTimeline.map((bucket) => bucket.total)),
     },
     economy: {
       totalHonorarios,

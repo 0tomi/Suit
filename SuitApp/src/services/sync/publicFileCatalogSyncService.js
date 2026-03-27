@@ -22,7 +22,6 @@ function buildCatalogCacheRow(catalog) {
         description: catalog.description ?? null,
         created_at: catalog.created_at ?? null,
         updated_at: catalog.updated_at ?? null,
-        data_json: JSON.stringify(catalog),
         synced_at: new Date().toISOString(),
     };
 }

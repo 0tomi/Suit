@@ -13,7 +13,8 @@ export default function PeopleSectionLayout({
     renderRow,
     paginationProps,
     children,
-    topContent
+    topContent,
+    trigger
 }) {
     return (
         <div className="space-y-6">
@@ -37,22 +38,25 @@ export default function PeopleSectionLayout({
 
             {filterBar}
 
-            <Table
-                isEmpty={tableProps.isEmpty}
-                emptyMessage={tableProps.emptyMessage}
-                columns={tableProps.columns}
-            >
-                {items.map(renderRow)}
-            </Table>
-
             {paginationProps && (
                 <Pagination
                     totalItems={paginationProps.totalItems}
                     itemsPerPage={paginationProps.itemsPerPage}
                     currentPage={paginationProps.currentPage}
                     onPageChange={paginationProps.onPageChange}
+                    className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
                 />
             )}
+
+            <Table
+                isEmpty={tableProps.isEmpty}
+                emptyMessage={tableProps.emptyMessage}
+                columns={tableProps.columns}
+                trigger={trigger}
+                currentPage={paginationProps?.currentPage}
+            >
+                {items.map(renderRow)}
+            </Table>
 
             {children}
         </div>

@@ -1,4 +1,5 @@
 import SectionsPanel from '../components/settings/SectionsPanel.jsx';
+import { seccionesSteps } from '../constants/tutorialSteps.js';
 
 /**
  * Página legacy de secciones. Mantiene la ruta existente reutilizando el mismo
@@ -7,9 +8,11 @@ import SectionsPanel from '../components/settings/SectionsPanel.jsx';
 function Sections() {
     return (
         <SectionsPanel
-            containerClassName="max-w-5xl mx-auto"
+            containerClassName="max-w-7xl mx-auto"
             showPinButtons={false}
             description="Navegá rápidamente a cualquier sección de la aplicación."
+            dense={false}
+            tutorialSteps={seccionesSteps}
         />
     );
 }

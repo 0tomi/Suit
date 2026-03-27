@@ -1,6 +1,6 @@
 import { createElement, useState, useCallback, useEffect, useMemo } from 'react';
 import * as Select from '@radix-ui/react-select';
-import { Settings as SettingsIcon, Sun, Moon, Calendar, Briefcase, UserCircle, Camera, Save, ChevronDown, Check, Clock, LayoutGrid, Keyboard, LogOut } from 'lucide-react';
+import { Settings as SettingsIcon, Sun, Moon, Calendar, Briefcase, UserCircle, Camera, Save, ChevronDown, Check, Clock, LayoutGrid, Keyboard, LogOut, Library, FileText } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
@@ -25,6 +25,7 @@ import SettingsCacheResetRow from '../components/settings/SettingsCacheResetRow.
 import SectionsPanel from '../components/settings/SectionsPanel.jsx';
 import HotkeysSettingsPanel from '../components/settings/HotkeysSettingsPanel.jsx';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/Tooltip.jsx';
+import TemplateCapitalizationPanel from '../components/settings/TemplateCapitalizationPanel.jsx';
 
 const CATEGORIES = [
     { id: 'perfil', label: 'Perfil', icon: UserCircle },
@@ -32,6 +33,8 @@ const CATEGORIES = [
     { id: 'secciones', label: 'Secciones', icon: LayoutGrid },
     { id: 'agenda', label: 'Agenda', icon: Calendar },
     { id: 'vencimientos', label: 'Vencimientos', icon: Clock },
+    { id: 'biblioteca', label: 'Biblioteca', icon: Library },
+    { id: 'plantillas', label: 'Plantillas', icon: FileText },
     { id: 'hotkeys', label: 'Atajos', icon: Keyboard },
 ];
 
@@ -162,6 +165,10 @@ const GeneralSection = () => {
         setSidebarAnimationSpeed,
         showTutorials,
         setShowTutorials,
+        tablePageAnimationsEnabled,
+        setTablePageAnimationsEnabled,
+        restoreTabs,
+        setRestoreTabs,
     } = useSettings();
 
     return (
@@ -209,6 +216,26 @@ const GeneralSection = () => {
                     id="toggle-show-tutorials"
                     checked={Boolean(showTutorials)}
                     onChange={setShowTutorials}
+                />
+            </SettingRow>
+            <SettingRow
+                label="Animación de páginas en tablas"
+                description="Aplica una transición suave al avanzar o retroceder entre páginas de resultados."
+            >
+                <Toggle
+                    id="toggle-table-animations"
+                    checked={Boolean(tablePageAnimationsEnabled)}
+                    onChange={setTablePageAnimationsEnabled}
+                />
+            </SettingRow>
+            <SettingRow
+                label="Restaurar pestañas al iniciar"
+                description="Al abrir la aplicación, retoma las pestañas que tenías abiertas en la sesión anterior."
+            >
+                <Toggle
+                    id="toggle-restore-tabs"
+                    checked={Boolean(restoreTabs)}
+                    onChange={setRestoreTabs}
                 />
             </SettingRow>
             <SettingsCacheResetRow />
@@ -443,6 +470,7 @@ const SectionsSection = () => (
         titleClassName="text-xl font-semibold text-(--text-primary)"
         descriptionClassName="text-sm text-(--text-secondary) mb-6"
         headerClassName="mb-3"
+        dense={true}
     />
 );
 
@@ -707,6 +735,77 @@ const VencimientosSection = () => {
         </div>
     );
 };
+ 
+const BibliotecaSection = () => {
+    const {
+        libraryNewBadgeEnabled,
+        setLibraryNewBadgeEnabled,
+        libraryNewBadgeColor,
+        setLibraryNewBadgeColor,
+        libraryJumpAnimationEnabled,
+        setLibraryJumpAnimationEnabled,
+    } = useSettings();
+
+    return (
+        <div>
+            <SectionTitle>Biblioteca</SectionTitle>
+            <SettingRow
+                label="Mostrar badge de 'Nuevo'"
+                description="Muestra una etiqueta visual en los archivos que han sido agregados o modificados recientemente."
+            >
+                <Toggle
+                    id="toggle-library-new-badge"
+                    checked={libraryNewBadgeEnabled}
+                    onChange={setLibraryNewBadgeEnabled}
+                />
+            </SettingRow>
+
+            <SettingRow
+                label="Color del badge 'Nuevo'"
+                description="Personaliza el color de la etiqueta de notificación para archivos nuevos."
+            >
+                <div className="flex items-center gap-3">
+                    <div
+                        className="w-8 h-8 rounded-lg border border-(--border-default) shadow-sm"
+                        style={{ backgroundColor: libraryNewBadgeColor }}
+                    />
+                    <input
+                        id="library-new-badge-color-picker"
+                        type="color"
+                        value={libraryNewBadgeColor}
+                        onChange={(e) => setLibraryNewBadgeColor(e.target.value)}
+                        className="w-10 h-10 rounded-lg border border-(--border-default) cursor-pointer p-0.5 bg-(--bg-card) appearance-none"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => setLibraryNewBadgeColor('#f97316')}
+                        className="text-xs text-(--text-secondary) hover:text-(--text-primary) underline underline-offset-2 transition-colors"
+                    >
+                        Restablecer
+                    </button>
+                </div>
+            </SettingRow>
+
+            <SettingRow
+                label="Animación de salto"
+                description="Los archivos nuevos o modificados realizarán un pequeño 'salto' al aparecer para llamar la atención."
+            >
+                <Toggle
+                    id="toggle-library-jump-animation"
+                    checked={libraryJumpAnimationEnabled}
+                    onChange={setLibraryJumpAnimationEnabled}
+                />
+            </SettingRow>
+        </div>
+    );
+};
+
+const PlantillasSection = () => (
+    <div>
+        <SectionTitle>Plantillas</SectionTitle>
+        <TemplateCapitalizationPanel />
+    </div>
+);
 
 const SECTION_COMPONENTS = {
     perfil: ProfileSection,
@@ -714,6 +813,8 @@ const SECTION_COMPONENTS = {
     secciones: SectionsSection,
     agenda: AgendaSection,
     vencimientos: VencimientosSection,
+    biblioteca: BibliotecaSection,
+    plantillas: PlantillasSection,
     hotkeys: HotkeysSettingsPanel,
 };
 

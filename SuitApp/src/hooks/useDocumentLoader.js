@@ -70,9 +70,18 @@ const buildDocumentCacheRow = ({ documentId, previousRow, apiMeta, content }) =>
     };
 };
 
-export function useDocumentLoader({ id, db, documents }) {
-    const [title, setTitle] = useState('');
-    const [content, setContent] = useState(id ? '' : NEW_DOCUMENT_CONTENT);
+export function useDocumentLoader({
+    id,
+    db,
+    documents,
+    initialTitle = '',
+    initialContent = NEW_DOCUMENT_CONTENT,
+}) {
+    const [title, setTitle] = useState(() => (id ? '' : initialTitle));
+    const [content, setContent] = useState(() => {
+        if (id) return '';
+        return typeof initialContent === 'string' ? initialContent : NEW_DOCUMENT_CONTENT;
+    });
     const [isLoading, setIsLoading] = useState(Boolean(id));
     const [saveMessage, setSaveMessage] = useState(null);
     const [docMeta, setDocMeta] = useState(null);
@@ -128,6 +137,13 @@ export function useDocumentLoader({ id, db, documents }) {
                 hadLocalContent = true;
                 setContent(localRow.content);
                 setIsLoading(false);
+
+                if (mergedLocalMeta?.pending_local_save === true) {
+                    setSaveMessage({
+                        type: 'error',
+                        text: mergedLocalMeta.pending_local_save_error || 'Hay cambios locales que no se pudieron guardar en el servidor.',
+                    });
+                }
             }
         }
 
@@ -161,10 +177,18 @@ export function useDocumentLoader({ id, db, documents }) {
                 setContent(freshContent);
 
                 try {
-                    await upsertDocumentCache(numericId, freshContent, {
+                    const persistedRow = await upsertDocumentCache(numericId, freshContent, {
                         ...(localMeta || {}),
                         updated_at: remoteUpdatedAt || localMeta?.updated_at || null,
+                        pending_local_save: false,
+                        pending_local_save_error: null,
+                        pending_local_save_at: null,
                     });
+                    const persistedMeta = parseJSONSafely(persistedRow?.data_json) || null;
+                    if (persistedMeta) {
+                        setDocMeta(persistedMeta);
+                        setTitle(persistedRow?.name || persistedMeta?.name || '');
+                    }
                 } catch (err) {
                     void logger.warn('No se pudo persistir contenido del documento en SQLite', err);
                 }
@@ -178,10 +202,15 @@ export function useDocumentLoader({ id, db, documents }) {
             }
         } else if (remoteUpdatedAt) {
             try {
-                await upsertDocumentCache(numericId, localRow?.content ?? null, {
+                const persistedRow = await upsertDocumentCache(numericId, localRow?.content ?? null, {
                     ...(localMeta || {}),
                     updated_at: remoteUpdatedAt,
                 });
+                const persistedMeta = parseJSONSafely(persistedRow?.data_json) || null;
+                if (persistedMeta) {
+                    setDocMeta(persistedMeta);
+                    setTitle(persistedRow?.name || persistedMeta?.name || '');
+                }
             } catch (err) {
                 void logger.warn('No se pudo actualizar metadata local del documento', err);
             }

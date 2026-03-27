@@ -46,10 +46,13 @@ export const EconomiaFilterBar = ({
 
             {/* Filtro de Estado (Pagado/No pagado) */}
             {showStatusFilter && (
-                <div className="flex items-center gap-2 border-l pl-4 border-(--border-default)">
-                    <Filter className="h-4 w-4 text-(--text-tertiary)" />
+                <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                    <div className="flex items-center gap-1.5 text-(--text-tertiary)">
+                        <Filter className="h-3 w-3" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Estado</span>
+                    </div>
                     <Select value={statusFilter} onValueChange={onStatusChange}>
-                        <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-8 w-auto min-w-[140px]">
+                        <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[140px] p-0 px-2">
                             <SelectValue placeholder="Todos los estados" />
                         </SelectTrigger>
                         <SelectContent>
@@ -64,14 +67,17 @@ export const EconomiaFilterBar = ({
 
             {/* Filtro de Usuario (Solo Admin) */}
             {isAdmin && (
-                <div className="flex items-center gap-2 border-l pl-4 border-(--border-default)">
-                    <User className="h-4 w-4 text-(--text-tertiary)" />
+                <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                    <div className="flex items-center gap-1.5 text-(--text-tertiary)">
+                        <User className="h-3 w-3" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest">Abogado</span>
+                    </div>
                     <Select value={selectedUserId} onValueChange={onUserChange}>
-                        <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-8 w-auto min-w-[150px]">
-                            <SelectValue placeholder="Todos los usuarios" />
+                        <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[150px] p-0 px-2">
+                            <SelectValue placeholder="Todos" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem value="all">Todos los usuarios</SelectItem>
+                            <SelectItem value="all">Todos los abogados</SelectItem>
                             <SelectSeparator />
                             {users.map(u => (
                                 <SelectItem key={u.id} value={String(u.id)}>

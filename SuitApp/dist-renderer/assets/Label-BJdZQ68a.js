@@ -1,0 +1,1 @@
+import{j as a}from"./vendor-react-BVefv4W0.js";const r=({className:t="",children:e,...s})=>a.jsx("label",{className:`block text-sm font-medium text-(--text-secondary) mb-1 ${t}`,...s,children:e});export{r as L};

@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { AnimatedFilterContent } from './AnimatedFilterContent';
+import { useSettings } from '../../context/SettingsContext';
 
 const EMPTY_COLUMNS = [];
 
@@ -10,9 +12,31 @@ export const Table = ({
     children, // tr/td mappings go here
     emptyMessage = "No se encontraron resultados.",
     isEmpty = false,
-    className = ''
+    className = '',
+    trigger, // Trigger opcional para la animación de filtro
+    currentPage // Página actual para la animación de paginación
 }) => {
-    return (
+    const { tablePageAnimationsEnabled } = useSettings();
+    const [prevPage, setPrevPage] = useState(currentPage);
+    const [direction, setDirection] = useState('next');
+
+    // Ajustar dirección cuando cambia el currentPage durante el render (patrón recomendado por React)
+    if (currentPage !== prevPage) {
+        if (currentPage !== undefined && prevPage !== undefined) {
+            if (currentPage > prevPage) {
+                setDirection('next');
+            } else if (currentPage < prevPage) {
+                setDirection('prev');
+            }
+        }
+        setPrevPage(currentPage);
+    }
+
+    const animationClass = (tablePageAnimationsEnabled && currentPage !== undefined)
+        ? `animate-table-${direction}`
+        : '';
+
+    const tableMarkup = (
         <div className={`bg-(--bg-card) rounded-xl shadow-sm border border-(--border-subtle) overflow-hidden ${className}`}>
             <div className="overflow-x-auto w-full">
                 <table className="w-full text-left border-collapse">
@@ -28,7 +52,10 @@ export const Table = ({
                             ))}
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-(--border-subtle) bg-(--bg-card)">
+                    <tbody
+                        key={currentPage} // Forzar re-render de las filas para disparar la animación
+                        className={`divide-y divide-(--border-subtle) bg-(--bg-card) ${animationClass}`}
+                    >
                         {children}
                     </tbody>
                 </table>
@@ -40,4 +67,10 @@ export const Table = ({
             )}
         </div>
     );
+
+    if (trigger !== undefined) {
+        return <AnimatedFilterContent trigger={trigger}>{tableMarkup}</AnimatedFilterContent>;
+    }
+
+    return tableMarkup;
 };

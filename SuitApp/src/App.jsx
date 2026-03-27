@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect } from 'react';
-import { createBrowserRouter, createHashRouter, RouterProvider, createRoutesFromElements, Route, useNavigate, Outlet, Navigate } from 'react-router-dom';
+import { createBrowserRouter, createHashRouter, RouterProvider, createRoutesFromElements, Route, Outlet, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ApiProvider } from './context/ApiContext';
 import { AppProviders } from './context/AppProviders';
@@ -16,41 +16,36 @@ import { Toaster } from './components/ui/toaster';
 import { showAppToast } from './components/ui/show-app-toast.jsx';
 import { buildTriggeredNotificationDescription } from './utils/notifications/buildTriggeredNotificationDescription.js';
 import GlobalHotkeysHandlers from './components/GlobalHotkeysHandlers.jsx';
+import { useTabs } from './context/TabsContext.jsx';
 const Login = lazy(() => import('./pages/Login.jsx'));
 
-const Documents = lazy(() => import('./pages/Documents'));
-const DocumentEditor = lazy(() => import('./pages/DocumentEditor'));
-const Cases = lazy(() => import('./pages/Cases'));
-const CaseDetail = lazy(() => import('./pages/CaseDetail'));
-const People = lazy(() => import('./pages/People'));
-const ClientDetail = lazy(() => import('./pages/ClientDetail'));
-const Economia = lazy(() => import('./pages/Economia'));
-const Categories = lazy(() => import('./pages/Categories'));
-const TemplateGallery = lazy(() => import('./pages/TemplateGallery'));
-const Agenda = lazy(() => import('./pages/Agenda'));
-const AdminPanel = lazy(() => import('./pages/AdminPanel'));
-const Settings = lazy(() => import('./pages/Settings'));
-const Deadlines = lazy(() => import('./pages/Deadlines'));
-const DeadlineDetail = lazy(() => import('./pages/DeadlineDetail'));
-const Sections = lazy(() => import('./pages/Sections'));
-const Reports = lazy(() => import('./pages/Reports'));
-
-// Escucha eventos emitidos desde Electron main cuando el usuario hace click
-// en una notificación nativa o en el resumen de recordatorios perdidos.
+/**
+ * NotificationRuntime — escucha eventos de notificaciones de Electron y los
+ * redirige al sistema de tabs (en vez de navegar el router exterior).
+ *
+ * - Click en notificación nativa de evento → navega en la tab activa a /agenda
+ * - Recordatorio disparado → muestra toast
+ */
 function NotificationRuntime() {
-    const navigate = useNavigate();
+    const { openTab } = useTabs();
+
     useEffect(() => {
         if (!window.electronAPI?.notifications) return;
 
         const unsubscribeEvent = window.electronAPI.notifications.onOpenEvent((payload) => {
             if (!payload?.eventId) return;
-            navigate('/agenda', {
-                state: {
-                    highlightedEventId: payload.eventId,
-                    notificationNonce: Date.now(),
-                },
-            });
+            // Navegar en la tab activa hacia agenda con el evento destacado.
+            // La navegación real ocurre dentro del MemoryRouter del tab activo,
+            // pero el state de highlight se pasa via sessionStorage para cruzar el límite.
+            try {
+                sessionStorage.setItem(
+                    'agenda_highlight',
+                    JSON.stringify({ eventId: payload.eventId, nonce: Date.now() })
+                );
+            } catch { /* ignorar */ }
+            openTab('/agenda');
         });
+
         const unsubscribeTriggered = window.electronAPI.notifications.onTriggered?.((payload) => {
             showAppToast({
                 id: `event-reminder-${payload?.eventId ?? 'unknown'}-${payload?.notifyAt ?? Date.now()}`,
@@ -67,7 +62,7 @@ function NotificationRuntime() {
             unsubscribeEvent?.();
             unsubscribeTriggered?.();
         };
-    }, [navigate]);
+    }, [openTab]);
 
     return (
         <>
@@ -117,31 +112,19 @@ function RootRouteErrorElement() {
     );
 }
 
+/**
+ * Router exterior simplificado.
+ * Solo maneja /login y la shell protegida (MainLayout).
+ * Toda la navegación interna entre secciones ocurre dentro de los
+ * MemoryRouter individuales de cada pestaña (TabContent).
+ */
 const appRoutes = createRoutesFromElements(
     <Route element={<RootComponent />} errorElement={<RootRouteErrorElement />}>
         <Route path="/login" element={<Login />} />
         <Route element={<ProtectedRoute />}>
-            <Route element={<MainLayout />}>
-                <Route path="/" element={<Navigate to="/agenda" replace />} />
-                <Route path="/reports" element={<Reports />} />
-                <Route path="/agenda" element={<Agenda />} />
-                <Route path="/documents" element={<Documents />} />
-                <Route path="/documents/new" element={<DocumentEditor />} />
-                <Route path="/documents/edit/:id?" element={<DocumentEditor />} />
-                <Route path="/cases" element={<Cases />} />
-                <Route path="/cases/:id" element={<CaseDetail />} />
-                <Route path="/people" element={<People />} />
-                <Route path="/people/:id" element={<ClientDetail />} />
-                <Route path="/economia" element={<Economia />} />
-                <Route path="/categorias" element={<Categories />} />
-                <Route path="/deadlines" element={<Deadlines />} />
-                <Route path="/deadlines/:id" element={<DeadlineDetail />} />
-                <Route path="/templates" element={<TemplateGallery />} />
-                <Route path="/admin" element={<AdminPanel />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/sections" element={<Sections />} />
-            </Route>
+            <Route path="/*" element={<MainLayout />} />
         </Route>
+        <Route path="/" element={<Navigate to="/agenda" replace />} />
     </Route>
 );
 

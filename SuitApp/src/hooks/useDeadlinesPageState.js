@@ -11,6 +11,7 @@ export function useDeadlinesPageState(initialFilters = {}) {
     const [searchTerm, setSearchTerm]           = useState(initialFilters.searchTerm     ?? '');
     const [categoryFilter, setCategoryFilter]   = useState(initialFilters.categoryFilter ?? 'all-except-completed');
     const [priorityFilter, setPriorityFilter]   = useState(initialFilters.priorityFilter ?? 'all');
+    const [agendaFilter, setAgendaFilter]       = useState(initialFilters.agendaFilter   ?? 'all');
     const [sortMode, setSortMode]               = useState(initialFilters.sortMode       ?? 'date-asc');
 
     // Filtro de fecha por KPI cards (no se persiste)
@@ -29,6 +30,7 @@ export function useDeadlinesPageState(initialFilters = {}) {
         searchTerm, setSearchTerm,
         categoryFilter, setCategoryFilter,
         priorityFilter, setPriorityFilter,
+        agendaFilter, setAgendaFilter,
         sortMode, setSortMode,
         dateFilter, setDateFilter,
         isCreateModalOpen, setIsCreateModalOpen,

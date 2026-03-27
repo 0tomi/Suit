@@ -1,0 +1,1 @@
+import{r as e}from"./vendor-react-BVefv4W0.js";import{aq as a,ar as n}from"./App-Bo97bbs2.js";const f=t=>{const s=e.useRef(t);return e.useLayoutEffect(()=>{s.current=t}),s},b=({onFocus:t})=>{const{activeTabId:s}=a(),c=n(),o=f(t),r=c!=null&&s===c,u=e.useRef(!1);e.useEffect(()=>{r&&!u.current&&o.current?.(),u.current=r},[r,o])};export{b as u};

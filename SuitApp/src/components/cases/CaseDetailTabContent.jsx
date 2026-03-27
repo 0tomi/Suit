@@ -1,6 +1,7 @@
 import { memo, lazy, Suspense, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { Plus, Trash2, ExternalLink, File, Lock, Users, Download, Upload, Play, X, Film, Printer, ChevronLeft, ChevronRight, Eye } from 'lucide-react';
+import { Plus, Trash2, ExternalLink, File, Lock, Users, Download, Upload, Play, X, Film, Printer, ChevronLeft, ChevronRight, Eye, FolderOpen, FileText, FolderArchive, Calendar, Clock, CalendarRange, Image as LucideImage, QrCode } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import SideMenuPageLayout from '../ui/SideMenuPageLayout.jsx';
 import AddParticipantModal from './AddParticipantModal';
 import AddCaseClientModal from './AddCaseClientModal.jsx';
 import CaseVideoPlayer from '../media/CaseVideoPlayer.jsx';
@@ -12,11 +13,15 @@ import { useFiles } from '../../context/FilesContext.jsx';
 import { useCaseTypes } from '../../context/CaseTypesContext.jsx';
 import { useRadicaciones } from '../../context/RadicacionesContext.jsx';
 import { useTipoExpedientes } from '../../context/TipoExpedientesContext.jsx';
+import { useCompetencias } from '../../context/CompetenciasContext.jsx';
+import { useJurisdicciones } from '../../context/JurisdiccionesContext.jsx';
+import { useDependenciasJudiciales } from '../../context/DependenciasJudicialesContext.jsx';
 import {
     getParticipants,
     removeParticipant,
     getCaseClients,
     unlinkClientFromCase,
+    generateCaseLink,
 } from '../../services/caseService';
 import { downloadMultimedia, uploadMultimedia, deleteMultimedia } from '../../services/multimediaService.js';
 import { downloadFile, uploadFile, deleteFile } from '../../services/fileService.js';
@@ -38,15 +43,21 @@ import 'dayjs/locale/es';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import { createLogger } from '../../services/logService.js';
 import { getApiErrorMessage } from '../../utils/apiErrorMessage.js';
+import { useCaseDeadlineBadge } from '../../hooks/useDeadlineBadge';
 
 const logger = createLogger('case-detail-tab-content');
 const AgendaComponent = lazy(() => import('../Agenda/AgendaComponent'));
 const CaseDeadlinesSection = lazy(() => import('../deadlines/CaseDeadlinesSection'));
 import { HonorariosList } from '../economia/HonorariosList.jsx';
 import { GastosList } from '../economia/GastosList.jsx';
+import { BibliotecaFilters } from '../Biblioteca/BibliotecaFilters';
+import { BibliotecaGrid } from '../Biblioteca/BibliotecaGrid';
+import { QrCodeModal } from '../Biblioteca/Modals/QrCodeModal';
 
 dayjs.locale('es');
 dayjs.extend(localizedFormat);
+
+const CASE_DETAIL_WIDE_SECTION_CLASS = 'w-full px-2 md:px-3';
 
 function resolveStatusClasses(statusLabel) {
     if (statusLabel === 'Finalizado') {
@@ -141,12 +152,16 @@ function getCaseTypeLabel(caseData, caseTypes) {
 }
 
 function getRadicacionLabel(caseData, radicaciones) {
-    if (caseData?.radicacion?.nombre_lugar) {
-        return caseData.radicacion.nombre_lugar;
+    if (caseData?.radicacion?.tipo) {
+        return caseData.radicacion.tipo;
     }
 
     if (caseData?.radicacion?.name) {
         return caseData.radicacion.name;
+    }
+
+    if (caseData?.radicacion?.nombre_lugar) {
+        return caseData.radicacion.nombre_lugar;
     }
 
     if (typeof caseData?.radicacion_name === 'string' && caseData.radicacion_name.trim()) {
@@ -154,7 +169,46 @@ function getRadicacionLabel(caseData, radicaciones) {
     }
 
     const matchedRadicacion = radicaciones.find((item) => String(item.id) === String(caseData?.radicacion_id ?? ''));
-    return matchedRadicacion?.name || matchedRadicacion?.nombre_lugar || 'Sin radicación';
+    return matchedRadicacion?.tipo || matchedRadicacion?.name || matchedRadicacion?.nombre_lugar || 'Sin radicación';
+}
+
+function getCompetenciaLabel(caseData, dependencias) {
+    // 1. Prioridad: Objeto embebido en caseData (si vino de API)
+    const depFromCase = caseData?.dependencia;
+    if (depFromCase) {
+        return depFromCase.nombre_juzgado || depFromCase.nombre || depFromCase.title;
+    }
+
+    // 2. Buscar en catálogo usando dependencia_id
+    const depId = caseData?.dependencia_id;
+    if (!depId) return '—';
+
+    const dep = dependencias.find(d => String(d.id) === String(depId));
+    if (!dep) return '—';
+
+    // 3. Devolver el nombre de la dependencia (juzgado)
+    return dep.nombre_juzgado || dep.nombre || dep.title || '—';
+}
+
+function getJurisdiccionLabel(caseData, dependencias, jurisdicciones) {
+    const jurFromCase = caseData?.dependencia?.jurisdiccion;
+    if (jurFromCase) return jurFromCase.nombre;
+
+    const depId = caseData?.dependencia_id;
+    if (!depId) return '—';
+
+    const dep = dependencias.find(d => String(d.id) === String(depId));
+    if (!dep) return '—';
+
+    if (dep.data_json) {
+        try {
+            const parsed = JSON.parse(dep.data_json);
+            if (parsed.jurisdiccion?.nombre) return parsed.jurisdiccion.nombre;
+        } catch { /* ignore */ }
+    }
+
+    const jur = jurisdicciones.find(j => String(j.id) === String(dep.jurisdiccion_id));
+    return jur?.nombre || '—';
 }
 
 function resolveTipoExpedienteLabel(tipo, catalogById) {
@@ -186,7 +240,84 @@ function resolveTipoExpedienteLabel(tipo, catalogById) {
     return null;
 }
 
-function getCaseTipoExpedienteLabels(caseData, tipoExpedientes) {
+function summarizeTipoExpedienteSourceItem(item) {
+    if (typeof item === 'string') {
+        return item.length > 60 ? `${item.slice(0, 60)}…` : item;
+    }
+
+    if (typeof item === 'number') {
+        return item;
+    }
+
+    if (!item || typeof item !== 'object') {
+        return item;
+    }
+
+    return {
+        id: item.id ?? null,
+        title: item.title ?? item.titulo ?? item.name ?? null,
+        keys: Object.keys(item).slice(0, 8),
+    };
+}
+
+function buildTipoExpedienteResolutionSnapshot(caseData, tipoExpedientes, caseTipoExpedientesFromCache = []) {
+    const catalogById = new Map(tipoExpedientes.map((item) => [String(item.id), item]));
+    const sourceCollections = [
+        { key: 'tipo_expedientes', value: caseData?.tipo_expedientes },
+        { key: 'tipoExpedientes', value: caseData?.tipoExpedientes },
+        { key: 'linkedTipoExpedientes', value: caseData?.linkedTipoExpedientes },
+        { key: 'tipo_expediente_ids', value: caseData?.tipo_expediente_ids },
+        { key: 'tipoExpedienteIds', value: caseData?.tipoExpedienteIds },
+        { key: 'cachePivotTipoExpedientes', value: caseTipoExpedientesFromCache },
+    ];
+
+    const resolvedLabels = [];
+    const unresolvedRefs = [];
+
+    for (const source of sourceCollections) {
+        if (!Array.isArray(source.value)) continue;
+
+        for (const item of source.value) {
+            const label = resolveTipoExpedienteLabel(item, catalogById);
+            if (label) {
+                resolvedLabels.push(label);
+            }
+
+            let candidateId = null;
+
+            if (typeof item === 'number') {
+                candidateId = item;
+            } else if (typeof item === 'string' && /^\d+$/.test(item.trim())) {
+                candidateId = Number(item.trim());
+            } else if (item && typeof item === 'object' && item.id != null) {
+                candidateId = Number(item.id);
+            }
+
+            if (Number.isInteger(candidateId) && !catalogById.has(String(candidateId))) {
+                unresolvedRefs.push(candidateId);
+            }
+        }
+    }
+
+    return {
+        caseId: caseData?.id ?? null,
+        caseTypeId: caseData?.case_type_id ?? null,
+        caseUpdatedAt: caseData?.updated_at ?? null,
+        catalogCount: tipoExpedientes.length,
+        sourceCollections: sourceCollections.map((source) => ({
+            key: source.key,
+            isArray: Array.isArray(source.value),
+            length: Array.isArray(source.value) ? source.value.length : null,
+            sample: Array.isArray(source.value)
+                ? source.value.slice(0, 3).map(summarizeTipoExpedienteSourceItem)
+                : null,
+        })),
+        resolvedLabelCount: Array.from(new Set(resolvedLabels)).length,
+        unresolvedRefs: Array.from(new Set(unresolvedRefs)),
+    };
+}
+
+function getCaseTipoExpedienteLabels(caseData, tipoExpedientes, caseTipoExpedientesFromCache = []) {
     const catalogById = new Map(tipoExpedientes.map((item) => [String(item.id), item]));
     const rawCollections = [
         caseData?.tipo_expedientes,
@@ -194,6 +325,7 @@ function getCaseTipoExpedienteLabels(caseData, tipoExpedientes) {
         caseData?.linkedTipoExpedientes,
         caseData?.tipo_expediente_ids,
         caseData?.tipoExpedienteIds,
+        caseTipoExpedientesFromCache,
     ].filter(Array.isArray);
 
     const labels = rawCollections
@@ -225,12 +357,21 @@ async function readCaseClientsFromCache(caseId) {
     return (clientRows || []).filter((row) => clientIds.has(String(row.id)));
 }
 
-/** Formatea bytes en una unidad legible (KB, MB). */
-function formatFileSize(bytes) {
-    if (!bytes) return '—';
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+async function readCaseTipoExpedientesFromCache(caseId) {
+    if (!window.electronAPI?.db?.getAll || !caseId) return [];
+
+    const [pivotRows, catalogRows] = await Promise.all([
+        window.electronAPI.db.getAll('case_tipo_expediente'),
+        window.electronAPI.db.getAll('tipo_expedientes'),
+    ]);
+
+    const catalogById = new Map((catalogRows || []).map((row) => [String(row.id), row]));
+    const casePivotRows = (pivotRows || []).filter((row) => String(row.suit_case_id) === String(caseId));
+
+    return casePivotRows.map((row) => {
+        const catalogRow = catalogById.get(String(row.tipo_expediente_id));
+        return catalogRow || { id: row.tipo_expediente_id };
+    });
 }
 
 const THUMB_INITIAL = { blobUrl: null, poster: null, isVideo: false, loading: true };
@@ -250,7 +391,9 @@ function thumbnailReducer(state, action) {
  * Carga el binario de un item multimedia on-demand, construye una blobUrl para
  * preview y la revoca al desmontarse. Notifica al padre con la url y si es video.
  */
-const MultimediaThumbnailItem = memo(function MultimediaThumbnailItem({ item, onPreview, onDelete }) {
+const MultimediaThumbnailItem = memo(function MultimediaThumbnailItem({
+    item, onPreview, onDelete, onGenerateQr, isNew, onMarkAsSeen,
+}) {
     const [thumbState, dispatch] = useReducer(thumbnailReducer, THUMB_INITIAL);
     const { blobUrl, poster, isVideo, loading } = thumbState;
     const mountedRef = useRef(true);
@@ -312,7 +455,15 @@ const MultimediaThumbnailItem = memo(function MultimediaThumbnailItem({ item, on
             onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handlePreview()}
             aria-label={`Previsualizar ${item.filename || 'archivo'}`}
             className="group relative aspect-square overflow-hidden rounded-xl border border-(--border-default) bg-(--bg-card-hover) cursor-pointer"
+            onMouseEnter={() => isNew && onMarkAsSeen('multimedia', item.id)}
         >
+            {isNew && (
+                <div className="absolute top-2 left-2 z-20">
+                    <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm border border-red-600 animate-pulse-subtle">
+                        NUEVO
+                    </span>
+                </div>
+            )}
             {loading ? (
                 <div className="flex h-full items-center justify-center">
                     <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-500 border-t-transparent" />
@@ -348,6 +499,14 @@ const MultimediaThumbnailItem = memo(function MultimediaThumbnailItem({ item, on
                         >
                             <Trash2 size={14} />
                         </button>
+                        <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onGenerateQr(item); }}
+                            className="rounded-lg bg-blue-600/90 p-1.5 text-white shadow hover:bg-blue-700 transition-colors"
+                            title="Generar QR para compartir"
+                        >
+                            <QrCode size={14} />
+                        </button>
                     </div>
                 </>
             ) : (
@@ -380,9 +539,18 @@ function caseDataReducer(state, action) {
     }
 }
 
-const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, caseData, syncResult, caseSyncing = false }) {
+const CaseDetailTabContent = memo(function CaseDetailTabContent({
+    activeTab,
+    caseData,
+    syncResult,
+    caseSyncing = false,
+    newItemsByEntity = { documents: new Set(), events: new Set(), multimedia: new Set(), archivos: new Set() },
+    onMarkAsSeen = () => { },
+}) {
     const [isAddParticipantOpen, setIsAddParticipantOpen] = useState(false);
     const [isAddClientOpen, setIsAddClientOpen] = useState(false);
+    const [bibliotecaTab, setBibliotecaTab] = useState('documents');
+    const [cronogramaTab, setCronogramaTab] = useState('agenda');
 
     const [caseDataState, dispatchCaseData] = useReducer(caseDataReducer, CASE_DATA_INITIAL);
     const { participantsList, clientsList, overviewMetrics } = caseDataState;
@@ -395,6 +563,17 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
     const [archivosUploading, setArchivosUploading] = useState(false);
     // Item siendo previsualizaddo: { item, blobUrl, isVideo, poster }
     const [previewItem, setPreviewItem] = useState(null);
+    const { badgeColor: deadlineBadgeColor } = useCaseDeadlineBadge(caseData.id);
+
+    // Filter & Sort States for Case Files
+    const [archivosSearchTerm, setArchivosSearchTerm] = useState('');
+    const [archivosSortBy, setArchivosSortBy] = useState('created_at');
+    const [archivosSortOrder, setArchivosSortOrder] = useState('desc');
+    const [archivosSelectedExtensions, setArchivosSelectedExtensions] = useState([]);
+    const [archivosPage, setArchivosPage] = useState(1);
+    const [qrModalOpen, setQrModalOpen] = useState(false);
+    const [qrData, setQrData] = useState(null);
+    const [caseTipoExpedientesFromCache, setCaseTipoExpedientesFromCache] = useState([]);
 
     const navigate = useNavigate();
     const { openModal } = useModal();
@@ -415,6 +594,9 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
     const { case_types: caseTypes = [] } = useCaseTypes();
     const { radicaciones = [] } = useRadicaciones();
     const { tipo_expedientes: tipoExpedientes = [] } = useTipoExpedientes();
+    useCompetencias();
+    const { data: jurisdicciones = [] } = useJurisdicciones();
+    const { data: allDependencias = [] } = useDependenciasJudiciales();
     const {
         partesCaso,
         linkedParteIds,
@@ -434,10 +616,23 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
         () => getRadicacionLabel(caseData, radicaciones),
         [caseData, radicaciones],
     );
-    const tipoExpedienteLabels = useMemo(
-        () => getCaseTipoExpedienteLabels(caseData, tipoExpedientes),
-        [caseData, tipoExpedientes],
+    const competenciaLabel = useMemo(
+        () => getCompetenciaLabel(caseData, allDependencias),
+        [caseData, allDependencias],
     );
+    const jurisdiccionLabel = useMemo(
+        () => getJurisdiccionLabel(caseData, allDependencias, jurisdicciones),
+        [caseData, allDependencias, jurisdicciones],
+    );
+    const tipoExpedienteResolutionSnapshot = useMemo(
+        () => buildTipoExpedienteResolutionSnapshot(caseData, tipoExpedientes, caseTipoExpedientesFromCache),
+        [caseData, tipoExpedientes, caseTipoExpedientesFromCache],
+    );
+    const tipoExpedienteLabels = useMemo(
+        () => getCaseTipoExpedienteLabels(caseData, tipoExpedientes, caseTipoExpedientesFromCache),
+        [caseData, tipoExpedientes, caseTipoExpedientesFromCache],
+    );
+    const lastTipoExpedienteDiagKeyRef = useRef('');
     const caseDocs = useMemo(
         () => documents?.filter((doc) => Number(doc.suit_case_id) === Number(caseData.id)) || [],
         [caseData.id, documents],
@@ -451,11 +646,60 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
         () => (files || []).filter((f) => Number(f.suit_case_id) === Number(caseData.id) && !f.deleted_at),
         [caseData.id, files],
     );
+
+    // Filtering & Sorting for Case Files
+    const filteredCaseFiles = useMemo(() => {
+        let result = [...caseFiles];
+        const term = archivosSearchTerm.toLowerCase().trim();
+
+        // 1. Search term
+        if (term) {
+            result = result.filter(f => (f.filename || '').toLowerCase().includes(term));
+        }
+
+        // 2. Extensions
+        if (archivosSelectedExtensions.length > 0) {
+            result = result.filter(file => {
+                const name = (file.filename || '').toLowerCase();
+                const mime = (file.mime_type || '').toLowerCase();
+                
+                return archivosSelectedExtensions.some(extGroup => {
+                    if (extGroup === 'pdf') return name.endsWith('.pdf') || mime.includes('pdf');
+                    if (extGroup === 'word') return name.endsWith('.docx') || name.endsWith('.doc') || mime.includes('word');
+                    if (extGroup === 'excel') return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.csv') || mime.includes('excel') || mime.includes('spreadsheet');
+                    if (extGroup === 'powerpoint') return name.endsWith('.pptx') || name.endsWith('.ppt') || name.endsWith('.odp') || mime.includes('presentation') || mime.includes('powerpoint');
+                    if (extGroup === 'image') return mime.includes('image/');
+                    if (extGroup === 'text') return name.endsWith('.txt') || name.endsWith('.md') || mime.includes('text/');
+                    return false;
+                });
+            });
+        }
+
+        // 3. Sort
+        result.sort((a, b) => {
+            let comparison = 0;
+            if (archivosSortBy === 'created_at') {
+                const dateA = new Date(a.created_at || a.updated_at);
+                const dateB = new Date(b.created_at || b.updated_at);
+                comparison = dateA - dateB;
+            } else if (archivosSortBy === 'name') {
+                comparison = (a.filename || '').localeCompare(b.filename || '');
+            } else if (archivosSortBy === 'size') {
+                comparison = (a.size || 0) - (b.size || 0);
+            }
+            return archivosSortOrder === 'desc' ? -comparison : comparison;
+        });
+
+        // 4. Pagination
+        return result.slice(0, archivosPage * 20);
+    }, [caseFiles, archivosSearchTerm, archivosSelectedExtensions, archivosSortBy, archivosSortOrder, archivosPage]);
+
+    const hasMoreArchivos = filteredCaseFiles.length < caseFiles.length && !archivosSearchTerm.trim() && archivosSelectedExtensions.length === 0;
     const caseDocumentNavigationState = useMemo(() => ({
         returnTo: {
             pathname: `/cases/${caseData.id}`,
             state: {
-                activeTab: 'documents',
+                activeTab: 'biblioteca',
             },
         },
     }), [caseData.id]);
@@ -551,6 +795,67 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
         }
     }, [activeTab, caseData.id, caseSyncing, refreshClients, refreshParticipants]);
 
+    useEffect(() => {
+        if (caseSyncing) return;
+        if (!syncResult) return;
+
+        let cancelled = false;
+
+        const loadCaseTipoExpedientes = async () => {
+            const rows = await readCaseTipoExpedientesFromCache(caseData.id);
+            if (!cancelled) {
+                setCaseTipoExpedientesFromCache(rows);
+            }
+        };
+
+        void loadCaseTipoExpedientes().catch((error) => {
+            void logger.error('No se pudieron leer los tipos de expediente cacheados en pivot', {
+                caseId: caseData.id,
+                error: error?.message || String(error),
+            });
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [caseData.id, caseSyncing, syncResult]);
+
+    useEffect(() => {
+        const diagKey = JSON.stringify({
+            caseId: caseData?.id ?? null,
+            labels: tipoExpedienteLabels,
+            catalogCount: tipoExpedienteResolutionSnapshot.catalogCount,
+            sourceCollections: tipoExpedienteResolutionSnapshot.sourceCollections.map(({ key, isArray, length }) => ({
+                key,
+                isArray,
+                length,
+            })),
+            unresolvedRefs: tipoExpedienteResolutionSnapshot.unresolvedRefs,
+        });
+
+        if (lastTipoExpedienteDiagKeyRef.current === diagKey) {
+            return;
+        }
+
+        if (tipoExpedienteLabels.length === 0) {
+            lastTipoExpedienteDiagKeyRef.current = diagKey;
+            void logger.warn('No se pudieron resolver tipos de expediente para el caso', {
+                ...tipoExpedienteResolutionSnapshot,
+                caseDataKeys: Object.keys(caseData || {}),
+                fallbackVisibleMessage: 'Sin tipos de expediente asociados.',
+            });
+            return;
+        }
+
+        if (tipoExpedienteResolutionSnapshot.unresolvedRefs.length > 0) {
+            lastTipoExpedienteDiagKeyRef.current = diagKey;
+            void logger.warn('Resolucion parcial de tipos de expediente (ids sin catalogo)', {
+                ...tipoExpedienteResolutionSnapshot,
+                resolvedLabels: tipoExpedienteLabels,
+            });
+        }
+    }, [caseData, tipoExpedienteLabels, tipoExpedienteResolutionSnapshot]);
+
     // Esperamos a que termine el sync del caso antes de releer métricas para evitar
     // carreras contra la persistencia en SQLite.
     useEffect(() => {
@@ -565,11 +870,8 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
 
     const handleAddClientSuccess = async (linkedClient = null) => {
         if (linkedClient?.id != null) {
-            setClientsList((prev) => (
-                prev.some((entry) => String(entry.id) === String(linkedClient.id))
-                    ? prev
-                    : [...prev, linkedClient]
-            ));
+            const alreadyLinked = clientsList.some((entry) => String(entry.id) === String(linkedClient.id));
+            if (!alreadyLinked) setClientsList([...clientsList, linkedClient]);
         }
         await refreshClients();
         await refreshOverviewMetrics();
@@ -581,7 +883,7 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
             if (!res.ok) {
                 throw new Error(getApiErrorMessage(res, 'No se pudo quitar al usuario del caso.'));
             }
-            setParticipantsList((prev) => prev.filter((participant) => String(participant.id) !== String(userId)));
+            setParticipantsList(participantsList.filter((participant) => String(participant.id) !== String(userId)));
             showAppToast({
                 title: 'Usuario desvinculado',
                 description: 'El usuario dejó de colaborar en este caso.',
@@ -604,7 +906,7 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
                 throw new Error(getApiErrorMessage(result, 'No se pudo desvincular el cliente.'));
             }
 
-            setClientsList((prev) => prev.filter((client) => String(client.id) !== String(clientId)));
+            setClientsList(clientsList.filter((client) => String(client.id) !== String(clientId)));
             showAppToast({
                 title: 'Cliente desvinculado',
                 description: 'El cliente dejó de estar asociado al expediente.',
@@ -744,6 +1046,94 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
             },
         });
     }, [closeDialog, openDialog, previewItem, removeMultimediaItem]);
+
+    /**
+     * Genera un QR para descargar un archivo general del caso.
+     */
+    const handleGenerateArchivoQr = useCallback(async (file) => {
+        try {
+            console.log('[CaseDetailTabContent] Click generar QR ARCHIVO. Case ID:', caseData.id, 'File ID:', file.id);
+            const res = await generateCaseLink(caseData.id, {
+                type: 'download',
+                model_type: 'file',
+                model_id: file.id
+            });
+            if (res.download_url) {
+                setQrData({
+                    ...res,
+                    signed_url: res.download_url, // QrCodeModal expects signed_url
+                    title: 'Escanea para descargar',
+                    description: `Descargar "${file.filename}" en tu dispositivo móvil.`,
+                    file: { name: file.filename }
+                });
+                setQrModalOpen(true);
+            }
+        } catch (err) {
+            void logger.error('Error generando QR de archivo', err);
+            const message = err.message?.includes('422') || err.message?.includes('403')
+                ? 'No tenes permisos para realizar esta accion.'
+                : 'No se pudo generar el QR.';
+            showAppToast({ title: 'Error', description: message, variant: 'danger' });
+        }
+    }, [caseData.id]);
+
+    /**
+     * Genera un QR para descargar un elemento multimedia.
+     */
+    const handleGenerateMultimediaQr = useCallback(async (item) => {
+        try {
+            console.log('[CaseDetailTabContent] Click generar QR MULTIMEDIA. Case ID:', caseData.id, 'Item ID:', item.id);
+            const res = await generateCaseLink(caseData.id, {
+                type: 'download',
+                model_type: 'multimedia',
+                model_id: item.id
+            });
+            if (res.download_url) {
+                setQrData({
+                    ...res,
+                    signed_url: res.download_url,
+                    title: 'Escanea para descargar',
+                    description: `Ver "${item.filename}" en tu dispositivo móvil.`,
+                    file: { name: item.filename }
+                });
+                setQrModalOpen(true);
+            }
+        } catch (err) {
+            void logger.error('Error generando QR de multimedia', err);
+            const message = err.message?.includes('422') || err.message?.includes('403')
+                ? 'No tenes permisos para realizar esta accion.'
+                : 'No se pudo generar el QR.';
+            showAppToast({ title: 'Error', description: message, variant: 'danger' });
+        }
+    }, [caseData.id]);
+
+    /**
+     * Genera un QR para subir archivos o multimedia al caso.
+     */
+    const handleGenerateUploadQr = useCallback(async (modelType) => {
+        try {
+            console.log('[CaseDetailTabContent] Click generar QR CARGA. Case ID:', caseData.id, 'Model type:', modelType);
+            const res = await generateCaseLink(caseData.id, {
+                type: 'upload',
+                model_type: modelType
+            });
+            if (res.upload_url) {
+                setQrData({
+                    ...res,
+                    signed_url: res.upload_url,
+                    title: 'Escanea para cargar',
+                    description: `Cargá ${modelType === 'file' ? 'archivos' : 'multimedia'} directamente desde tu celular.`
+                });
+                setQrModalOpen(true);
+            }
+        } catch (err) {
+            void logger.error('Error generando QR de carga', err);
+            const message = err.message?.includes('422') || err.message?.includes('403')
+                ? 'No tenes permisos para realizar esta accion.'
+                : 'No se pudo generar el enlace de carga.';
+            showAppToast({ title: 'Error', description: message, variant: 'danger' });
+        }
+    }, [caseData.id]);
 
     /**
      * Descarga un archivo multimedia al disco usando el diálogo nativo.
@@ -977,116 +1367,126 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
     switch (activeTab) {
         case 'overview':
             content = (
-                <div className="space-y-6 animate-in fade-in duration-300">
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-                        {/* Fila Superior: Estado y Próximo Evento */}
-                        <div className="md:col-span-2 rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
-                            <h3 className="mb-2 text-xl font-semibold text-(--text-primary)">Estado del Caso</h3>
-                            <div className="flex items-center gap-3">
-                                <span className={`rounded-full border px-3 py-1 text-sm font-medium ${resolveStatusClasses(statusLabel)}`}>
-                                    {statusLabel}
-                                </span>
-                                <span className="text-sm text-(--text-secondary)">
-                                    Iniciado: {caseData.start_date ? dayjs(caseData.start_date).format('LL') : 'Sin fecha'}
-                                </span>
-                                {caseData.end_date && (
-                                    <span className="ml-3 border-l border-(--border-default) pl-3 text-sm text-(--text-secondary)">
-                                        Finalizado: {dayjs(caseData.end_date).format('LL')}
+                <div className={CASE_DETAIL_WIDE_SECTION_CLASS}>
+                    <div className="space-y-6 animate-in fade-in duration-300">
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+                            {/* Fila Superior: Estado y Próximo Evento */}
+                            <div className="md:col-span-2 rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
+                                <h3 className="mb-2 text-xl font-semibold text-(--text-primary)">Estado del Caso</h3>
+                                <div className="flex items-center gap-3">
+                                    <span className={`rounded-full border px-3 py-1 text-sm font-medium ${resolveStatusClasses(statusLabel)}`}>
+                                        {statusLabel}
                                     </span>
+                                    <span className="text-sm text-(--text-secondary)">
+                                        Iniciado: {caseData.start_date ? dayjs(caseData.start_date).format('LL') : 'Sin fecha'}
+                                    </span>
+                                    {caseData.end_date && (
+                                        <span className="ml-3 border-l border-(--border-default) pl-3 text-sm text-(--text-secondary)">
+                                            Finalizado: {dayjs(caseData.end_date).format('LL')}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
+                                <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Próximo evento</h3>
+                                {nextEvent ? (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-sm font-bold text-blue-700 uppercase tracking-tight">
+                                                {nextEvent.title || 'Evento sin título'}
+                                            </p>
+                                            <p className="text-xs font-semibold text-(--text-tertiary) uppercase tracking-widest mt-0.5">
+                                                {nextEvent.event_type_name || 'Otro'}
+                                            </p>
+                                        </div>
+                                        <div className="inline-block rounded-xl border border-blue-100 bg-blue-300/10 px-4 py-3 shadow-none">
+                                            <p className="font-bold text-blue-700 text-lg">
+                                                {dayjs(nextEvent.starts_at).format('DD MMM - HH:mm')} hs
+                                            </p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="rounded-lg border border-yellow-100 bg-yellow-50/50 px-4 py-3">
+                                        <span className="text-xs font-bold text-yellow-600 uppercase tracking-tight">Sin eventos próximos</span>
+                                    </div>
                                 )}
                             </div>
-                        </div>
 
-                        <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
-                            <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Próximo evento</h3>
-                            {nextEvent ? (
-                                <div className="space-y-4">
-                                    <div>
-                                        <p className="text-sm font-bold text-blue-700 uppercase tracking-tight">
-                                            {nextEvent.title || 'Evento sin título'}
-                                        </p>
-                                        <p className="text-xs font-semibold text-(--text-tertiary) uppercase tracking-widest mt-0.5">
-                                            {nextEvent.event_type_name || 'Otro'}
-                                        </p>
-                                    </div>
-                                    <div className="inline-block rounded-xl border border-blue-100 bg-blue-300/10 px-4 py-3 shadow-none">
-                                        <p className="font-bold text-blue-700 text-lg">
-                                            {dayjs(nextEvent.starts_at).format('DD MMM - HH:mm')} hs
-                                        </p>
-                                    </div>
-                                </div>
-                            ) : (
-                                <div className="rounded-lg border border-yellow-100 bg-yellow-50/50 px-4 py-3">
-                                    <span className="text-xs font-bold text-yellow-600 uppercase tracking-tight">Sin eventos próximos</span>
-                                </div>
-                            )}
-                        </div>
+                            {/* Fila Inferior: Descripción/Datos e Información Clave */}
+                            <div className="md:col-span-2 space-y-6">
+                                <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
+                                    <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Descripción</h3>
+                                    <textarea
+                                        className="h-32 w-full resize-none rounded-lg border-none bg-(--bg-input) p-4 text-(--text-secondary) focus:ring-2 focus:ring-blue-500/20"
+                                        value={caseData.details || ''}
+                                        readOnly
+                                    />
 
-                        {/* Fila Inferior: Descripción/Datos e Información Clave */}
-                        <div className="md:col-span-2 space-y-6">
-                            <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
-                                <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Descripción</h3>
-                                <textarea
-                                    className="h-64 w-full resize-none rounded-lg border-none bg-(--bg-input) p-4 text-(--text-secondary) focus:ring-2 focus:ring-blue-500/20"
-                                    value={caseData.details || ''}
-                                    readOnly
-                                />
-
-                                <div className="mt-8 border-t border-(--border-subtle) pt-6">
-                                    <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Datos del caso</h3>
-                                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Nro. de expediente</p>
-                                            <p className="mt-1 font-medium text-(--text-primary)">{caseData.nro_expediente || 'Sin número cargado'}</p>
+                                    <div className="mt-8 border-t border-(--border-subtle) pt-6">
+                                        <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Datos del caso</h3>
+                                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Nro. de expediente</p>
+                                                <p className="mt-1 font-medium text-(--text-primary)">{caseData.nro_expediente || 'Sin número cargado'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Fuero</p>
+                                                <p className="mt-1 font-medium text-(--text-primary)">{caseTypeLabel}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Radicación</p>
+                                                <p className="mt-1 font-medium text-(--text-primary)">{radicacionLabel}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Jurisdicción</p>
+                                                <p className="mt-1 font-medium text-(--text-primary)">{jurisdiccionLabel}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Juzgado</p>
+                                                <p className="mt-1 font-medium text-(--text-primary)">{competenciaLabel}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Tipos de expediente</p>
+                                                {tipoExpedienteLabels.length > 0 ? (
+                                                    <div className="mt-2 flex flex-wrap gap-2">
+                                                        {tipoExpedienteLabels.map((label) => (
+                                                            <span
+                                                                key={label}
+                                                                className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
+                                                            >
+                                                                {label}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <p className="mt-1 text-sm text-(--text-tertiary) italic">Sin tipos de expediente asociados.</p>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Fuero</p>
-                                            <p className="mt-1 font-medium text-(--text-primary)">{caseTypeLabel}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Radicación</p>
-                                            <p className="mt-1 font-medium text-(--text-primary)">{radicacionLabel}</p>
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold uppercase tracking-[0.1em] text-(--text-tertiary)">Tipos de expediente</p>
-                                            {tipoExpedienteLabels.length > 0 ? (
-                                                <div className="mt-2 flex flex-wrap gap-2">
-                                                    {tipoExpedienteLabels.map((label) => (
-                                                        <span
-                                                            key={label}
-                                                            className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700"
-                                                        >
-                                                            {label}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <p className="mt-1 text-sm text-(--text-tertiary) italic">Sin tipos de expediente asociados.</p>
-                                            )}
-                                        </div>
-                                    </div>
+                                    </div> 
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
-                            <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Información Clave</h3>
-                            <div className="space-y-4">
-                                <OverviewMetricCard
-                                    label="Vencimientos"
-                                    value={overviewMetrics.deadlinesCount}
-                                    description="Eventos tipificados como vencimiento."
-                                />
-                                <OverviewMetricCard
-                                    label="Eventos"
-                                    value={overviewMetrics.eventsCount}
-                                    description="Eventos del caso excluyendo vencimientos."
-                                />
-                                <OverviewMetricCard
-                                    label="Documentos"
-                                    value={overviewMetrics.documentsCount}
-                                    description="Documentos raíz asociados al expediente."
-                                />
+                            <div className="rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm">
+                                <h3 className="mb-4 text-xl font-semibold text-(--text-primary)">Información Clave</h3>
+                                <div className="space-y-4">
+                                    <OverviewMetricCard
+                                        label="Vencimientos"
+                                        value={overviewMetrics.deadlinesCount}
+                                        description="Eventos tipificados como vencimiento."
+                                    />
+                                    <OverviewMetricCard
+                                        label="Eventos"
+                                        value={overviewMetrics.eventsCount}
+                                        description="Eventos del caso excluyendo vencimientos."
+                                    />
+                                    <OverviewMetricCard
+                                        label="Documentos"
+                                        value={overviewMetrics.documentsCount}
+                                        description="Documentos raíz asociados al expediente."
+                                    />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1095,323 +1495,410 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
             break;
         case 'parties':
             content = (
-                <div className="space-y-6 rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm animate-in fade-in duration-300">
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <h3 className="text-xl font-semibold text-(--text-primary)">Partes del Caso</h3>
-                            <p className="text-sm text-(--text-secondary)">
-                                Gestiona clientes y partes procesales vinculadas al expediente.
-                            </p>
+                <div className={CASE_DETAIL_WIDE_SECTION_CLASS}>
+                    <div className="space-y-6 rounded-xl border border-(--border-default) bg-(--bg-card) p-6 shadow-sm animate-in fade-in duration-300">
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <h3 className="text-xl font-semibold text-(--text-primary)">Partes del Caso</h3>
+                                <p className="text-sm text-(--text-secondary)">
+                                    Gestiona clientes y partes procesales vinculadas al expediente.
+                                </p>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsAddClientOpen(true)}
+                                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                                >
+                                    <Plus size={16} /> Agregar Cliente
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenAddParteModal}
+                                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                                >
+                                    <Users size={16} /> Agregar Parte
+                                </button>
+                            </div>
                         </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                            <button
-                                type="button"
-                                onClick={() => setIsAddClientOpen(true)}
-                                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-                            >
-                                <Plus size={16} /> Agregar Cliente
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleOpenAddParteModal}
-                                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-                            >
-                                <Users size={16} /> Agregar Parte
-                            </button>
-                        </div>
-                    </div>
 
-                    {partesError ? (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                            {partesError}
-                        </div>
-                    ) : null}
+                        {partesError ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                {partesError}
+                            </div>
+                        ) : null}
 
-                    <div className="grid gap-6 lg:grid-cols-2">
-                        <PartiesSection
-                            title="Clientes"
-                            subtitle={`${clientsList.length} vinculados al expediente`}
-                            action={null}
-                            items={clientRows}
-                            emptyMessage="No hay clientes vinculados a este caso."
-                        />
-                        <PartiesSection
-                            title="Partes"
-                            subtitle={`${partesCaso.length} vinculadas al expediente`}
-                            action={null}
-                            items={parteRows}
-                            emptyMessage="No hay partes vinculadas a este caso."
-                        />
-                    </div>
-                </div>
-            );
-            break;
-        case 'documents':
-            content = (
-                <div className="animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between border-b border-(--border-default) bg-(--bg-header) p-4">
-                        <h3 className="text-xl font-semibold text-(--text-primary)">Documentación Vinculada</h3>
-                        <div className="flex gap-2">
-                            <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span>
-                                            <button
-                                                type="button"
-                                                disabled
-                                                className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-card-hover) px-3 py-1.5 text-sm font-medium text-(--text-tertiary) shadow-sm"
-                                            >
-                                                <ExternalLink size={16} /> Vincular Existente
-                                            </button>
-                                        </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="top">
-                                        En desarrollo
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
-                            <button
-                                type="button"
-                                onClick={() => openCaseDocumentEditor(buildDocumentCreatePath({ caseId: caseData.id }))}
-                                className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
-                            >
-                                <Plus size={16} /> Nuevo Doc
-                            </button>
-                        </div>
-                    </div>
-                    <Table
-                        isEmpty={caseDocs.length === 0}
-                        emptyMessage="No hay documentos vinculados."
-                        columns={[
-                            { header: 'Nombre' },
-                            { header: 'Últ. Modificación' },
-                            { header: 'Autor' },
-                        ]}
-                        className="rounded-t-none border-t-0 shadow-none"
-                    >
-                        {caseDocs.map((doc) => (
-                            <tr key={doc.id} className="group transition-colors hover:bg-(--bg-card-hover)">
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center space-x-3">
-                                        <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600">
-                                            <File className="h-5 w-5" />
-                                        </div>
-                                        <button
-                                            type="button"
-                                            onClick={() => openCaseDocumentEditor(buildDocumentEditPath(doc.id))}
-                                            className="cursor-pointer text-left font-medium text-(--text-primary) transition-colors hover:text-blue-600"
-                                        >
-                                            {doc.name || doc.title || 'Sin título'}
-                                        </button>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-(--text-secondary)">
-                                    {doc.updated_at ? dayjs(doc.updated_at).format('DD/MM/YYYY') : '—'}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-(--text-secondary)">
-                                    {getDocumentLatestAuthorName(doc)}
-                                </td>
-                            </tr>
-                        ))}
-                    </Table>
-                </div>
-            );
-            break;
-        case 'multimedia':
-            content = (
-                <div className="animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between border-b border-(--border-default) bg-(--bg-header) p-4">
-                        <div>
-                            <h3 className="text-xl font-semibold text-(--text-primary)">Multimedia del Caso</h3>
-                            <p className="text-sm text-(--text-secondary)">{caseMultimedia.length} elementos · imágenes y videos</p>
-                        </div>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700">
-                            <Upload size={16} />
-                            {multimediaUploading ? 'Subiendo...' : 'Subir Multimedia'}
-                            <input
-                                id="case-media-upload"
-                                data-testid="case-media-upload"
-                                type="file"
-                                className="hidden"
-                                accept="image/*,video/*"
-                                disabled={multimediaUploading}
-                                onChange={handleMultimediaUpload}
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            <PartiesSection
+                                title="Clientes"
+                                subtitle={`${clientsList.length} vinculados al expediente`}
+                                action={null}
+                                items={clientRows}
+                                emptyMessage="No hay clientes vinculados a este caso."
                             />
-                        </label>
+                            <PartiesSection
+                                title="Partes"
+                                subtitle={`${partesCaso.length} vinculadas al expediente`}
+                                action={null}
+                                items={parteRows}
+                                emptyMessage="No hay partes vinculadas a este caso."
+                            />
+                        </div>
                     </div>
-                    {caseMultimedia.length === 0 ? (
-                        <div data-testid="case-multimedia-empty" className="flex flex-col items-center justify-center py-16 text-(--text-tertiary)">
-                            <Film className="mb-3 h-12 w-12 opacity-30" />
-                            <p className="text-sm">No hay multimedia vinculada a este caso.</p>
-                            <p className="text-xs mt-1 opacity-60">Subí imágenes o videos para verlos aquí.</p>
-                        </div>
-                    ) : (
-                        <div data-testid="case-multimedia-grid" className="p-4 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-                            {caseMultimedia.map((item) => (
-                                <MultimediaThumbnailItem
-                                    key={item.id}
-                                    item={item}
-                                    onPreview={setPreviewItem}
-                                    onDelete={handleDeleteMultimediaItem}
-                                />
-                            ))}
-                        </div>
-                    )}
-
                 </div>
             );
             break;
-        case 'archivos':
-            content = (
-                <div data-testid="case-archivos-panel" className="animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between border-b border-(--border-default) bg-(--bg-header) p-4">
-                        <div>
-                            <h3 className="text-xl font-semibold text-(--text-primary)">Archivos del Caso</h3>
-                            <p className="text-sm text-(--text-secondary)">{caseFiles.length} archivos · PDF, Word, Excel, CSV</p>
+        case 'biblioteca': {
+            const BIBLIOTECA_TABS = [
+                { id: 'documents', label: 'Documentación', testId: 'biblioteca-nav-documents', icon: FileText, hasBadge: newItemsByEntity.documents.size > 0 },
+                { id: 'archivos', label: 'Archivos', testId: 'biblioteca-nav-archivos', icon: FolderArchive, hasBadge: newItemsByEntity.archivos.size > 0 },
+                { id: 'multimedia', label: 'Multimedia', testId: 'biblioteca-nav-multimedia', icon: LucideImage, hasBadge: newItemsByEntity.multimedia.size > 0 },
+            ];
+
+            let bibliotecaContent = null;
+            if (bibliotecaTab === 'documents') {
+                bibliotecaContent = (
+                    <div className="animate-in fade-in duration-300">
+                        <div className="flex items-center justify-between mb-6 border-b border-(--border-subtle) pb-4">
+                            <div>
+                                <h3 className="text-xl font-semibold text-(--text-primary)">Documentación Vinculada</h3>
+                                <p className="text-sm text-(--text-secondary)">{caseDocs.length} documentos generados en el sistema</p>
+                            </div>
+                            <div className="flex gap-2">
+                                <TooltipProvider delayDuration={200}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <span>
+                                                <button
+                                                    type="button"
+                                                    disabled
+                                                    className="flex cursor-not-allowed items-center gap-2 rounded-lg border border-(--border-default) bg-(--bg-card-hover) px-3 py-1.5 text-sm font-medium text-(--text-tertiary) shadow-sm"
+                                                >
+                                                    <ExternalLink size={16} /> Vincular Existente
+                                                </button>
+                                            </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="top">
+                                            En desarrollo
+                                        </TooltipContent>
+                                    </Tooltip>
+                                </TooltipProvider>
+                                <button
+                                    type="button"
+                                    onClick={() => openCaseDocumentEditor(buildDocumentCreatePath({ caseId: caseData.id }))}
+                                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700"
+                                >
+                                    <Plus size={16} /> Nuevo Doc
+                                </button>
+                            </div>
                         </div>
-                        <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700">
-                            <Upload size={16} />
-                            {archivosUploading ? 'Subiendo...' : 'Subir Archivo'}
-                            <input
-                                id="case-file-upload"
-                                data-testid="case-file-upload"
-                                type="file"
-                                className="hidden"
-                                accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
-                                disabled={archivosUploading}
-                                onChange={handleArchivoUpload}
-                            />
-                        </label>
+                        <div className="overflow-hidden rounded-lg border border-(--border-default)">
+                            <Table
+                                isEmpty={caseDocs.length === 0}
+                                emptyMessage="No hay documentos vinculados."
+                                columns={[
+                                    { header: 'Nombre' },
+                                    { header: 'Últ. Modificación' },
+                                    { header: 'Autor' },
+                                ]}
+                                className="rounded-t-none border-t-0 shadow-none"
+                            >
+                                {caseDocs.map((doc) => (
+                                    <tr
+                                        key={doc.id}
+                                        className="group transition-colors hover:bg-(--bg-card-hover)"
+                                        onMouseEnter={() => newItemsByEntity.documents.has(Number(doc.id)) && onMarkAsSeen('documents', doc.id)}
+                                    >
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center space-x-3">
+                                                <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600">
+                                                    <File className="h-5 w-5" />
+                                                </div>
+                                                <div className="flex flex-col">
+                                                    <div className="flex items-center gap-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openCaseDocumentEditor(buildDocumentEditPath(doc.id))}
+                                                            className="cursor-pointer text-left font-medium text-(--text-primary) transition-colors hover:text-blue-600"
+                                                        >
+                                                            {doc.name || doc.title || 'Sin título'}
+                                                        </button>
+                                                        {newItemsByEntity.documents.has(Number(doc.id)) && (
+                                                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500 text-white shadow-sm border border-red-600 animate-pulse-subtle">
+                                                                NUEVO
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-(--text-secondary)">
+                                            {doc.updated_at ? dayjs(doc.updated_at).format('DD/MM/YYYY') : '—'}
+                                        </td>
+                                        <td className="px-6 py-4 text-sm text-(--text-secondary)">
+                                            {getDocumentLatestAuthorName(doc)}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </Table>
+                        </div>
                     </div>
-                    <Table
-                        isEmpty={caseFiles.length === 0}
-                        emptyMessage="No hay archivos vinculados a este caso."
-                        columns={[
-                            { header: 'Archivo' },
-                            { header: 'Tipo' },
-                            { header: 'Tamaño' },
-                            { header: 'Fecha' },
-                            { header: '' },
-                        ]}
-                        className="rounded-t-none border-t-0 shadow-none"
+                );
+            } else if (bibliotecaTab === 'archivos') {
+                bibliotecaContent = (
+                    <div data-testid="case-archivos-panel" className="animate-in fade-in duration-300">
+                        <div className="flex items-center justify-between mb-6 border-b border-(--border-subtle) pb-4">
+                            <div>
+                                <h3 className="text-xl font-semibold text-(--text-primary)">Archivos del Caso</h3>
+                                <p className="text-sm text-(--text-secondary)">{caseFiles.length} archivos · PDF, Word, Excel, CSV</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handleGenerateUploadQr('file')}
+                                    className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 shadow-sm transition-colors hover:bg-blue-100"
+                                    title="Generar QR para subir archivos desde el celular"
+                                >
+                                    <QrCode size={16} /> Subir vía QR
+                                </button>
+                                <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700">
+                                    <Upload size={16} />
+                                    {archivosUploading ? 'Subiendo...' : 'Subir Archivo'}
+                                    <input
+                                        id="case-file-upload"
+                                        data-testid="case-file-upload"
+                                        type="file"
+                                        className="hidden"
+                                        accept=".pdf,.doc,.docx,.xls,.xlsx,.csv"
+                                        disabled={archivosUploading}
+                                        onChange={handleArchivoUpload}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <BibliotecaFilters
+                                searchTerm={archivosSearchTerm}
+                                onSearchChange={(e) => {
+                                    setArchivosSearchTerm(e.target.value);
+                                    setArchivosPage(1);
+                                }}
+                                catalogOptions={[]}
+                                sortBy={archivosSortBy}
+                                onSortByChange={(val) => {
+                                    setArchivosSortBy(val);
+                                    setArchivosPage(1);
+                                }}
+                                sortOrder={archivosSortOrder}
+                                onSortOrderChange={(val) => {
+                                    setArchivosSortOrder(val);
+                                    setArchivosPage(1);
+                                }}
+                                selectedExtensions={archivosSelectedExtensions}
+                                onExtensionChange={(exts) => {
+                                    setArchivosSelectedExtensions(exts);
+                                    setArchivosPage(1);
+                                }}
+                                resultCount={filteredCaseFiles.length}
+                            />
+
+                            <BibliotecaGrid
+                                files={filteredCaseFiles}
+                                hasMore={hasMoreArchivos}
+                                onLoadMore={() => setArchivosPage((prev) => prev + 1)}
+                                onDownload={handleDownloadArchivo}
+                                onOpenUploadModal={() => document.getElementById('case-file-upload').click()}
+                                onDelete={handleDeleteArchivoItem}
+                                onGenerateQr={handleGenerateArchivoQr}
+                                deleteLoading={archivosUploading}
+                                isNew={(f) => newItemsByEntity.archivos.has(Number(f.id))}
+                                onMarkAsSeen={(id) => onMarkAsSeen('archivos', id)}
+                            />
+                        </div>
+                    </div>
+                );
+            } else if (bibliotecaTab === 'multimedia') {
+                bibliotecaContent = (
+                    <div className="animate-in fade-in duration-300">
+                        <div className="flex items-center justify-between mb-6 border-b border-(--border-subtle) pb-4">
+                            <div>
+                                <h3 className="text-xl font-semibold text-(--text-primary)">Multimedia del Caso</h3>
+                                <p className="text-sm text-(--text-secondary)">{caseMultimedia.length} elementos · imágenes y videos</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => handleGenerateUploadQr('multimedia')}
+                                    className="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm font-medium text-blue-700 shadow-sm transition-colors hover:bg-blue-100"
+                                    title="Generar QR para subir multimedia desde el celular"
+                                >
+                                    <QrCode size={16} /> Subir vía QR
+                                </button>
+                                <label className="flex cursor-pointer items-center gap-2 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700">
+                                    <Upload size={16} />
+                                    {multimediaUploading ? 'Subiendo...' : 'Subir Multimedia'}
+                                    <input
+                                        id="case-media-upload"
+                                        data-testid="case-media-upload"
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*,video/*"
+                                        disabled={multimediaUploading}
+                                        onChange={handleMultimediaUpload}
+                                    />
+                                </label>
+                            </div>
+                        </div>
+                        {caseMultimedia.length === 0 ? (
+                            <div data-testid="case-multimedia-empty" className="flex flex-col items-center justify-center py-16 rounded-lg border border-dashed border-(--border-strong) bg-(--bg-card-hover) text-(--text-tertiary)">
+                                <Film className="mb-3 h-12 w-12 opacity-30" />
+                                <p className="text-sm">No hay multimedia vinculada a este caso.</p>
+                                <p className="text-xs mt-1 opacity-60">Subí imágenes o videos para verlos aquí.</p>
+                            </div>
+                        ) : (
+                            <div data-testid="case-multimedia-grid" className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                                {caseMultimedia.map((item) => (
+                                    <MultimediaThumbnailItem
+                                        key={item.id}
+                                        item={item}
+                                        onPreview={setPreviewItem}
+                                        onDelete={handleDeleteMultimediaItem}
+                                        onGenerateQr={handleGenerateMultimediaQr}
+                                        isNew={newItemsByEntity.multimedia.has(Number(item.id))}
+                                        onMarkAsSeen={onMarkAsSeen}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                );
+            }
+
+            content = (
+                <div className={`animate-in fade-in duration-300 pt-2 ${CASE_DETAIL_WIDE_SECTION_CLASS}`}>
+                    <SideMenuPageLayout
+                        sections={BIBLIOTECA_TABS}
+                        activeSection={bibliotecaTab}
+                        onSectionChange={setBibliotecaTab}
+                        sectionIdPrefix="biblioteca-tab"
+                        maxWidthClass="w-full"
                     >
-                        {caseFiles.map((file) => (
-                            <tr key={file.id} className="group transition-colors hover:bg-(--bg-card-hover)">
-                                <td className="px-6 py-4">
+                        {bibliotecaContent}
+                    </SideMenuPageLayout>
+                </div>
+            );
+            break;
+        }
+        case 'permissions':
+            content = (
+                <div className={CASE_DETAIL_WIDE_SECTION_CLASS}>
+                    <div className="overflow-hidden rounded-xl border border-(--border-default) bg-(--bg-card) shadow-sm animate-in fade-in duration-300">
+                        <div className="flex items-center justify-between border-b border-(--border-default) bg-(--bg-header) p-4">
+                            <div>
+                                <h3 className="text-xl font-semibold text-(--text-primary)">Acceso y Colaboración</h3>
+                                <p className="text-sm text-(--text-secondary)">Este módulo administra los usuarios con permisos sobre el caso.</p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsAddParticipantOpen(true)}
+                                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700"
+                            >
+                                <Lock size={16} /> Compartir
+                            </button>
+                        </div>
+                        <ul className="divide-y divide-(--border-default)">
+                            {participantsList.map((participant) => (
+                                <li key={participant.id || participant.user_id} className="flex items-center justify-between p-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600">
-                                            <File className="h-5 w-5" />
+                                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-600">
+                                            {(participant.user?.name?.charAt(0)) || participant.name?.charAt(0) || 'U'}
                                         </div>
-                                        <span className="font-medium text-(--text-primary)">
-                                            {file.filename || 'Sin nombre'}
-                                        </span>
+                                        <div>
+                                            <p className="font-medium text-(--text-primary)">{participant.user?.name || participant.name}</p>
+                                            <p className="text-xs text-(--text-secondary)">{participant.user?.tag || participant.tag}</p>
+                                        </div>
                                     </div>
-                                </td>
-                                <td className="px-6 py-4 text-sm text-(--text-secondary)">
-                                    {file.mime_type || '—'}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-(--text-secondary)">
-                                    {formatFileSize(file.size)}
-                                </td>
-                                <td className="px-6 py-4 text-sm text-(--text-secondary)">
-                                    {file.updated_at ? dayjs(file.updated_at).format('DD/MM/YYYY') : '—'}
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <div className="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                    <div className="flex items-center gap-3">
+                                        <span className="rounded border border-(--border-default) bg-(--bg-card-hover) px-2 py-1 text-xs text-(--text-secondary)">
+                                            {getCaseParticipantPermissionLabel(participant, caseData)}
+                                        </span>
                                         <button
                                             type="button"
-                                            onClick={() => handleDownloadArchivo(file)}
-                                            className="p-1.5 text-(--text-tertiary) transition-colors hover:text-blue-600"
-                                            title="Descargar"
-                                        >
-                                            <Download size={16} />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handleDeleteArchivoItem(file)}
-                                            className="p-1.5 text-(--text-tertiary) transition-colors hover:text-red-500"
-                                            title="Eliminar"
+                                            onClick={() => handleDeleteParticipant(participant.id)}
+                                            className="p-1 text-(--text-tertiary) transition-colors hover:text-red-500"
                                         >
                                             <Trash2 size={16} />
                                         </button>
                                     </div>
-                                </td>
-                            </tr>
-                        ))}
-                    </Table>
-                </div>
-            );
-            break;
-        case 'permissions':
-            content = (
-                <div className="overflow-hidden rounded-xl border border-(--border-default) bg-(--bg-card) shadow-sm animate-in fade-in duration-300">
-                    <div className="flex items-center justify-between border-b border-(--border-default) bg-(--bg-header) p-4">
-                        <div>
-                            <h3 className="text-xl font-semibold text-(--text-primary)">Acceso y Colaboración</h3>
-                            <p className="text-sm text-(--text-secondary)">Este módulo administra los usuarios con permisos sobre el caso.</p>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={() => setIsAddParticipantOpen(true)}
-                            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700"
-                        >
-                            <Lock size={16} /> Compartir
-                        </button>
+                                </li>
+                            ))}
+                            {participantsList.length === 0 && (
+                                <li className="p-6 text-center italic text-(--text-secondary)">No hay permisos asignados.</li>
+                            )}
+                        </ul>
                     </div>
-                    <ul className="divide-y divide-(--border-default)">
-                        {participantsList.map((participant) => (
-                            <li key={participant.id || participant.user_id} className="flex items-center justify-between p-4">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 font-bold text-indigo-600">
-                                        {(participant.user?.name?.charAt(0)) || participant.name?.charAt(0) || 'U'}
-                                    </div>
-                                    <div>
-                                        <p className="font-medium text-(--text-primary)">{participant.user?.name || participant.name}</p>
-                                        <p className="text-xs text-(--text-secondary)">{participant.user?.tag || participant.tag}</p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="rounded border border-(--border-default) bg-(--bg-card-hover) px-2 py-1 text-xs text-(--text-secondary)">
-                                        {getCaseParticipantPermissionLabel(participant, caseData)}
-                                    </span>
-                                    <button
-                                        type="button"
-                                        onClick={() => handleDeleteParticipant(participant.id)}
-                                        className="p-1 text-(--text-tertiary) transition-colors hover:text-red-500"
-                                    >
-                                        <Trash2 size={16} />
-                                    </button>
-                                </div>
-                            </li>
-                        ))}
-                        {participantsList.length === 0 && (
-                            <li className="p-6 text-center italic text-(--text-secondary)">No hay permisos asignados.</li>
-                        )}
-                    </ul>
                 </div>
             );
             break;
-        case 'agenda':
+        case 'cronograma': {
+            const CRONOGRAMA_TABS = [
+                { id: 'agenda', label: 'Calendario', testId: 'cronograma-nav-agenda', icon: Calendar, hasBadge: newItemsByEntity.events.size > 0 },
+                {
+                    id: 'deadlines',
+                    label: 'Vencimientos',
+                    testId: 'cronograma-nav-deadlines',
+                    icon: Clock,
+                    badgeColor: deadlineBadgeColor,
+                    hasBadge: !deadlineBadgeColor && newItemsByEntity.events.size > 0
+                },
+            ];
+
+            let cronogramaContent = null;
+            if (cronogramaTab === 'agenda') {
+                cronogramaContent = (
+                    <Suspense fallback={<div className="p-8 text-center text-(--text-secondary)">Cargando calendario...</div>}>
+                        <AgendaComponent
+                            caseId={caseData.id}
+                            caseSyncChecked={!caseSyncing}
+                            caseSyncReady={!caseSyncing && syncResult !== null}
+                            newIds={newItemsByEntity.events}
+                            onMarkAsSeen={onMarkAsSeen}
+                        />
+                    </Suspense>
+                );
+            } else if (cronogramaTab === 'deadlines') {
+                cronogramaContent = (
+                    <Suspense fallback={<div className="p-8 text-center text-(--text-secondary)">Cargando vencimientos...</div>}>
+                        <CaseDeadlinesSection
+                            caseId={caseData.id}
+                            hideHeader
+                            hideSidebar
+                            newIds={newItemsByEntity.events}
+                            onMarkAsSeen={onMarkAsSeen}
+                        />
+                    </Suspense>
+                );
+            }
+
             content = (
-                <Suspense fallback={<div className="p-8 text-center text-(--text-secondary)">Cargando agenda...</div>}>
-                    <AgendaComponent
-                        caseId={caseData.id}
-                        caseSyncChecked={!caseSyncing}
-                        caseSyncReady={!caseSyncing && syncResult !== null}
-                    />
-                </Suspense>
+                <div className={`animate-in fade-in duration-300 pt-2 ${CASE_DETAIL_WIDE_SECTION_CLASS}`}>
+                    <SideMenuPageLayout
+                        sections={CRONOGRAMA_TABS}
+                        activeSection={cronogramaTab}
+                        onSectionChange={setCronogramaTab}
+                        sectionIdPrefix="cronograma-tab"
+                        maxWidthClass="w-full"
+                    >
+                        {cronogramaContent}
+                    </SideMenuPageLayout>
+                </div>
             );
             break;
-        case 'deadlines':
-            content = (
-                <Suspense fallback={<div className="p-8 text-center text-(--text-secondary)">Cargando vencimientos...</div>}>
-                    <CaseDeadlinesSection caseId={caseData.id} />
-                </Suspense>
-            );
-            break;
+        }
         case 'economia':
             content = (
-                <div className="space-y-8 animate-in fade-in duration-300">
+                <div className={`space-y-8 animate-in fade-in duration-300 ${CASE_DETAIL_WIDE_SECTION_CLASS}`}>
                     <HonorariosList caseId={caseData.id} caseCacheReady={!caseSyncing} />
                     <GastosList caseId={caseData.id} caseCacheReady={!caseSyncing} />
                 </div>
@@ -1511,7 +1998,7 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
                         )}
 
                         {/* Flechas de Navegación (solo si estamos en multimedia) */}
-                        {activeTab === 'multimedia' && caseMultimedia.length > 1 && (
+                        {activeTab === 'biblioteca' && caseMultimedia.length > 1 && (
                             <>
                                 <button
                                     type="button"
@@ -1550,6 +2037,14 @@ const CaseDetailTabContent = memo(function CaseDetailTabContent({ activeTab, cas
                 onSuccess={handleAddClientSuccess}
             />
             <ConfirmDialog {...dialogProps} />
+            <QrCodeModal
+                open={qrModalOpen}
+                onClose={() => setQrModalOpen(false)}
+                signedData={qrData}
+                file={qrData?.file}
+                title={qrData?.title}
+                description={qrData?.description}
+            />
         </>
     );
 });

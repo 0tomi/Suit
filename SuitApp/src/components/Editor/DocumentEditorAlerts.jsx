@@ -5,20 +5,9 @@ export default function DocumentEditorAlerts({
     isEditing,
     isLockedByOther,
     lockerName,
-    saveMessage,
 }) {
     return (
         <>
-            {saveMessage && (
-                <div className={`px-4 py-3 rounded-lg text-sm font-medium shadow-sm border ${saveMessage.type === 'success'
-                    ? 'bg-green-50 text-green-800 border-green-200'
-                    : 'bg-red-50 text-red-800 border-red-200'
-                    }`}
-                >
-                    {saveMessage.text}
-                </div>
-            )}
-
             {isLockedByOther && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 flex items-center gap-3">
                     <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0" />

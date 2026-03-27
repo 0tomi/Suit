@@ -1,7 +1,5 @@
-import { syncResource } from './syncCore.js';
-import { getClients } from '../clientService.js';
-import { extractMetadataCollection, summarizePayload } from '../metadata/metadataCacheUtils.js';
 import { createLogger } from '../logService.js';
+import { normalizeClientGender } from '../../constants/clientGender.js';
 
 const logger = createLogger('sync:clients');
 
@@ -15,6 +13,7 @@ export function buildClientCacheRow(client) {
         phone: client.phone,
         address: client.address,
         type: client.type,
+        gender: normalizeClientGender(client.gender),
         status: client.status,
         notes: client.notes,
         data_json: JSON.stringify(client),
@@ -23,49 +22,27 @@ export function buildClientCacheRow(client) {
 }
 
 export async function syncClients() {
-    return await syncResource('clients', '/clients/last-modified', fetchAndCacheClients);
-}
-
-async function fetchAndCacheClients() {
-    logger.info('fetch start (paginated)');
-    let allClients = [];
-    let page = 1;
-    let hasMore = true;
-
-    while (hasMore) {
-        logger.info(`fetching page ${page}`);
-        const result = await getClients({ page });
-        logger.info(`page ${page} response`, { payload: summarizePayload(result) });
-        
-        if (!result || !result.data) {
-            logger.warn(`page ${page} returned empty or without data`);
-            break;
-        }
-
-        // Backend responses differ depending on pagination structure
-        const currentData = extractMetadataCollection(result.data, 'clients') || [];
-        logger.info(`page ${page} extracted items`, { count: currentData.length });
-        
-        allClients = allClients.concat(currentData);
-
-        // Check if there are more pages based on Laravel pagination meta
-        const meta = result.meta || (result.data && result.data.meta);
-        if (meta && meta.current_page < meta.last_page) {
-            page++;
-        } else {
-            hasMore = false;
-        }
+    const clientsApi = window.electronAPI?.clients;
+    if (!clientsApi?.sync) {
+        const error = new Error('El backend interno de clientes no está disponible para sincronizar.');
+        logger.error('clients sync backend unavailable');
+        throw error;
     }
 
-    const rows = allClients.map(buildClientCacheRow);
-    logger.info('mapped rows', { rowCount: rows.length });
-
-    await window.electronAPI.db.clearTable('clients');
-    if (rows.length > 0) {
-        await window.electronAPI.db.upsertMany('clients', rows);
-    } else {
-        logger.warn('API returned 0 rows across all pages; cache cleared');
+    const result = await clientsApi.sync();
+    if (!result?.ok) {
+        logger.error('clients backend sync failed', result);
+        throw new Error(result?.error || 'No se pudo sincronizar clientes.');
     }
+
+    logger.info('clients backend sync completed', {
+        changed: result.changed,
+        strategy: result.strategy,
+        count: result.count,
+        lastServer: result.lastServer,
+    });
+
+    return Boolean(result.changed);
 }
 
 export default { syncClients };

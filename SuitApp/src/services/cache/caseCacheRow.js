@@ -15,6 +15,7 @@ export function buildCaseCacheRow(caseRecord) {
         details: caseRecord.details,
         nro_expediente: caseRecord.nro_expediente || null,
         radicacion_id: caseRecord.radicacion_id || null,
+        dependencia_id: caseRecord.dependencia_id || null,
         updated_at: caseRecord.updated_at || null,
         data_json: JSON.stringify(caseRecord),
         synced_at: formatISO(new Date()),

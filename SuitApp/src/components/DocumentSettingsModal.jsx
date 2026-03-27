@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useReducer } from 'react';
 import { Loader2, Trash2, X } from 'lucide-react';
 import { useCases } from '../context/CasesContext';
-import { getDocumentLockStatus } from '../services/documentService';
+import { getDocumentLockStatus, updateDocumentName, updateDocumentStatus } from '../services/documentService';
+import { showAppToast } from './ui/show-app-toast.jsx';
 import FilterAutosuggest from './ui/FilterAutosuggest.jsx';
 import { createLogger } from '../services/logService.js';
+import { DOCUMENT_STATUS_OPTIONS, getDocumentStatusLabel } from '../utils/documentStatus.js';
 
 const logger = createLogger('component:document-settings-modal');
 
@@ -50,10 +52,16 @@ const DocumentSettingsModal = ({
     onDelete,
     deleting = false,
 }) => {
-    const { cases } = useCases();
+    const { cases, refreshCases } = useCases();
     const [modalState, dispatch] = useReducer(modalReducer, MODAL_INITIAL_STATE);
     const { selectedCaseId, deleteCheckLoading, remoteDeleteDisabled, remoteDeleteDisabledReason } = modalState;
     const setSelectedCaseId = (v) => dispatch({ type: 'SET_CASE_ID', payload: v });
+    const handleCaseChange = (caseId) => {
+        const newCaseId = caseId ? Number(caseId) : null;
+        setSelectedCaseId(caseId);
+
+        onUpdate?.({ ...documentData, suit_case_id: newCaseId });
+    };
 
     const isCreateMode = Boolean(onConfirmCreate);
     const titleValue = (documentData?.name || documentData?.title || '').trim();
@@ -63,6 +71,11 @@ const DocumentSettingsModal = ({
         const caseId = documentData?.suit_case_id ? String(documentData.suit_case_id) : '';
         setSelectedCaseId(caseId);
     }, [documentData?.suit_case_id, isOpen]);
+
+    useEffect(() => {
+        if (!isOpen || !allowCaseAssociationEdit) return;
+        void refreshCases?.();
+    }, [allowCaseAssociationEdit, isOpen, refreshCases]);
 
     useEffect(() => {
         if (!isOpen || !canDelete || !documentData?.id) return;
@@ -107,6 +120,50 @@ const DocumentSettingsModal = ({
         ...cases.map((caseItem) => ({ value: String(caseItem.id), label: caseItem.title || `Caso #${caseItem.id}` })),
     ]), [cases]);
 
+    const [localStatus, setLocalStatus] = React.useState(getDocumentStatusLabel(documentData?.status));
+    const [localTitle, setLocalTitle] = React.useState(documentData?.name || documentData?.title || '');
+
+    useEffect(() => {
+        setLocalTitle(documentData?.name || documentData?.title || '');
+    }, [documentData?.name, documentData?.title]);
+
+    const handleTitleBlur = async () => {
+        if (!documentData?.id || isCreateMode) return;
+        const trimmed = localTitle.trim();
+        if (!trimmed || trimmed === (documentData.name || documentData.title)) return;
+
+        try {
+            const result = await updateDocumentName(documentData.id, trimmed);
+            if (result.ok) {
+                onUpdate?.({ ...documentData, name: trimmed, title: trimmed });
+                showAppToast({ title: 'Título actualizado', variant: 'success' });
+            } else {
+                void logger.error('document title update rejected by api', {
+                    documentId: documentData.id,
+                    status: result.status,
+                    message: result.data?.message || result.error || null,
+                    name: trimmed,
+                });
+                showAppToast({
+                    title: 'Error al actualizar título',
+                    description: result.data?.message || result.error || 'No se pudo actualizar el título del documento.',
+                    variant: 'danger',
+                });
+            }
+        } catch (err) {
+            void logger.error('error al actualizar título del documento', err);
+            showAppToast({
+                title: 'Error al actualizar título',
+                description: err.message || 'No se pudo actualizar el título del documento.',
+                variant: 'danger',
+            });
+        }
+    };
+
+    useEffect(() => {
+        setLocalStatus(getDocumentStatusLabel(documentData?.status));
+    }, [documentData?.status]);
+
     if (!isOpen || !documentData) return null;
 
     const isDeleteDisabled = deleteCheckLoading || deleteDisabled || remoteDeleteDisabled || deleting;
@@ -115,13 +172,43 @@ const DocumentSettingsModal = ({
         ? 'Verificando bloqueo del documento...'
         : (isDeleteDisabled ? effectiveDeleteDisabledReason : 'Eliminar documento');
 
-    const handleCaseChange = (nextCaseId) => {
-        const normalizedValue = nextCaseId ?? '';
-        setSelectedCaseId(normalizedValue);
-        onUpdate?.({
-            ...documentData,
-            suit_case_id: normalizedValue ? Number(normalizedValue) : null,
-        });
+    const handleStatusChange = async (nextStatus) => {
+        if (!documentData) return;
+
+        // Optimistic update
+        setLocalStatus(nextStatus);
+
+        // Si es un documento existente, actualizamos inmediatamente vía API.
+        if (documentData.id && !isCreateMode) {
+            try {
+                const result = await updateDocumentStatus(documentData.id, nextStatus);
+                if (result.ok) {
+                    showAppToast({
+                        title: 'Estado actualizado',
+                        description: `El documento ahora está en estado "${nextStatus}".`,
+                        variant: 'success',
+                    });
+                    // Informamos al padre para que refresque la UI/caché.
+                    onUpdate?.({ ...documentData, status: nextStatus });
+                } else {
+                    showAppToast({
+                        title: 'Error al actualizar estado',
+                        description: result.error || 'No se pudo cambiar el estado del documento.',
+                        variant: 'destructive',
+                    });
+                }
+            } catch (error) {
+                void logger.error('error al actualizar estado del documento', error);
+                showAppToast({
+                    title: 'Error de red',
+                    description: 'No se pudo comunicar con el servidor.',
+                    variant: 'destructive',
+                });
+            }
+        } else {
+            // En modo creación, solo actualizamos el estado local del padre.
+            onUpdate?.({ ...documentData, status: nextStatus });
+        }
     };
 
     return (
@@ -139,20 +226,36 @@ const DocumentSettingsModal = ({
                 <div className="relative flex-1 space-y-4 overflow-visible p-6">
                     <div className="space-y-1">
                         <label htmlFor="document-settings-title" className="block text-sm text-gray-500">Título del documento</label>
-                        {onTitleChange ? (
-                            <input
-                                id="document-settings-title"
-                                type="text"
-                                value={documentData?.name || documentData?.title || ''}
-                                onChange={(event) => onTitleChange(event.target.value)}
-                                placeholder="Ingresa un título"
-                                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
-                            />
-                        ) : (
-                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-                                {documentData?.name || documentData?.title || 'Sin título'}
-                            </p>
-                        )}
+                        <input
+                            id="document-settings-title"
+                            type="text"
+                            value={onTitleChange ? (documentData?.name || documentData?.title || '') : localTitle}
+                            onChange={(event) => {
+                                if (onTitleChange) {
+                                    onTitleChange(event.target.value);
+                                } else {
+                                    setLocalTitle(event.target.value);
+                                }
+                            }}
+                            onBlur={handleTitleBlur}
+                            placeholder="Ingresa un título"
+                            className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label htmlFor="document-settings-status" className="block text-sm text-gray-500">Estado</label>
+                        <select
+                            id="document-settings-status"
+                            data-testid="modal-status-select"
+                            value={localStatus}
+                            onChange={(e) => handleStatusChange(e.target.value)}
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500"
+                        >
+                            {DOCUMENT_STATUS_OPTIONS.map((statusOption) => (
+                                <option key={statusOption} value={statusOption}>{statusOption}</option>
+                            ))}
+                        </select>
                     </div>
 
                     {allowCaseAssociationEdit ? (

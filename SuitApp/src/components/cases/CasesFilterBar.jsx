@@ -28,18 +28,21 @@ const CasesFilterBar = ({
             resultCount={resultCount}
             resultItemName={{ singular: 'caso', plural: 'casos' }}
         >
-            {/* Filtro por tipo */}
-            <div className="flex items-center gap-2 border-l pl-4 border-(--border-default)">
-                <Filter className="h-4 w-4 text-(--text-tertiary)" />
+            {/* Filtro por Fuero */}
+            <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                <div className="flex items-center gap-1.5 text-(--text-tertiary)">
+                    <Filter className="h-3 w-3" />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Fuero</span>
+                </div>
                 <Select value={typeFilter} onValueChange={onTypeChange}>
                     <SelectTrigger
                         data-testid="cases-filter-type"
-                        className="border-none bg-transparent hover:bg-(--bg-card-hover) h-8 w-auto min-w-[140px]"
+                        className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[130px] p-0 px-2"
                     >
-                        <SelectValue placeholder="Todos los tipos" />
+                        <SelectValue placeholder="Todos los fueros" />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="all">Todos los tipos</SelectItem>
+                        <SelectItem value="all">Todos los fueros</SelectItem>
                         <SelectSeparator />
                         {caseTypes.map(type => (
                             <SelectItem key={type} value={type}>{type}</SelectItem>
@@ -49,11 +52,12 @@ const CasesFilterBar = ({
             </div>
 
             {/* Filtro por estado */}
-            <div className="flex items-center gap-2 border-l pl-4 border-(--border-default)">
+            <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">Estado</span>
                 <Select value={statusFilter} onValueChange={onStatusChange}>
                     <SelectTrigger
                         data-testid="cases-filter-status"
-                        className="border-none bg-transparent hover:bg-(--bg-card-hover) h-8 w-auto min-w-[110px]"
+                        className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[100px] p-0 px-2"
                     >
                         <SelectValue placeholder="Estado" />
                     </SelectTrigger>

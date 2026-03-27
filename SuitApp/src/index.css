@@ -312,6 +312,32 @@ a {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes filterFade {
+    0%   { opacity: 0; transform: scale(0.99); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+.animate-filter-fade {
+    animation: filterFade 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes tableSlideInRight {
+    0% { transform: translateX(32px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes tableSlideInLeft {
+    0% { transform: translateX(-32px); opacity: 0; }
+    100% { transform: translateX(0); opacity: 1; }
+}
+
+.animate-table-next {
+    animation: tableSlideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.animate-table-prev {
+    animation: tableSlideInLeft 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
 
 @keyframes tutorialIconHop {
     0%   { transform: translateY(0); }
@@ -322,8 +348,33 @@ a {
     100% { transform: translateY(0); }
 }
 
+@keyframes tutorialIconGlow {
+    0%   { color: var(--text-tertiary); filter: drop-shadow(0 0 0 transparent); transform: scale(1); }
+    15%  { color: #facc15; filter: drop-shadow(0 0 15px rgba(250, 204, 21, 0.8)); transform: scale(1.25); }
+    85%  { color: #facc15; filter: drop-shadow(0 0 15px rgba(250, 204, 21, 0.8)); transform: scale(1.25); }
+    100% { color: var(--text-tertiary); filter: drop-shadow(0 0 0 transparent); transform: scale(1); }
+}
+
+@keyframes libraryCardJump {
+    0%   { transform: translateY(0); }
+    20%  { transform: translateY(-4px) scale(1.01); }
+    40%  { transform: translateY(-8px) scale(1.02); }
+    60%  { transform: translateY(0); }
+    75%  { transform: translateY(-2px); }
+    100% { transform: translateY(0); }
+}
+
+.library-card-jump {
+    animation: libraryCardJump 0.6s cubic-bezier(0.22, 1, 0.36, 1) 1;
+}
+
 .tutorial-icon-hop {
     animation: tutorialIconHop 0.7s cubic-bezier(0.22, 1, 0.36, 1) 1;
+    transform-origin: center;
+}
+
+.tutorial-icon-glow {
+    animation: tutorialIconGlow 2s cubic-bezier(0.22, 1, 0.36, 1) 1;
     transform-origin: center;
 }
 
@@ -382,4 +433,12 @@ media-player:not([fullscreen]) .vds-exit-fullscreen-icon { display: none; }
 
 .vds-volume-slider .vds-slider-track {
     width: var(--vds-slider-fill);
+}
+@keyframes pulse-subtle {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(1.02); }
+}
+
+.animate-pulse-subtle {
+    animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }

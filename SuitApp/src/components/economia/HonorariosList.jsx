@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
-import { getHonorariosByCaso } from '../../services/honorarioService';
+import { getHonorariosByDateRange } from '../../services/honorarioService';
 import { Table } from '../ui/Table';
 import { Button } from '../ui/Button';
 import { DateRangePicker } from '../ui/DateRangePicker';
@@ -26,23 +26,6 @@ function formatDisplayDate(dateStr) {
         return format(parseISO(String(dateStr).replace(' ', 'T')), 'dd/MM/yyyy');
     } catch {
         return dateStr;
-    }
-}
-
-function normalizeCollection(payload) {
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.data)) return payload.data;
-    return [];
-}
-
-function isDateWithinRange(dateStr, fromDate, toDate) {
-    if (!dateStr || !fromDate || !toDate) return false;
-
-    try {
-        const normalizedDate = format(parseISO(String(dateStr).replace(' ', 'T')), 'yyyy-MM-dd');
-        return normalizedDate >= fromDate && normalizedDate <= toDate;
-    } catch {
-        return false;
     }
 }
 
@@ -86,13 +69,13 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
         clients.map((client) => [String(client.id), client])
     ), [clients]);
 
-    function getClientDisplay(honorario) {
+    const getClientDisplay = useCallback((honorario) => {
         const resolvedClient = honorario.client || clientsMap.get(String(honorario.client_id));
         if (resolvedClient) {
             return `${resolvedClient.first_name || ''} ${resolvedClient.last_name || ''}`.trim() || `Cliente #${honorario.client_id}`;
         }
         return honorario.client_id ? `Cliente #${honorario.client_id}` : 'N/A';
-    }
+    }, [clientsMap]);
 
     const activeHonorarios = useMemo(() => {
         let filtered = [...rawActiveHonorarios];
@@ -134,13 +117,13 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
         });
 
         return filtered;
-    }, [isAdmin, selectedUserId, rawActiveHonorarios, searchTerm, statusFilter, sortBy, sortOrder, clientsMap]);
+    }, [isAdmin, selectedUserId, rawActiveHonorarios, searchTerm, statusFilter, sortBy, sortOrder, getClientDisplay]);
 
     const activeLoading = caseId ? cachedHonorariosLoading : rangeLoading;
 
     /**
-     * La vista global agrega honorarios caso por caso porque la API por rango es
-     * exclusiva de admin.
+     * Obtiene los honorarios por rango de fechas usando una única petición a la API.
+     * Reemplaza la lógica anterior que hacía una petición por cada caso.
      */
     const fetchRangeHonorarios = useCallback(async () => {
         if (caseId) return;
@@ -153,28 +136,27 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
 
         setRangeLoading(true);
         try {
-            const honorariosByCase = await Promise.all(
-                cases.map(async (caseItem) => {
-                    const data = normalizeCollection(await getHonorariosByCaso(caseItem.id));
+            /** 
+             * Obtenemos todos los honorarios del rango para permitir filtrado offline por abogado.
+             * Esto evita peticiones redundantes al cambiar de usuario en el selector.
+             */
+            const apiResult = await getHonorariosByDateRange(fromDate, toDate, null);
+            
+            // Aseguramos que cada honorario tenga su objeto suit_case para mostrar el título en la tabla
+            const enriched = apiResult.map(h => {
+                if (h.suit_case) return h;
+                const caseItem = cases.find(c => String(c.id) === String(h.suit_case_id));
+                return { ...h, suit_case: caseItem };
+            });
 
-                    return data
-                        .filter((honorario) => isDateWithinRange(honorario.created_at, fromDate, toDate))
-                        .map((honorario) => ({
-                            ...honorario,
-                            suit_case: honorario.suit_case || caseItem,
-                            suit_case_id: honorario.suit_case_id || caseItem.id,
-                        }));
-                })
-            );
-
-            setRangeHonorarios(honorariosByCase.flat());
+            setRangeHonorarios(enriched);
         } catch (error) {
-            console.error("Error fetching honorarios", error);
+            console.error("Error fetching honorarios range", error);
             setRangeHonorarios([]);
         } finally {
             setRangeLoading(false);
         }
-    }, [caseId, cases, fromDate, toDate]);
+    }, [caseId, fromDate, toDate, cases]);
 
     useEffect(() => {
         if (caseId) return;
@@ -227,9 +209,16 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
                 />
             )}
 
+            {searchTerm.trim() && (
+                <div className="text-sm text-gray-500 font-medium animate-in fade-in slide-in-from-top-1 duration-300 px-1">
+                    Mostrando {activeHonorarios.length} resultado{activeHonorarios.length !== 1 ? 's' : ''}
+                </div>
+            )}
+
             <Table
                 isEmpty={!activeLoading && activeHonorarios.length === 0}
                 emptyMessage={caseId ? "No se encontraron honorarios para este caso." : "No se encontraron honorarios con los filtros seleccionados."}
+                trigger={`${searchTerm}-${statusFilter}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}`}
                 columns={[
                     ...(!caseId ? [{ header: 'Caso' }] : []),
                     { header: 'Cliente' },

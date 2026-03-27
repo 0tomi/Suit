@@ -132,7 +132,7 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
                 <div className="flex-1 min-w-[200px]">
                     <Label htmlFor="tipo_pago_id">Tipo de Pago</Label>
                     <Select onValueChange={handleSelectChange('tipo_pago_id')} value={form.tipo_pago_id}>
-                        <SelectTrigger id="tipo_pago_id"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
+                        <SelectTrigger id="tipo_pago_id" aria-label="Tipo de Pago"><SelectValue placeholder="Seleccionar..." /></SelectTrigger>
                         <SelectContent>
                             {tipoPagos.map(tp => (
                                 <SelectItem key={tp.id} value={String(tp.id)}>{tp.name}</SelectItem>

@@ -37,3 +37,36 @@ export function useDeadlineBadge() {
 
     return { urgentCount, overdueCount, badgeColor };
 }
+
+/**
+ * Versión de useDeadlineBadge filtrada por expediente.
+ */
+export function useCaseDeadlineBadge(caseId) {
+    const { deadlines } = useDeadlines();
+
+    return useMemo(() => {
+        if (!deadlines || !caseId) {
+            return { urgentCount: 0, overdueCount: 0, badgeColor: null };
+        }
+
+        let overdue = 0;
+        let urgent = 0;
+
+        for (const d of deadlines) {
+            if (Number(d.suit_case_id) !== Number(caseId)) continue;
+            if (d.status === 'Cumplido') continue;
+
+            if (d.status === 'Vencido') {
+                overdue++;
+            } else if (d.priority === 'Urgente') {
+                urgent++;
+            }
+        }
+
+        let color = null;
+        if (overdue > 0) color = 'red';
+        else if (urgent > 0) color = 'yellow';
+
+        return { urgentCount: urgent, overdueCount: overdue, badgeColor: color };
+    }, [deadlines, caseId]);
+}

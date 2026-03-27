@@ -7,11 +7,13 @@ const createDocumentMock = vi.fn();
 const updateDocumentMock = vi.fn();
 const getDocumentLastModifiedMock = vi.fn();
 const getDocumentContentMock = vi.fn();
-const getDocumentVersionContentMock = vi.fn();
+const getDocumentVersionContentCachedMock = vi.fn();
 const getDocumentLockStatusMock = vi.fn();
 const lockDocumentMock = vi.fn();
 const unlockDocumentMock = vi.fn();
 const exportPdfMock = vi.fn();
+const invalidateDocumentListingCacheMock = vi.fn();
+const showAppToastMock = vi.fn();
 
 let documentsState = { documents: [], refreshDocuments: vi.fn() };
 let authState = { user: { id: 1, name: 'Ana', tag: 'ana' } };
@@ -50,15 +52,30 @@ vi.mock('../../src/components/DocumentSettingsModal', () => ({
     ),
 }));
 
+vi.mock('../../src/components/Editor/DraftingToolsSidebar.jsx', () => ({
+    default: () => <div data-testid="drafting-tools-sidebar" />,
+}));
+
 vi.mock('../../src/services/documentService.js', () => ({
     createDocument: (...args) => createDocumentMock(...args),
     updateDocument: (...args) => updateDocumentMock(...args),
     getDocumentLastModified: (...args) => getDocumentLastModifiedMock(...args),
     getDocumentContent: (...args) => getDocumentContentMock(...args),
-    getDocumentVersionContent: (...args) => getDocumentVersionContentMock(...args),
     getDocumentLockStatus: (...args) => getDocumentLockStatusMock(...args),
     lockDocument: (...args) => lockDocumentMock(...args),
     unlockDocument: (...args) => unlockDocumentMock(...args),
+}));
+
+vi.mock('../../src/services/documentVersionCacheService.js', () => ({
+    getDocumentVersionContentCached: (...args) => getDocumentVersionContentCachedMock(...args),
+}));
+
+vi.mock('../../src/services/documentListingBackendService.js', () => ({
+    invalidateDocumentListingCache: (...args) => invalidateDocumentListingCacheMock(...args),
+}));
+
+vi.mock('../../src/components/ui/show-app-toast.jsx', () => ({
+    showAppToast: (...args) => showAppToastMock(...args),
 }));
 
 import DocumentEditor from '../../src/pages/DocumentEditor.jsx';
@@ -131,11 +148,14 @@ describe('DocumentEditor', () => {
         updateDocumentMock.mockReset();
         getDocumentLastModifiedMock.mockReset();
         getDocumentContentMock.mockReset();
-        getDocumentVersionContentMock.mockReset();
+        getDocumentVersionContentCachedMock.mockReset();
         getDocumentLockStatusMock.mockReset();
         lockDocumentMock.mockReset();
         unlockDocumentMock.mockReset();
         exportPdfMock.mockReset();
+        invalidateDocumentListingCacheMock.mockReset();
+        showAppToastMock.mockReset();
+        invalidateDocumentListingCacheMock.mockResolvedValue({ ok: true });
 
         window.electronAPI = {
             db: {
@@ -165,15 +185,17 @@ describe('DocumentEditor', () => {
         await waitFor(() => {
             expect(createDocumentMock).toHaveBeenCalledWith({
                 name: 'Contrato nuevo',
+                title: 'Contrato nuevo',
                 content: '<p>Contenido nuevo</p>',
                 suit_case_id: null,
+                status: 'Borrador',
             });
             expect(documentsState.refreshDocuments).toHaveBeenCalled();
-            expect(screen.getByTestId('location')).toHaveTextContent('/documents/edit/44');
+            expect(screen.getByTestId('location')).toHaveTextContent('/documents');
         });
     });
 
-    it('preserva el retorno al caso cuando se crea un documento desde su pestaña de documentos', async () => {
+    it('crea el documento desde un caso y vuelve al listado general de documentos', async () => {
         createDocumentMock.mockResolvedValue({ ok: true, data: { id: 44 } });
 
         renderDocumentEditor({
@@ -199,17 +221,12 @@ describe('DocumentEditor', () => {
         await waitFor(() => {
             expect(createDocumentMock).toHaveBeenCalledWith({
                 name: 'Escrito desde caso',
+                title: 'Escrito desde caso',
                 content: '<p>Contenido</p>',
                 suit_case_id: 24,
+                status: 'Borrador',
             });
-            expect(screen.getByTestId('location')).toHaveTextContent('/documents/edit/44');
-        });
-
-        fireEvent.click(await screen.findByRole('button', { name: 'Volver' }));
-
-        await waitFor(() => {
-            expect(screen.getByTestId('location')).toHaveTextContent('/cases/24');
-            expect(screen.getByTestId('location-active-tab')).toHaveTextContent('documents');
+            expect(screen.getByTestId('location')).toHaveTextContent('/documents');
         });
     });
 
@@ -233,9 +250,17 @@ describe('DocumentEditor', () => {
             },
         };
 
-        getDocumentLastModifiedMock.mockResolvedValue({
-            last_modified: '2026-03-01T10:00:00.000Z',
-        });
+        getDocumentLastModifiedMock
+            .mockResolvedValueOnce({
+                last_modified: '2026-03-01T10:00:00.000Z',
+            })
+            .mockResolvedValueOnce({
+                last_modified: '2026-03-02T10:00:00.000Z',
+            })
+            .mockResolvedValueOnce({
+                last_modified: '2026-03-02T10:00:00.000Z',
+            });
+        getDocumentContentMock.mockResolvedValue('<p>Original desde servidor</p>');
         getDocumentLockStatusMock.mockResolvedValue({
             ok: true,
             is_locked: false,
@@ -266,9 +291,15 @@ describe('DocumentEditor', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
         await waitFor(() => {
-            expect(updateDocumentMock).toHaveBeenCalledWith('9', { content: '<p>Actualizado</p>' });
+            expect(updateDocumentMock).toHaveBeenCalledWith('9', {
+                content: '<p>Actualizado</p>',
+            });
             expect(documentsState.refreshDocuments).toHaveBeenCalled();
-            expect(screen.getByText('Documento guardado correctamente.')).toBeInTheDocument();
+            expect(showAppToastMock).toHaveBeenCalledWith(expect.objectContaining({
+                title: 'Documento guardado',
+                description: 'Documento guardado correctamente.',
+                variant: 'success',
+            }));
         });
 
         expect(dbUpsertMany).toHaveBeenCalled();
@@ -321,8 +352,8 @@ describe('DocumentEditor', () => {
         await waitFor(() => {
             expect(exportPdfMock).toHaveBeenCalledWith({
                 title: 'Contrato nuevo',
-                html: '<p>Contenido exportable</p>',
-                fontFamily: window.getComputedStyle(document.body).fontFamily || undefined,
+                html: expect.stringContaining('<p>Contenido exportable</p>'),
+                styles: expect.stringContaining('.export-document { width: 100%; max-width: none; }'),
             });
         });
     });
@@ -347,11 +378,15 @@ describe('DocumentEditor', () => {
             },
         };
 
-        getDocumentLastModifiedMock.mockResolvedValue({
-            last_modified: '2026-03-03T10:00:00.000Z',
-        });
+        getDocumentLastModifiedMock
+            .mockResolvedValueOnce({
+                last_modified: '2026-03-03T10:00:00.000Z',
+            })
+            .mockResolvedValueOnce({
+                last_modified: '2026-03-03T10:00:00.000Z',
+            });
         getDocumentContentMock.mockResolvedValue('<p>Ultima version</p>');
-        getDocumentVersionContentMock.mockResolvedValue('<p>Version historica</p>');
+        getDocumentVersionContentCachedMock.mockResolvedValue('<p>Version historica</p>');
         getDocumentLockStatusMock.mockResolvedValue({
             ok: true,
             is_locked: false,
@@ -369,7 +404,11 @@ describe('DocumentEditor', () => {
         renderDocumentEditor('/documents/edit/9?versionId=21&versionNumber=3');
 
         await waitFor(() => {
-            expect(getDocumentVersionContentMock).toHaveBeenCalledWith('9', '21');
+            expect(getDocumentVersionContentCachedMock).toHaveBeenCalledWith('9', '21', {
+                id: '21',
+                document_id: '9',
+                version_number: '3',
+            });
         });
 
         expect(screen.getByLabelText('editor')).toHaveValue('<p>Version historica</p>');
@@ -388,8 +427,75 @@ describe('DocumentEditor', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
 
         await waitFor(() => {
-            expect(updateDocumentMock).toHaveBeenCalledWith('9', { content: '<p>Version historica editada</p>' });
+            expect(updateDocumentMock).toHaveBeenCalledWith('9', {
+                content: '<p>Version historica editada</p>',
+            });
             expect(screen.getByTestId('location')).toHaveTextContent('/documents/edit/9');
         });
+    });
+
+    it('marca el fallo de guardado y no lo presenta como éxito cuando la API rechaza el payload', async () => {
+        const dbGetById = vi.fn().mockResolvedValue({
+            id: 9,
+            name: 'Contrato existente',
+            content: '<p>Original</p>',
+            updated_at: '2026-03-01T10:00:00.000Z',
+            data_json: JSON.stringify({
+                id: 9,
+                name: 'Contrato existente',
+                updated_at: '2026-03-01T10:00:00.000Z',
+            }),
+        });
+        const dbUpsertMany = vi.fn().mockResolvedValue(undefined);
+        window.electronAPI = {
+            db: {
+                getById: dbGetById,
+                upsertMany: dbUpsertMany,
+            },
+        };
+
+        getDocumentLastModifiedMock.mockResolvedValue({
+            last_modified: '2026-03-01T10:00:00.000Z',
+        });
+        getDocumentLockStatusMock.mockResolvedValue({
+            ok: true,
+            is_locked: false,
+        });
+        lockDocumentMock.mockResolvedValue({ ok: true });
+        updateDocumentMock.mockResolvedValue({
+            ok: false,
+            status: 422,
+            data: { message: 'El contenido del documento es inválido.' },
+        });
+
+        renderDocumentEditor('/documents/edit/9');
+
+        await screen.findByDisplayValue('Contrato existente');
+
+        fireEvent.click(screen.getByRole('button', { name: 'Editar' }));
+        await waitFor(() => {
+            expect(lockDocumentMock).toHaveBeenCalledWith('9');
+        });
+
+        fireEvent.change(screen.getByLabelText('editor'), {
+            target: { value: '<p>Actualizado</p>' },
+        });
+        fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+        await waitFor(() => {
+            expect(showAppToastMock).toHaveBeenCalledWith(expect.objectContaining({
+                title: 'Error en documento',
+                description: 'El contenido del documento es inválido.',
+                variant: 'danger',
+            }));
+        });
+
+        expect(documentsState.refreshDocuments).not.toHaveBeenCalled();
+        expect(dbUpsertMany).toHaveBeenCalled();
+
+        const cachedRow = dbUpsertMany.mock.calls.at(-1)?.[1]?.[0];
+        expect(cachedRow?.content).toBe('<p>Actualizado</p>');
+        expect(cachedRow?.data_json).toContain('"pending_local_save":true');
+        expect(cachedRow?.data_json).toContain('El contenido del documento es inválido.');
     });
 });

@@ -1,9 +1,14 @@
 import { ArrowLeft, FileDown, FileText, Loader2, Pencil, Save } from 'lucide-react';
 import { Button } from '../ui/Button.jsx';
+import { Badge } from '../ui/Badge.jsx';
+import { SectionTutorialTrigger } from '../ui/SectionTutorialTrigger.jsx';
+import { getDocumentStatusLabel, getDocumentStatusVariant } from '../../utils/documentStatus.js';
+import { documentEditorSteps } from '../../constants/tutorialSteps.js';
 
 export default function DocumentEditorHeader({
     id,
     title,
+    status,
     onTitleChange,
     isEditing,
     isCheckingEdit,
@@ -14,13 +19,15 @@ export default function DocumentEditorHeader({
     historyVersionLabel,
     onBack,
     onEnableEdit,
+    onOpenSettings,
     onExportPdf,
     onSave,
 }) {
     const saveDisabled = isSaving || isLockedByOther || (id && !isEditing);
+    const documentStatusLabel = status ? getDocumentStatusLabel(status) : null;
 
     return (
-        <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-0 z-20">
+        <div className="flex justify-between items-center bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 sticky top-0 z-40">
             <div className="flex items-center space-x-4 flex-1">
                 <button
                     onClick={onBack}
@@ -29,18 +36,23 @@ export default function DocumentEditorHeader({
                 >
                     <ArrowLeft size={24} />
                 </button>
-                <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
+                <div className="min-w-0 flex-1">
+                    <div className="mb-1 flex max-w-[640px] items-center gap-2">
                         <input
                             type="text"
                             value={title}
                             onChange={(event) => onTitleChange(event.target.value)}
                             placeholder="Sin Título"
-                            className="text-xl font-bold text-gray-900 dark:text-gray-100 bg-transparent border-none focus:ring-0 p-0 placeholder-gray-300 dark:placeholder-gray-600 w-full"
+                            className="min-w-0 flex-1 bg-transparent p-0 text-xl font-bold text-gray-900 placeholder-gray-300 focus:ring-0 dark:text-gray-100 dark:placeholder-gray-600"
                             readOnly={id ? !isEditing : false}
                         />
                     </div>
                     <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
+                        {documentStatusLabel && (
+                            <Badge variant={getDocumentStatusVariant(status)}>
+                                {documentStatusLabel}
+                            </Badge>
+                        )}
                         <span className="flex items-center gap-1">
                             <FileText size={14} />
                             {isEditing ? 'Editando' : 'Solo lectura'}
@@ -62,6 +74,15 @@ export default function DocumentEditorHeader({
             <div className="flex items-center gap-3">
                 {id && (
                     <>
+                        <SectionTutorialTrigger
+                            steps={documentEditorSteps}
+                            ariaLabel="Ver tutorial del editor de documentos"
+                            testId="document-editor-tutorial-trigger"
+                            className="shrink-0"
+                        />
+
+                        <div className="h-6 w-px bg-gray-200 dark:bg-gray-600"></div>
+
                         <Button
                             variant={isEditing ? 'outline' : 'secondary'}
                             size="md"
@@ -78,6 +99,17 @@ export default function DocumentEditorHeader({
                         <div className="h-6 w-px bg-gray-200 dark:bg-gray-600"></div>
                     </>
                 )}
+
+                <Button
+                    variant="outline"
+                    size="md"
+                    onClick={onOpenSettings}
+                    title="Propiedades y Caso"
+                >
+                    Propiedades
+                </Button>
+
+                <div className="h-6 w-px bg-gray-200 dark:bg-gray-600"></div>
 
                 <Button
                     variant="outline"

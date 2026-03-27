@@ -70,22 +70,22 @@ const AgendaEventModal = ({
 
     return (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-                <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
-                    <h2 className="text-lg font-semibold text-gray-800">
+            <div className="bg-(--bg-card) rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="px-6 py-4 border-b border-(--border-subtle) flex justify-between items-center bg-(--bg-card-hover)">
+                    <h2 className="text-lg font-semibold text-(--text-primary)">
                         {selectedEvent ? 'Editar Evento' : 'Nuevo Evento'}
                     </h2>
-                    <button onClick={() => setModalOpen(false)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                    <button onClick={() => setModalOpen(false)} className="text-(--text-secondary) hover:text-(--text-primary) transition-colors">
                         <X size={20} />
                     </button>
                 </div>
 
                 {/* Inline error banner — visible inside the modal when saving fails */}
                 {error && (
-                    <div className="mx-6 mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    <div className="mx-6 mt-4 flex items-start gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-600">
                         <span className="flex-1">{error}</span>
                         {onDismissError && (
-                            <button onClick={onDismissError} className="ml-2 text-red-400 hover:text-red-600 transition-colors">
+                            <button onClick={onDismissError} className="ml-2 text-red-500/70 hover:text-red-600 transition-colors">
                                 <X size={16} />
                             </button>
                         )}
@@ -110,7 +110,7 @@ const AgendaEventModal = ({
                     setNotificationCustomUnit={setNotificationCustomUnit}
                 />
 
-                <div className={`px-6 py-4 bg-gray-50 flex items-center border-t border-gray-100 ${selectedEvent ? 'justify-between' : 'justify-center'}`}>
+                <div className={`px-6 py-4 bg-(--bg-card-hover) flex items-center border-t border-(--border-subtle) ${selectedEvent ? 'justify-between' : 'justify-center'}`}>
                     {selectedEvent && (
                         <AgendaEventDeleteDialog
                             saving={saving}

@@ -27,8 +27,8 @@ function BarsView({ data, peakValue }) {
     return (
         <div className="mt-6 grid grid-cols-12 items-end gap-2 h-[160px]">
             {data.map((bucket) => {
-                const hHeight = Math.max(10, Math.round((bucket.honorarios / peakValue) * 130));
-                const gHeight = Math.max(10, Math.round((bucket.gastos / peakValue) * 130));
+                const hHeight = bucket.honorarios > 0 ? Math.max(10, Math.round((bucket.honorarios / peakValue) * 130)) : 0;
+                const gHeight = bucket.gastos > 0 ? Math.max(10, Math.round((bucket.gastos / peakValue) * 130)) : 0;
                 return (
                     <div
                         key={bucket.key}
@@ -50,7 +50,7 @@ function BarsView({ data, peakValue }) {
                                 style={{ height: `${gHeight}px` }}
                             />
                         </div>
-                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 group-hover:text-slate-900 transition-colors">
+                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--text-tertiary) group-hover:text-(--text-primary) transition-colors">
                             {bucket.shortLabel}
                         </div>
                     </div>
@@ -119,7 +119,7 @@ function LineView({ data, peakValue }) {
 
             <div className="grid grid-cols-12 gap-2 mt-1">
                 {data.map((bucket) => (
-                    <div key={bucket.key} className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 text-center">
+                    <div key={bucket.key} className="text-[10px] font-bold uppercase tracking-[0.12em] text-(--text-tertiary) text-center">
                         {bucket.shortLabel}
                     </div>
                 ))}
@@ -131,14 +131,15 @@ function LineView({ data, peakValue }) {
 export function HonorariosVsGastosChart({ data = EMPTY }) {
     const [chartType, setChartType] = useState('bars');
     const isBars = chartType === 'bars';
-    const peakValue = Math.max(1, ...data.map((b) => b.honorarios), ...data.map((b) => b.gastos));
+    const realPeakValue = Math.max(0, ...data.map((b) => b.honorarios), ...data.map((b) => b.gastos));
+    const peakValue = Math.max(1, realPeakValue);
 
     return (
-        <div className="rounded-[32px] border border-slate-200/80 bg-white p-6 shadow-sm ring-1 ring-slate-900/5">
+        <div className="rounded-[32px] border border-(--border-default) bg-(--bg-card) p-6 shadow-sm ring-1 ring-slate-900/5 transition-all duration-300 hover:shadow-md">
             <div className="flex items-start justify-between gap-4">
                 <div>
-                    <h2 className="text-xl font-bold text-slate-900 tracking-tight">Honorarios vs Gastos</h2>
-                    <p className="mt-1 text-sm text-slate-500 font-medium">
+                    <h2 className="text-xl font-bold text-(--text-primary) tracking-tight">Honorarios vs Gastos</h2>
+                    <p className="mt-1 text-sm text-(--text-secondary) font-medium">
                         Comparativa mensual entre lo facturado y los gastos registrados.
                     </p>
                 </div>
@@ -159,7 +160,7 @@ export function HonorariosVsGastosChart({ data = EMPTY }) {
                     <button
                         onClick={() => setChartType(isBars ? 'line' : 'bars')}
                         title={isBars ? 'Cambiar a línea' : 'Cambiar a barras'}
-                        className="self-stretch rounded-2xl border border-slate-200 bg-slate-50/50 px-3 shadow-inner text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center"
+                        className="self-stretch rounded-2xl border border-(--border-subtle) bg-(--bg-card-hover) px-3 shadow-sm text-(--text-secondary) transition-all hover:bg-white dark:hover:bg-slate-800 hover:text-blue-600 flex items-center justify-center group-hover:shadow-md"
                     >
                         {isBars ? <LineChart className="h-4 w-4" /> : <BarChart2 className="h-4 w-4" />}
                     </button>

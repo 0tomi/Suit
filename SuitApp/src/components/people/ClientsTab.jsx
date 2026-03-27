@@ -234,11 +234,12 @@ const ClientsTab = () => {
                 );
             }}
             paginationProps={{
-                totalItems: filteredClients.length,
-                itemsPerPage,
                 currentPage,
-                onPageChange: setCurrentPage
+                onPageChange: setCurrentPage,
+                totalItems: filteredClients.length,
+                itemsPerPage
             }}
+            trigger={`${searchTerm}-${sortBy}-${sortOrder}`}
         >
             <ConfirmDialog {...dialogProps} />
             <NewClientModal

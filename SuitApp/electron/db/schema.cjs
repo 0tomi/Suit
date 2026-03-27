@@ -55,6 +55,7 @@ function createTables(dbInstance) {
             details         TEXT,
             nro_expediente  TEXT,
             radicacion_id   INTEGER,
+            dependencia_id  INTEGER,
             updated_at      TEXT,
             data_json       TEXT,
             synced_at       TEXT
@@ -132,14 +133,60 @@ function createTables(dbInstance) {
         );
 
         CREATE TABLE IF NOT EXISTS documents (
-            id           INTEGER PRIMARY KEY,
-            name         TEXT,
-            suit_case_id INTEGER,
-            content      TEXT,
-            is_locked    INTEGER DEFAULT 0,
-            locked_by    TEXT,
-            synced_at    TEXT
+            id                          INTEGER PRIMARY KEY,
+            name                        TEXT,
+            suit_case_id                INTEGER,
+            user_id                     INTEGER,
+            content                     TEXT,
+            is_locked                   INTEGER DEFAULT 0,
+            locked_by                   TEXT,
+            locker_name                 TEXT,
+            status                      TEXT DEFAULT 'Borrador',
+            latest_version_number       INTEGER,
+            latest_version_created_by  INTEGER,
+            latest_version_creator_name TEXT,
+            latest_version_creator_tag  TEXT,
+            created_at                  TEXT,
+            updated_at                  TEXT,
+            data_json                   TEXT,
+            synced_at                   TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS document_versions (
+            id            INTEGER PRIMARY KEY,
+            document_id   INTEGER NOT NULL,
+            version_number INTEGER,
+            mime_type     TEXT,
+            size          INTEGER,
+            created_by    INTEGER,
+            creator_name  TEXT,
+            creator_tag   TEXT,
+            created_at    TEXT,
+            updated_at    TEXT,
+            content       TEXT,
+            data_json     TEXT,
+            synced_at     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_document_versions_document
+            ON document_versions (document_id);
+
+        CREATE TABLE IF NOT EXISTS document_query_cache (
+            id                TEXT PRIMARY KEY,
+            cache_key         TEXT NOT NULL,
+            mode              TEXT NOT NULL,
+            page              INTEGER NOT NULL DEFAULT 1,
+            params_json       TEXT,
+            document_ids_json TEXT NOT NULL,
+            total_pages       INTEGER,
+            total_documents   INTEGER,
+            per_page          INTEGER,
+            cached_at         TEXT NOT NULL,
+            synced_at         TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_document_query_cache_lookup
+            ON document_query_cache (cache_key, page);
 
         CREATE TABLE IF NOT EXISTS clients (
             id                    INTEGER PRIMARY KEY,
@@ -150,6 +197,7 @@ function createTables(dbInstance) {
             phone                 TEXT,
             address               TEXT,
             type                  TEXT DEFAULT 'person',
+            gender                TEXT DEFAULT 'X',
             status                TEXT DEFAULT 'active',
             notes                 TEXT,
             data_json             TEXT,
@@ -171,6 +219,28 @@ function createTables(dbInstance) {
             data_json   TEXT,
             synced_at   TEXT
         );
+
+        CREATE TABLE IF NOT EXISTS requisitos (
+            id         INTEGER PRIMARY KEY,
+            type       TEXT,
+            title      TEXT,
+            deleted_at TEXT,
+            updated_at TEXT,
+            synced_at  TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS plantilla_requisitos (
+            id           INTEGER PRIMARY KEY,
+            template_id  INTEGER,
+            requisito_id INTEGER,
+            id_campo     INTEGER,
+            NEntidad     INTEGER DEFAULT 1,
+            deleted_at   TEXT,
+            synced_at    TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_plantilla_requisitos_template
+            ON plantilla_requisitos (template_id);
 
         CREATE TABLE IF NOT EXISTS sync_meta (
             resource    TEXT PRIMARY KEY,
@@ -206,6 +276,30 @@ function createTables(dbInstance) {
             name      TEXT,
             data_json TEXT,
             synced_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS jurisdicciones (
+            id        INTEGER PRIMARY KEY,
+            nombre    TEXT,
+            data_json TEXT,
+            synced_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS competencias (
+            id        INTEGER PRIMARY KEY,
+            fuero     TEXT,
+            data_json TEXT,
+            synced_at TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS dependencias_judiciales (
+            id             INTEGER PRIMARY KEY,
+            jurisdiccion_id INTEGER,
+            competencia_id  INTEGER,
+            radicacion_id   INTEGER,
+            nombre_juzgado  TEXT,
+            data_json       TEXT,
+            synced_at       TEXT
         );
 
         CREATE TABLE IF NOT EXISTS tipo_expedientes (
@@ -324,6 +418,12 @@ function createTables(dbInstance) {
             suit_case_id INTEGER NOT NULL,
             client_id    INTEGER NOT NULL,
             PRIMARY KEY (suit_case_id, client_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS case_tipo_expediente (
+            suit_case_id       INTEGER NOT NULL,
+            tipo_expediente_id INTEGER NOT NULL,
+            PRIMARY KEY (suit_case_id, tipo_expediente_id)
         );
 
         CREATE TABLE IF NOT EXISTS public_file_catalogs (

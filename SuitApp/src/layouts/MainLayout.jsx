@@ -1,15 +1,17 @@
-import React, { useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import Sidebar from '../components/Sidebar';
 import { CommandPalette } from '../components/ui/CommandPalette';
 import { HotkeysHelpModal } from '../components/ui/HotkeysHelpModal';
 import { useHotkeyAction } from '../hotkeys/useHotkeysSystem';
 import { HOTKEY_ACTIONS } from '../hotkeys/hotkeys';
 import { useTheme } from '../context/ThemeContext';
+import { useTabs } from '../context/TabsContext';
+import { TabBar } from '../components/TabBar/TabBar';
+import { TabsContainer } from '../components/TabBar/TabsContainer';
 
 const MainLayout = () => {
-    const navigate = useNavigate();
     const { toggleTheme } = useTheme();
+    const { openTab } = useTabs();
 
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
     const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
@@ -23,7 +25,7 @@ const MainLayout = () => {
     });
 
     useHotkeyAction(HOTKEY_ACTIONS.OPEN_SETTINGS, () => {
-        navigate('/settings');
+        openTab('/settings');
     });
 
     useHotkeyAction(HOTKEY_ACTIONS.TOGGLE_THEME, () => {
@@ -46,9 +48,11 @@ const MainLayout = () => {
                 <CommandPalette onClose={() => setIsCommandPaletteOpen(false)} />
             ) : null}
             <HotkeysHelpModal isOpen={isHelpModalOpen} onClose={() => setIsHelpModalOpen(false)} />
-            <main className="flex-1 overflow-auto">
-                <div className="p-8">
-                    <Outlet />
+
+            <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+                <TabBar />
+                <div className="p-8 flex-1 min-h-0 overflow-hidden flex flex-col">
+                    <TabsContainer />
                 </div>
             </main>
         </div>

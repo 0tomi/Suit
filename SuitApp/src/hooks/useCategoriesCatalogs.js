@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Activity, Book, Briefcase, FileText, Landmark, Scale, Wallet, Calendar } from 'lucide-react';
+import { Activity, Book, Briefcase, FileText, Landmark, Scale, Wallet, Calendar, Users, Gavel } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useCaseTypes } from '../context/CaseTypesContext.jsx';
 import { useEventTypes } from '../context/EventTypesContext.jsx';
@@ -8,12 +8,20 @@ import { useTipoPagos } from '../context/TipoPagosContext.jsx';
 import { useGastoCatalogo } from '../context/GastoCatalogoContext.jsx';
 import { useRoles } from '../context/RolesContext.jsx';
 import { useRadicaciones } from '../context/RadicacionesContext.jsx';
+import { useJurisdicciones } from '../context/JurisdiccionesContext.jsx';
+import { useCompetencias } from '../context/CompetenciasContext.jsx';
 import { createCaseType, deleteCaseType, updateCaseType, createEventType, deleteEventType, updateEventType } from '../services/adminService.js';
 import { createTipoExpediente, deleteTipoExpediente, updateTipoExpediente } from '../services/tipoExpedienteService.js';
 import { createTipoPago, deleteTipoPago, updateTipoPago } from '../services/tipoPagoService.js';
 import { createGastoCatalogo, deleteGastoCatalogo, updateGastoCatalogo } from '../services/gastoCatalogoService.js';
 import { createRol, deleteRol, updateRol } from '../services/rolService.js';
-import { createRadicacion, deleteRadicacion, updateRadicacion } from '../services/radicacionService.js';
+import { createRadicacion, updateRadicacion } from '../services/radicacionService.js';
+import { createJurisdiccion, updateJurisdiccion, deleteJurisdiccion, createCompetencia, updateCompetencia, deleteCompetencia } from '../services/jurisdiccionService.js';
+// No se requieren las funciones de sync directamente aquí si se usan los contextos de recarga.
+
+import JurisdiccionesCatalogSection from '../components/categories/JurisdiccionesCatalogSection.jsx';
+import RadicacionModal from '../components/categories/modals/RadicacionModal.jsx';
+import CompetenciaModal from '../components/categories/modals/CompetenciaModal.jsx';
 import {
     extractRoleFromMutation,
     invalidateRolesSyncMeta,
@@ -55,6 +63,10 @@ function createCatalogConfig({
     onCreate,
     onUpdate,
     onDelete,
+    onRefresh,
+    canEdit,
+    component,
+    componentProps,
 }) {
     return {
         id,
@@ -74,6 +86,10 @@ function createCatalogConfig({
         onCreate,
         onUpdate,
         onDelete,
+        onRefresh,
+        canEdit,
+        component,
+        componentProps,
     };
 }
 
@@ -84,6 +100,9 @@ function createCatalogConfig({
 export function useCategoriesCatalogs() {
     const { user } = useAuth();
     const isAdmin = user?.role === 'admin';
+    const isLawyer = user?.role === 'lawyer';
+    const canEditGeneral = isAdmin;
+    const canEditJudicial = isAdmin || isLawyer;
 
     const {
         case_types: caseTypes = [],
@@ -128,6 +147,18 @@ export function useCategoriesCatalogs() {
         syncing: radicacionesSyncing,
         refreshRadicaciones,
     } = useRadicaciones();
+    const {
+        data: jurisdicciones = [],
+        initialized: jurisdiccionesInitialized,
+        syncing: jurisdiccionesSyncing,
+        refreshJurisdicciones,
+    } = useJurisdicciones();
+    const {
+        data: competencias = [],
+        initialized: competenciasInitialized,
+        syncing: competenciasSyncing,
+        refreshCompetencias,
+    } = useCompetencias();
 
     const groups = useMemo(() => {
         const ensureAdminMutation = () => {
@@ -149,8 +180,8 @@ export function useCategoriesCatalogs() {
             void refreshRoles();
         };
 
-        const runMutation = async (mutation, refresh, fallbackMessage, ...args) => {
-            ensureAdminMutation();
+        const runMutation = async (mutation, refresh, fallbackMessage, permission = isAdmin, ...args) => {
+            if (!permission) throw new Error('No tienes permisos para modificar este catálogo.');
             const result = await assertMutation(await mutation(...args), fallbackMessage);
             await refresh();
             return result;
@@ -197,8 +228,18 @@ export function useCategoriesCatalogs() {
 
         const normalizedRadicaciones = sortByField(radicaciones.map((item) => ({
             id: item.id,
-            name: item.name || item.nombre_lugar || '',
-        })), 'name');
+            tipo: item.name || item.tipo || '',
+        })), 'tipo');
+
+        const normalizedJurisdicciones = sortByField(jurisdicciones.map((item) => ({
+            id: item.id,
+            nombre: item.nombre || '',
+        })), 'nombre');
+
+        const normalizedCompetencias = sortByField(competencias.map((item) => ({
+            id: item.id,
+            fuero: item.fuero || '',
+        })), 'fuero');
 
         return [
             {
@@ -224,6 +265,9 @@ export function useCategoriesCatalogs() {
                             { key: 'description', label: 'Descripción', placeholder: 'Opcional', emptyLabel: 'Sin descripción' },
                             { key: 'eventColor', label: 'Color', type: 'color', defaultValue: '#10b981' },
                         ],
+                        componentProps: { 
+                            CreateModal: CompetenciaModal 
+                        },
                         items: normalizedCaseTypes,
                         initialized: caseTypesInitialized,
                         syncing: caseTypesSyncing,
@@ -231,6 +275,7 @@ export function useCategoriesCatalogs() {
                             createCaseType,
                             refreshCaseTypes,
                             'No se pudo crear el fuero.',
+                            canEditGeneral,
                             {
                                 name: payload.name?.trim(),
                                 description: payload.description?.trim() || null,
@@ -241,6 +286,7 @@ export function useCategoriesCatalogs() {
                             updateCaseType,
                             refreshCaseTypes,
                             'No se pudo actualizar el fuero.',
+                            canEditGeneral,
                             id,
                             {
                                 name: payload.name?.trim(),
@@ -248,7 +294,9 @@ export function useCategoriesCatalogs() {
                                 eventColor: payload.eventColor || '#10b981',
                             },
                         ),
-                        onDelete: (id) => runMutation(deleteCaseType, refreshCaseTypes, 'No se pudo eliminar el fuero.', id),
+                        onDelete: (id) => runMutation(deleteCaseType, refreshCaseTypes, 'No se pudo eliminar el fuero.', canEditGeneral, id),
+                        onRefresh: refreshCaseTypes,
+                        canEdit: canEditGeneral,
                     }),
                     createCatalogConfig({
                         id: 'tipos-expediente',
@@ -273,6 +321,7 @@ export function useCategoriesCatalogs() {
                             createTipoExpediente,
                             refreshTipoExpedientes,
                             'No se pudo crear el tipo de expediente.',
+                            canEditGeneral,
                             {
                                 titulo: payload.title?.trim(),
                                 detalles: payload.details?.trim() || null,
@@ -282,45 +331,16 @@ export function useCategoriesCatalogs() {
                             updateTipoExpediente,
                             refreshTipoExpedientes,
                             'No se pudo actualizar el tipo de expediente.',
+                            canEditGeneral,
                             id,
                             {
                                 titulo: payload.title?.trim(),
                                 detalles: payload.details?.trim() || null,
                             },
                         ),
-                        onDelete: (id) => runMutation(deleteTipoExpediente, refreshTipoExpedientes, 'No se pudo eliminar el tipo de expediente.', id),
-                    }),
-                    createCatalogConfig({
-                        id: 'radicaciones',
-                        testId: 'radicaciones',
-                        label: 'Radicaciones',
-                        singularLabel: 'Radicación',
-                        badgeLabel: 'Catálogo judicial',
-                        description: 'Lista de juzgados, tribunales y organismos donde se radican las causas.',
-                        emptyMessage: 'Todavía no hay radicaciones registradas.',
-                        emptyPluralLabel: 'radicaciones',
-                        emptyIcon: Book,
-                        primaryField: 'name',
-                        fields: [
-                            { key: 'name', label: 'Nombre', required: true, emphasis: true, placeholder: 'Ej: Juzgado Federal de Corrientes' },
-                        ],
-                        items: normalizedRadicaciones,
-                        initialized: radicacionesInitialized,
-                        syncing: radicacionesSyncing,
-                        onCreate: (payload) => runMutation(
-                            createRadicacion,
-                            refreshRadicaciones,
-                            'No se pudo crear la radicación.',
-                            { nombre_lugar: payload.name?.trim() },
-                        ),
-                        onUpdate: (id, payload) => runMutation(
-                            updateRadicacion,
-                            refreshRadicaciones,
-                            'No se pudo actualizar la radicación.',
-                            id,
-                            { nombre_lugar: payload.name?.trim() },
-                        ),
-                        onDelete: (id) => runMutation(deleteRadicacion, refreshRadicaciones, 'No se pudo eliminar la radicación.', id),
+                        onDelete: (id) => runMutation(deleteTipoExpediente, refreshTipoExpedientes, 'No se pudo eliminar el tipo de expediente.', canEditGeneral, id),
+                        onRefresh: refreshTipoExpedientes,
+                        canEdit: canEditGeneral,
                     }),
                     createCatalogConfig({
                         id: 'roles',
@@ -331,7 +351,7 @@ export function useCategoriesCatalogs() {
                         description: 'Roles procesales y funcionales asociados a las partes del caso.',
                         emptyMessage: 'Todavía no hay roles registrados.',
                         emptyPluralLabel: 'roles',
-                        emptyIcon: Scale,
+                        emptyIcon: Users,
                         primaryField: 'titulo',
                         fields: [
                             { key: 'titulo', label: 'Título', required: true, emphasis: true, placeholder: 'Ej: Perito' },
@@ -359,10 +379,100 @@ export function useCategoriesCatalogs() {
                             return result;
                         },
                         onDelete: async (id) => {
-                            ensureAdminMutation();
+                            if (!isAdmin) throw new Error('Solo los administradores pueden modificar catálogos.');
                             const result = await assertMutation(await deleteRol(id), 'No se pudo eliminar el rol.');
                             await deleteRoleAndRefresh(id);
                             return result;
+                        },
+                        onRefresh: refreshRoles,
+                        canEdit: isAdmin,
+                    }),
+                    createCatalogConfig({
+                        id: 'radicaciones',
+                        testId: 'radicaciones',
+                        label: 'Radicaciones',
+                        singularLabel: 'Radicación',
+                        badgeLabel: 'Catálogo judicial',
+                        description: 'Lista de juzgados, tribunales y organismos donde se radican las causas.',
+                        emptyMessage: 'Todavía no hay radicaciones registradas.',
+                        emptyPluralLabel: 'radicaciones',
+                        emptyIcon: Book,
+                        primaryField: 'tipo',
+                        fields: [
+                            { key: 'tipo', label: 'Tipo de Radicación', required: true, emphasis: true, placeholder: 'Ej: Provincial, Federal, Administrativo' },
+                        ],
+                        items: normalizedRadicaciones,
+                        componentProps: { 
+                            CreateModal: RadicacionModal 
+                        },
+                        initialized: radicacionesInitialized,
+                        syncing: radicacionesSyncing,
+                        onCreate: (payload) => runMutation(
+                            createRadicacion,
+                            refreshRadicaciones,
+                            'No se pudo crear la radicación.',
+                            canEditJudicial,
+                            { tipo: payload.tipo?.trim() },
+                        ),
+                        onUpdate: (id, payload) => runMutation(
+                            updateRadicacion,
+                            refreshRadicaciones,
+                            'No se pudo actualizar la radicación.',
+                            canEditJudicial,
+                            id,
+                            { tipo: payload.tipo?.trim() },
+                        ),
+                        onRefresh: refreshRadicaciones,
+                        canEdit: canEditJudicial,
+                    }),
+                    createCatalogConfig({
+                        id: 'jurisdicciones',
+                        testId: 'jurisdicciones',
+                        label: 'Jurisdicciones',
+                        singularLabel: 'Jurisdicción',
+                        badgeLabel: 'Catálogo judicial',
+                        description: 'Organización territorial de la justicia.',
+                        emptyMessage: 'No hay jurisdicciones cargadas.',
+                        emptyPluralLabel: 'jurisdicciones',
+                        emptyIcon: Landmark,
+                        primaryField: 'nombre',
+                        fields: [
+                            { key: 'nombre', label: 'Nombre', required: true, emphasis: true },
+                        ],
+                        items: normalizedJurisdicciones,
+                        initialized: jurisdiccionesInitialized,
+                        syncing: jurisdiccionesSyncing,
+                        onCreate: (payload) => runMutation(createJurisdiccion, refreshJurisdicciones, 'No se pudo crear.', canEditJudicial, payload),
+                        onUpdate: (id, payload) => runMutation(updateJurisdiccion, refreshJurisdicciones, 'No se pudo actualizar.', canEditJudicial, id, payload),
+                        onDelete: (id) => runMutation(deleteJurisdiccion, refreshJurisdicciones, 'No se pudo eliminar.', canEditJudicial, id),
+                        onRefresh: refreshJurisdicciones,
+                        canEdit: canEditJudicial,
+                        component: JurisdiccionesCatalogSection,
+                    }),
+                    createCatalogConfig({
+                        id: 'competencias',
+                        testId: 'competencias',
+                        label: 'Competencias',
+                        singularLabel: 'Competencia',
+                        badgeLabel: 'Catálogo judicial',
+                        description: 'Fueros y especialidades judiciales.',
+                        emptyMessage: 'No hay competencias cargadas.',
+                        emptyPluralLabel: 'competencias',
+                        emptyIcon: Gavel,
+                        primaryField: 'fuero',
+                        fields: [
+                            { key: 'fuero', label: 'Nombre / Fuero', required: true, emphasis: true },
+                        ],
+                        items: normalizedCompetencias,
+                        initialized: competenciasInitialized,
+                        syncing: competenciasSyncing,
+                        onCreate: (payload) => runMutation(createCompetencia, refreshCompetencias, 'No se pudo crear.', canEditJudicial, payload),
+                        onUpdate: (id, payload) => runMutation(updateCompetencia, refreshCompetencias, 'No se pudo actualizar.', canEditJudicial, id, payload),
+                        onDelete: (id) => runMutation(deleteCompetencia, refreshCompetencias, 'No se pudo eliminar.', canEditJudicial, id),
+                        onRefresh: refreshCompetencias,
+                        canEdit: canEditJudicial,
+                        componentProps: { 
+                            CreateModal: CompetenciaModal 
                         },
                     }),
                 ],
@@ -411,7 +521,9 @@ export function useCategoriesCatalogs() {
                                 color: payload.color || '#3b82f6',
                             },
                         ),
-                        onDelete: (id) => runMutation(deleteEventType, refreshEventTypes, 'No se pudo eliminar el tipo de evento.', id),
+                        onDelete: (id) => runMutation(deleteEventType, refreshEventTypes, 'No se pudo eliminar el tipo de evento.', isAdmin, id),
+                        onRefresh: refreshEventTypes,
+                        canEdit: isAdmin,
                     }),
                 ],
             },
@@ -459,7 +571,9 @@ export function useCategoriesCatalogs() {
                                 detalles: payload.detalles?.trim() || null,
                             },
                         ),
-                        onDelete: (id) => runMutation(deleteGastoCatalogo, refreshGastosCatalogo, 'No se pudo eliminar el tipo de gasto.', id),
+                        onDelete: (id) => runMutation(deleteGastoCatalogo, refreshGastosCatalogo, 'No se pudo eliminar el tipo de gasto.', isAdmin, id),
+                        onRefresh: refreshGastosCatalogo,
+                        canEdit: isAdmin,
                     }),
                     createCatalogConfig({
                         id: 'tipos-pago',
@@ -480,7 +594,9 @@ export function useCategoriesCatalogs() {
                         syncing: tipoPagosSyncing,
                         onCreate: (payload) => runMutation(createTipoPago, refreshTipoPagos, 'No se pudo crear el tipo de pago.', { titulo: payload.name?.trim() }),
                         onUpdate: (id, payload) => runMutation(updateTipoPago, refreshTipoPagos, 'No se pudo actualizar el tipo de pago.', id, { titulo: payload.name?.trim() }),
-                        onDelete: (id) => runMutation(deleteTipoPago, refreshTipoPagos, 'No se pudo eliminar el tipo de pago.', id),
+                        onDelete: (id) => runMutation(deleteTipoPago, refreshTipoPagos, 'No se pudo eliminar el tipo de pago.', isAdmin, id),
+                        onRefresh: refreshTipoPagos,
+                        canEdit: isAdmin,
                     }),
                 ],
             },
@@ -499,10 +615,18 @@ export function useCategoriesCatalogs() {
         radicaciones,
         radicacionesInitialized,
         radicacionesSyncing,
+        jurisdicciones,
+        jurisdiccionesInitialized,
+        jurisdiccionesSyncing,
+        competencias,
+        competenciasInitialized,
+        competenciasSyncing,
         refreshCaseTypes,
         refreshEventTypes,
         refreshGastosCatalogo,
         refreshRadicaciones,
+        refreshJurisdicciones,
+        refreshCompetencias,
         refreshRoles,
         refreshTipoExpedientes,
         refreshTipoPagos,
@@ -516,10 +640,14 @@ export function useCategoriesCatalogs() {
         tipoPagos,
         tipoPagosInitialized,
         tipoPagosSyncing,
+        canEditJudicial,
+        canEditGeneral,
     ]);
 
     return {
         isAdmin,
+        isLawyer,
+        canEditJudicial,
         groups,
     };
 }

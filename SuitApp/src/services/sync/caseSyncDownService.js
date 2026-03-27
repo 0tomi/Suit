@@ -21,6 +21,7 @@ import { buildEntregaCacheRow } from '../cache/entregaCacheRow.js';
 import { buildParteCacheRow, buildParteCasoRow } from '../cache/parteCasoRow.js';
 import { buildMultimediaCacheRow } from '../cache/multimediaCacheRow.js';
 import { buildFileCacheRow } from '../cache/fileCacheRow.js';
+import { buildCaseCacheRow } from '../cache/caseCacheRow.js';
 import { createLogger } from '../logService.js';
 
 const logger = createLogger('sync:case-syncdown');
@@ -97,10 +98,29 @@ function buildClientCacheRow(client) {
         phone: client.phone || null,
         address: client.address || null,
         type: client.type || 'person',
+        gender: client.gender || 'X',
         status: client.status || 'active',
         notes: client.notes || null,
         data_json: JSON.stringify(client),
         synced_at: new Date().toISOString(),
+    };
+}
+
+function buildTipoExpedienteCacheRow(tipo) {
+    return {
+        id: tipo.id,
+        case_type_id: tipo.case_type_id || null,
+        title: tipo.title || tipo.titulo || null,
+        details: tipo.details || tipo.detalles || null,
+        data_json: JSON.stringify(tipo),
+        synced_at: new Date().toISOString(),
+    };
+}
+
+function buildCaseTipoExpedientePivotRow(caseId, tipoExpedienteId) {
+    return {
+        suit_case_id: Number(caseId),
+        tipo_expediente_id: Number(tipoExpedienteId),
     };
 }
 
@@ -121,7 +141,7 @@ function normalizeArray(payload) {
  * @returns {{ upToDate: string[], stale: string[], noCache: boolean }}
  */
 function classifyEntities(serverTimestamps, localMeta) {
-    const entities = ['partes', 'gastos', 'honorarios', 'documentos', 'eventos', 'clientes', 'multimedia', 'archivos'];
+    const entities = ['case', 'partes', 'gastos', 'honorarios', 'documentos', 'eventos', 'clientes', 'multimedia', 'archivos'];
     const upToDate = [];
     const stale = [];
 
@@ -203,6 +223,49 @@ async function persistSyncDownData(caseId, syncDownPayload) {
     if (!api) return;
 
     const tasks = [];
+    const hasTipoExpedientesPayload = Object.prototype.hasOwnProperty.call(syncDownPayload, 'tipo_expedientes');
+    const tipoExpedientes = hasTipoExpedientesPayload
+        ? normalizeArray(syncDownPayload.tipo_expedientes)
+        : [];
+
+    if (hasTipoExpedientesPayload) {
+        tasks.push(
+            (async () => {
+                await api.db.upsertMany('tipo_expedientes', tipoExpedientes.map(buildTipoExpedienteCacheRow));
+                await api.db.deleteWhere('case_tipo_expediente', { suit_case_id: caseId });
+                await api.db.upsertMany(
+                    'case_tipo_expediente',
+                    tipoExpedientes.map((tipo) => buildCaseTipoExpedientePivotRow(caseId, tipo.id)),
+                );
+            })()
+        );
+    }
+
+    // Caso principal — si el delta trae metadata del expediente, la devolvemos fresca
+    // y persistimos una versión mergeada con las relaciones ya cacheadas.
+    if (syncDownPayload.case || hasTipoExpedientesPayload) {
+        tasks.push(
+            (async () => {
+                const existingRow = await api.db.getById('cases', caseId);
+                const cachedCase = existingRow ? JSON.parse(existingRow.data_json) : {};
+                const mergedCase = {
+                    ...cachedCase,
+                    ...syncDownPayload.case,
+                    tipo_expedientes: hasTipoExpedientesPayload ? tipoExpedientes : (syncDownPayload.case?.tipo_expedientes || cachedCase.tipo_expedientes || []),
+                    linkedTipoExpedientes: hasTipoExpedientesPayload ? tipoExpedientes : (syncDownPayload.case?.linkedTipoExpedientes || cachedCase.linkedTipoExpedientes || []),
+                    // Optional chaining: la API no siempre devuelve una clave 'case' en el payload
+                    // de syncDown (ej: cuando solo vienen tipo_expedientes). Sin ?. se tiraría
+                    // un TypeError que silenciaría todo el bloque y descartaría los tipo_expedientes.
+                    linkedParticipants: syncDownPayload.case?.linkedParticipants || cachedCase.linkedParticipants || [],
+                    linkedClients: syncDownPayload.case?.linkedClients || cachedCase.linkedClients || [],
+                    linkedParties: syncDownPayload.case?.linkedParties || cachedCase.linkedParties || [],
+                };
+
+                await api.db.upsertMany('cases', [buildCaseCacheRow(mergedCase)]);
+                syncDownPayload.case = mergedCase;
+            })()
+        );
+    }
 
     // Honorarios
     const honorarios = normalizeArray(syncDownPayload.honorarios);
@@ -417,7 +480,16 @@ export async function syncCaseDown(caseId) {
                 return { changed: false, data: null, staleEntities: stale };
             }
 
-            // Persistimos antes de resolver para que overview y agenda del caso
+            // Inyectar flag is_new para que el frontend pueda identificar items nuevos.
+            ['documentos', 'eventos', 'multimedia', 'archivos'].forEach((key) => {
+                if (syncDownData[key] && Array.isArray(syncDownData[key])) {
+                    syncDownData[key].forEach((item) => {
+                        item.is_new = true;
+                    });
+                }
+            });
+
+            // 7. Persistimos antes de resolver para que overview y agenda del caso
             // lean una cache coherente apenas termina el chequeo de frescura.
             await persistSyncDownData(caseId, syncDownData);
             logger.info('persist complete', { caseId });

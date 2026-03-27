@@ -54,7 +54,9 @@ export default defineConfig({
             return 'vendor-lucide';
           }
           // React core + ReactDOM + React Router
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react-router')) {
+          // Regex: matchea react/, react-dom/, react-router/, react-router-dom/
+          // sin capturar otros paquetes como react-big-calendar, react-photo-album
+          if (/node_modules\/react(?:-dom|-router(?:-dom)?)?\//.test(id)) {
             return 'vendor-react';
           }
         },

@@ -13,12 +13,40 @@ export async function syncCases() {
 async function fetchAndCacheCases() {
     logger.info('fetch start');
     const cases = await getOpenCases();
-    
+
     logger.info('response received', { payload: summarizePayload(cases) });
 
     const items = extractMetadataCollection(cases, 'cases') || [];
     logger.info('extracted items', { count: items.length });
-    const rows = items.map(buildCaseCacheRow).filter(Boolean);
+
+    // La API no devuelve tipo_expedientes en GET /cases/open.
+    // Antes de limpiar la tabla, preservamos los que ya teníamos cacheados
+    // (guardados en data_json al crear/editar el caso) para no perderlos en cada sync.
+    const existingRows = await window.electronAPI.db.getAll('cases').catch(() => []);
+    const tiposByCase = new Map();
+    for (const row of (existingRows || [])) {
+        if (!row.data_json) continue;
+        try {
+            const parsed = JSON.parse(row.data_json);
+            const tipos = parsed?.linkedTipoExpedientes;
+            if (Array.isArray(tipos) && tipos.length > 0) {
+                tiposByCase.set(String(row.id), tipos);
+            }
+        } catch { /* ignorar filas con data_json inválido */ }
+    }
+
+    const rows = items.map((item) => {
+        const row = buildCaseCacheRow(item);
+        if (!row) return null;
+        const tipos = tiposByCase.get(String(row.id));
+        if (!tipos) return row;
+        // Mergear tipos preservados en data_json para que CaseDetailTabContent los lea
+        try {
+            const merged = { ...JSON.parse(row.data_json), linkedTipoExpedientes: tipos };
+            return { ...row, data_json: JSON.stringify(merged) };
+        } catch { return row; }
+    }).filter(Boolean);
+
     logger.info('mapped rows', { rowCount: rows.length });
 
     await window.electronAPI.db.clearTable('cases');

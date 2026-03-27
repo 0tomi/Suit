@@ -37,6 +37,7 @@ export function buildClientCacheRow(client, existingClient = null) {
         phone: toNullableString(merged.phone),
         address: toNullableString(merged.address),
         type: toNullableString(merged.type, 'person'),
+        gender: toNullableString(merged.gender, 'X'),
         status: toNullableString(merged.status, 'active'),
         notes: toNullableString(merged.notes),
         data_json: JSON.stringify(merged),

@@ -109,7 +109,7 @@ const matchCombo = (combo, event) => {
 
 const resolveScopeFromPath = (pathname = '') => {
     if (!pathname) return 'global';
-    if (pathname.startsWith('/clients')) return 'clientes';
+    if (pathname.startsWith('/people')) return 'clientes';
     if (pathname.startsWith('/cases')) return 'casos';
     if (pathname.startsWith('/documents')) return 'documentos';
     if (pathname.startsWith('/agenda') || pathname === '/') return 'agenda';
@@ -122,11 +122,15 @@ export const HotkeysProvider = ({ children }) => {
     const [hotkeysConfig, setHotkeysConfig] = useState(() => getCustomHotkeysConfig());
     const [isEnabled, setIsEnabled] = useState(() => {
         if (typeof window === 'undefined') return true;
-        const stored = window.localStorage?.getItem('hotkeys-enabled');
+        const storage = window.localStorage;
+        const stored = typeof storage?.getItem === 'function'
+            ? storage.getItem('hotkeys-enabled')
+            : null;
         return stored !== 'false';
     });
 
     const listenersRef = useRef(new Map());
+    const suspendedScopesRef = useRef(new Set());
 
     const currentScope = useMemo(
         () => resolveScopeFromPath(location.pathname),
@@ -155,7 +159,19 @@ export const HotkeysProvider = ({ children }) => {
     useEffect(() => {
         const handleKeyDown = (event) => {
             if (!isEnabled) return;
+            const suspendAllExceptEscape = suspendedScopesRef.current.size > 0;
+            if (suspendAllExceptEscape && normalizeEventKey(event.key) !== 'escape') {
+                return;
+            }
             const target = event.target;
+            const isModalOpen = !!document.querySelector('[role="dialog"]');
+            
+            // Si hay un modal abierto, bloqueamos hotkeys que no usen modificadores 
+            // (a menos que sea el escape o las flechas si hiciera falta)
+            if (isModalOpen && !(event.metaKey || event.ctrlKey || event.altKey) && event.key !== 'Escape') {
+                return;
+            }
+
             if (isTextInput(target) && !(event.metaKey || event.ctrlKey || event.altKey)) {
                 return;
             }
@@ -200,7 +216,10 @@ export const HotkeysProvider = ({ children }) => {
         setIsEnabled((prev) => {
             const next = !prev;
             if (typeof window !== 'undefined') {
-                window.localStorage?.setItem('hotkeys-enabled', String(next));
+                const storage = window.localStorage;
+                if (typeof storage?.setItem === 'function') {
+                    storage.setItem('hotkeys-enabled', String(next));
+                }
             }
             return next;
         });
@@ -216,6 +235,15 @@ export const HotkeysProvider = ({ children }) => {
         setHotkeysConfig(getCustomHotkeysConfig());
     }, []);
 
+    const suspendAllHotkeysExceptEscape = useCallback(() => {
+        const token = Symbol('hotkeys-suspension');
+        suspendedScopesRef.current.add(token);
+
+        return () => {
+            suspendedScopesRef.current.delete(token);
+        };
+    }, []);
+
     const contextValue = useMemo(() => ({
         isEnabled,
         toggleHotkeys,
@@ -225,6 +253,7 @@ export const HotkeysProvider = ({ children }) => {
         resetHotkeys,
         onAction,
         offAction,
+        suspendAllHotkeysExceptEscape,
     }), [
         currentScope,
         hotkeysConfig,
@@ -232,6 +261,7 @@ export const HotkeysProvider = ({ children }) => {
         offAction,
         onAction,
         resetHotkeys,
+        suspendAllHotkeysExceptEscape,
         toggleHotkeys,
         updateHotkey,
     ]);

@@ -2,6 +2,8 @@ import { createElement, useState } from 'react';
 import CategoriesGroupPanel from '../components/categories/CategoriesGroupPanel.jsx';
 import CategoriesCatalogSection from '../components/categories/CategoriesCatalogSection.jsx';
 import { useCategoriesCatalogs } from '../hooks/useCategoriesCatalogs.js';
+import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
+import { categoriasSteps } from '../constants/tutorialSteps.js';
 
 /**
  * Punto central para todos los catálogos funcionales de la aplicación.
@@ -26,13 +28,18 @@ export default function Categories() {
     };
 
     return (
-        <div className="mx-auto max-w-[1920px] px-8 py-8 md:px-12">
+        <div className="mx-auto max-w-[1920px] p-8">
             <header className="mb-10 flex flex-col items-center justify-between gap-6 overflow-hidden sm:flex-row">
                 <h1
                     data-testid="page-categorias-title"
-                    className="flex shrink-0 items-center gap-4 text-4xl font-extrabold tracking-tight text-(--text-primary)"
+                    className="flex shrink-0 items-center gap-4 text-3xl font-bold tracking-tight text-(--text-primary)"
                 >
-                    Categorías
+                    <span>Categorías</span>
+                    <SectionTutorialTrigger
+                        steps={categoriasSteps}
+                        ariaLabel="Ver tutorial de la sección"
+                        testId="categories-tutorial-trigger"
+                    />
                 </h1>
 
                 {/* Navegación horizontal de Niveles Superiores (Grupos) */}
@@ -46,14 +53,14 @@ export default function Categories() {
                                 data-testid={`categories-group-${group.testId}`}
                                 className={`
                                     relative flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-sm font-bold transition-all duration-300
-                                    ${isActive 
-                                        ? 'bg-(--bg-card) text-blue-600 shadow-[0_2px_8px_rgba(37,99,235,0.12)] border border-blue-500/20' 
+                                    ${isActive
+                                        ? 'bg-(--bg-card) text-blue-600 shadow-[0_2px_8px_rgba(37,99,235,0.12)] border border-blue-500/20'
                                         : 'text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-card)/50 border border-transparent'
                                     }
                                 `}
                             >
-                                {group.icon && createElement(group.icon, { 
-                                    className: `h-4 w-4 transition-transform duration-300 ${isActive ? 'scale-110' : ''}` 
+                                {group.icon && createElement(group.icon, {
+                                    className: `h-4 w-4 transition-transform duration-300 ${isActive ? 'scale-110' : ''}`
                                 })}
                                 {group.label}
                                 {isActive && (
@@ -79,11 +86,21 @@ export default function Categories() {
                         activeSection={activeCatalog.id}
                         onSectionChange={(catalogId) => handleCatalogChange(activeGroup.id, catalogId)}
                     >
-                        <CategoriesCatalogSection 
-                            key={activeCatalog.id} 
-                            catalog={activeCatalog} 
-                            isAdmin={isAdmin} 
-                        />
+                        {activeCatalog.component ? (
+                            createElement(activeCatalog.component, {
+                                key: activeCatalog.id,
+                                canEdit: activeCatalog.canEdit,
+                                isAdmin: isAdmin,
+                                catalog: activeCatalog,
+                            })
+                        ) : (
+                            <CategoriesCatalogSection
+                                key={activeCatalog.id}
+                                catalog={activeCatalog}
+                                canEdit={activeCatalog.canEdit}
+                                isAdmin={isAdmin}
+                            />
+                        )}
                     </CategoriesGroupPanel>
                 ) : (
                     <div className="flex h-64 items-center justify-center rounded-2xl border-2 border-dashed border-(--border-default)">

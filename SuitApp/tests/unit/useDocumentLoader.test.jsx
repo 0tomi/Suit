@@ -46,6 +46,24 @@ describe('useDocumentLoader', () => {
         expect(getDocumentContentMock).not.toHaveBeenCalled();
     });
 
+    it('hidrata un documento nuevo con contenido inicial importado', () => {
+        const db = createDbMock();
+
+        const { result } = renderHook(() => useDocumentLoader({
+            id: undefined,
+            db,
+            documents: [],
+            initialTitle: 'Contrato importado',
+            initialContent: '<p>Contenido importado</p>',
+        }));
+
+        expect(result.current.title).toBe('Contrato importado');
+        expect(result.current.content).toBe('<p>Contenido importado</p>');
+        expect(result.current.isLoading).toBe(false);
+        expect(getDocumentLastModifiedMock).not.toHaveBeenCalled();
+        expect(getDocumentContentMock).not.toHaveBeenCalled();
+    });
+
     it('usa cache local y revalida cuando hay una version remota mas nueva', async () => {
         const localRow = {
             id: 3,

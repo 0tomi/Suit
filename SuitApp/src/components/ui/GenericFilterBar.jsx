@@ -78,10 +78,14 @@ export const GenericFilterBar = ({
                     {children}
 
                     {sortOptions.length > 0 && (
-                        <div className="flex items-center gap-2 border-l pl-4 border-(--border-default)">
-                            {sortOptions.length > 1 && <span className="text-sm text-(--text-tertiary)">Ordenar por:</span>}
+                        <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                            {sortOptions.length > 1 && (
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">
+                                    Ordenar por
+                                </span>
+                            )}
                             <Select value={sortBy} onValueChange={onSortByChange}>
-                                <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-8 w-auto min-w-[100px]">
+                                <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[100px] p-0 px-2">
                                     <SelectValue placeholder="Ordenar por" />
                                 </SelectTrigger>
                                 <SelectContent>

@@ -1,5 +1,17 @@
+import { getDocumentStatusLabel } from '../utils/documentStatus.js';
+
 export const DOCUMENT_FILTER_STORAGE_KEY = 'documents-filter-state';
 export const DOCUMENT_FILTER_STORAGE_VERSION = 1;
+export const DOCUMENT_SORT_OPTIONS = [
+    { value: 'updated_at:desc', label: 'Última modificación: más reciente' },
+    { value: 'updated_at:asc', label: 'Última modificación: más antigua' },
+    { value: 'created_at:desc', label: 'Creación: más reciente' },
+    { value: 'created_at:asc', label: 'Creación: más antigua' },
+    { value: 'name:asc', label: 'Nombre: A-Z' },
+    { value: 'name:desc', label: 'Nombre: Z-A' },
+];
+const ALLOWED_SORT_FIELDS = new Set(['updated_at', 'created_at', 'name']);
+const ALLOWED_SORT_DIRECTIONS = new Set(['asc', 'desc']);
 
 export const DEFAULT_DOCUMENT_FILTERS = {
     searchQuery: '',
@@ -8,12 +20,22 @@ export const DEFAULT_DOCUMENT_FILTERS = {
     includeClosedCases: false,
     selectedCreator: '',
     selectedClientId: '',
+    selectedStatus: '',
+    sortBy: 'updated_at',
+    sortDirection: 'desc',
 };
 
 function normalizeDocumentFilterState(raw) {
     if (!raw || typeof raw !== 'object') {
         return { ...DEFAULT_DOCUMENT_FILTERS };
     }
+
+    const sortBy = typeof raw.sortBy === 'string' && ALLOWED_SORT_FIELDS.has(raw.sortBy)
+        ? raw.sortBy
+        : DEFAULT_DOCUMENT_FILTERS.sortBy;
+    const sortDirection = typeof raw.sortDirection === 'string' && ALLOWED_SORT_DIRECTIONS.has(raw.sortDirection)
+        ? raw.sortDirection
+        : DEFAULT_DOCUMENT_FILTERS.sortDirection;
 
     return {
         ...DEFAULT_DOCUMENT_FILTERS,
@@ -23,6 +45,9 @@ function normalizeDocumentFilterState(raw) {
         includeClosedCases: Boolean(raw.includeClosedCases),
         selectedCreator: typeof raw.selectedCreator === 'string' ? raw.selectedCreator : DEFAULT_DOCUMENT_FILTERS.selectedCreator,
         selectedClientId: raw.selectedClientId ? String(raw.selectedClientId) : DEFAULT_DOCUMENT_FILTERS.selectedClientId,
+        selectedStatus: typeof raw.selectedStatus === 'string' ? raw.selectedStatus : DEFAULT_DOCUMENT_FILTERS.selectedStatus,
+        sortBy,
+        sortDirection,
     };
 }
 
@@ -111,6 +136,10 @@ export function filterDocuments(documents, filters, casesMap) {
 
             const hasClient = getCaseClients(caseForDoc).some((client) => String(client.id) === filters.selectedClientId);
             if (!hasClient) return false;
+        }
+
+        if (filters.selectedStatus) {
+            if (getDocumentStatusLabel(doc.status) !== filters.selectedStatus) return false;
         }
 
         return true;

@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext.jsx';
+import { useSyncStatus } from './SyncStatusContext.jsx';
 import { syncDeadlinesMonth } from '../services/sync/deadlineSyncService.js';
 import { createLogger } from '../services/logService.js';
 import { parseJsonRows } from '../utils/dbUtils.js';
@@ -43,6 +44,7 @@ function filterDeadlinesByMonths(rows, months) {
 
 export const DeadlinesProvider = ({ children }) => {
     const { user, authEpoch } = useAuth();
+    const { setSyncStatus } = useSyncStatus();
     const skipAutoSyncRef = useRef(false);
 
     const {
@@ -61,7 +63,7 @@ export const DeadlinesProvider = ({ children }) => {
         } catch (err) {
             void logger.error('loadLocalData failed', err?.message);
         }
-    }, [user]);
+    }, [user, setDeadlines]);
 
     /**
      * Sincroniza una ventana de meses y devuelve si al menos uno cambió en el servidor.
@@ -79,6 +81,7 @@ export const DeadlinesProvider = ({ children }) => {
         if (!window.electronAPI || !user) return false;
         const months = getMonthsToLoad(currentMonth, currentYear);
         setSyncing(true);
+        setSyncStatus('Deadlines', true);
         try {
             const changed = await syncMonths(months);
             await loadLocalData(months);
@@ -88,8 +91,9 @@ export const DeadlinesProvider = ({ children }) => {
             return false;
         } finally {
             setSyncing(false);
+            setSyncStatus('Deadlines', false);
         }
-    }, [currentMonth, currentYear, loadLocalData, syncMonths, user]);
+    }, [currentMonth, currentYear, loadLocalData, syncMonths, user, setSyncing, setSyncStatus]);
 
     /**
      * Repuebla vencimientos usando la misma ventana temporal del arranque en frío.
@@ -108,6 +112,7 @@ export const DeadlinesProvider = ({ children }) => {
         skipAutoSyncRef.current = shouldSkipNextAutoSync;
         setMonthYear(bootstrapMonth, bootstrapYear);
         setSyncing(true);
+        setSyncStatus('Deadlines', true);
 
         try {
             const changed = await syncMonths(months);
@@ -120,8 +125,9 @@ export const DeadlinesProvider = ({ children }) => {
             return false;
         } finally {
             setSyncing(false);
+            setSyncStatus('Deadlines', false);
         }
-    }, [currentMonth, currentYear, loadLocalData, syncMonths, user]);
+    }, [currentMonth, currentYear, loadLocalData, syncMonths, user, setInitialized, setMonthYear, setSyncing, setSyncStatus]);
 
     /**
      * Actualización optimista de un ítem en el estado local.
@@ -129,7 +135,7 @@ export const DeadlinesProvider = ({ children }) => {
      */
     const updateItem = useCallback((id, changes) => {
         setDeadlines((prev) => prev.map((d) => (d.id === id ? { ...d, ...changes } : d)));
-    }, []);
+    }, [setDeadlines]);
 
     // Reset completo al hacer logout: un único dispatch → un único re-render para todos los consumers.
     useEffect(() => {
@@ -155,6 +161,7 @@ export const DeadlinesProvider = ({ children }) => {
         // Sync en background: verifica last-modified y descarga cambios si los hay.
         // Solo recarga SQLite si al menos un mes tuvo cambios (evita IPC redundante).
         startSync();
+        setSyncStatus('Deadlines', true);
         Promise.all(months.map(({ month, year }) => syncDeadlinesMonth(month, year)))
             .then((results) => {
                 if (results.some(Boolean)) return loadLocalData(months);
@@ -163,7 +170,10 @@ export const DeadlinesProvider = ({ children }) => {
                 // Background sync periódico: fallo transitorio esperado
                 void logger.warn('background sync failed', err?.message);
             })
-            .finally(() => endSync());
+            .finally(() => {
+                endSync();
+                setSyncStatus('Deadlines', false);
+            });
 
     }, [currentMonth, currentYear, authEpoch, user]); // eslint-disable-line react-hooks/exhaustive-deps
 

@@ -26,12 +26,25 @@ import { agendaLocalizer, CALENDAR_MESSAGES } from './agendaCalendarConfig.js';
 import { startupMark, startupMarkCount } from '../../utils/startupMetrics.js';
 import { useHotkeyAction } from '../../hotkeys/useHotkeysSystem';
 import { HOTKEY_ACTIONS } from '../../hotkeys/hotkeys';
+import { usePageFocus } from '../../hooks/usePageFocus';
+import agendaMonthSyncService from '../../services/sync/agendaMonthSyncService';
 
 const AgendaComponent = ({
     caseId = null,
     caseSyncChecked = true,
     caseSyncReady = false,
+    newIds = new Set(),
+    onMarkAsSeen = () => { },
 }) => {
+    // Sincronizar al volver a la pestaña
+    usePageFocus({
+        onFocus: () => {
+            if (caseId === null) {
+                agendaMonthSyncService.syncAgendaEventsForView({});
+            }
+        },
+    });
+
     const {
         events: rawEvents,
         agendas,
@@ -148,9 +161,10 @@ const AgendaComponent = ({
         if (!initialized) return;
         if (!cal.selectedFilterAgenda) return;
 
-        // En la agenda embebida del caso, el detalle ya consultó last-modified y, si hacía falta,
-        // ejecutó syncDown antes de montar esta vista. Saltamos el refresh automático inicial
-        // para reutilizar esa cache y evitar un refetch redundante del mes actual.
+        // Si es la agenda global y no estamos en su ruta, no refrescamos para evitar carga innecesaria en background
+        if (caseId === null && location.pathname !== '/agenda' && location.pathname !== '/') return;
+
+        // En la agenda embebida del caso...
         if (caseId != null && caseId !== '') {
             if (!caseSyncChecked) return;
             if (caseSyncReady && !skippedInitialCaseRefreshRef.current) {
@@ -167,7 +181,7 @@ const AgendaComponent = ({
         return () => {
             cancelled = true;
         };
-    }, [cal.selectedFilterAgenda, caseId, caseSyncChecked, caseSyncReady, initialized, refreshVisibleRange]);
+    }, [cal.selectedFilterAgenda, caseId, caseSyncChecked, caseSyncReady, initialized, refreshVisibleRange, location.pathname]);
 
     const calendarEvents = useMemo(() => {
         return buildAgendaRenderEvents({
@@ -251,7 +265,7 @@ const AgendaComponent = ({
                 onView={setCalendarView}
                 onNavigate={handleNavigate}
             />
-            <div className="bg-(--bg-card) p-4 rounded-xl shadow-sm border border-(--border-default) overflow-hidden relative" style={{ height: 'calc(100vh - 240px)' }}>
+            <div className="bg-(--bg-card) p-2 rounded-xl shadow-sm border border-(--border-default) overflow-hidden relative" style={{ height: 'calc(100vh - 240px)' }}>
                 {agendaLoading && (
                     <div className="absolute inset-0 z-10 bg-(--bg-card) flex items-center justify-center">
                         <div className="flex items-center gap-3 text-(--text-primary)">
@@ -290,6 +304,8 @@ const AgendaComponent = ({
                                 <AgendaCalendarEventContent
                                     event={event}
                                     onOpenNotification={openNotificationModal}
+                                    isNew={newIds.has(Number(event.id))}
+                                    onMarkAsSeen={onMarkAsSeen}
                                 />
                             ),
                         }}

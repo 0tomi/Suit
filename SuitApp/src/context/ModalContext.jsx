@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useCallback, useRef } from 'react';
+import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion';
+import { useHotkeysSystem } from '../hotkeys/useHotkeysSystem.js';
 
 const ModalContext = createContext();
 export const ManagedModalIdContext = createContext(null);
@@ -11,6 +12,8 @@ export const useModal = () => useContext(ModalContext);
 export const ModalProvider = ({ children }) => {
     const [modals, setModals] = useState([]);
     const modalCounterRef = useRef(0);
+    const overlayPointerStartedModalRef = useRef(null);
+    const { suspendAllHotkeysExceptEscape } = useHotkeysSystem();
 
     const openModal = useCallback((Component, props = {}, options = {}) => {
         modalCounterRef.current += 1;
@@ -29,6 +32,11 @@ export const ModalProvider = ({ children }) => {
             return prev.slice(0, prev.length - 1);
         });
     }, []);
+
+    useEffect(() => {
+        if (modals.length === 0) return undefined;
+        return suspendAllHotkeysExceptEscape();
+    }, [modals.length, suspendAllHotkeysExceptEscape]);
     
     const contextValue = { modals, openModal, closeModal };
 
@@ -51,8 +59,16 @@ export const ModalProvider = ({ children }) => {
                     // de la aplicación (ya que el modal anterior, que tenía el overlay, ahora está oculto).
                     const overlayClass = options?.overlayClass
                         ?? (isVisible ? 'bg-(--bg-overlay) backdrop-blur-sm' : 'bg-transparent');
+                    const handleOverlayMouseDown = (event) => {
+                        overlayPointerStartedModalRef.current = event.target === event.currentTarget ? id : null;
+                    };
                     const handleOverlayClick = (event) => {
-                        if (event.target !== event.currentTarget) return;
+                        const shouldClose = (
+                            overlayPointerStartedModalRef.current === id
+                            && event.target === event.currentTarget
+                        );
+                        overlayPointerStartedModalRef.current = null;
+                        if (!shouldClose) return;
                         closeModal(id);
                     };
 
@@ -64,6 +80,7 @@ export const ModalProvider = ({ children }) => {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
+                                onMouseDown={handleOverlayMouseDown}
                                 onClick={handleOverlayClick}
                                 onKeyDown={(event) => {
                                     if (event.key === 'Escape') {

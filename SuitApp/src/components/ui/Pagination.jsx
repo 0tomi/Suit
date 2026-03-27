@@ -1,13 +1,13 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from './Button';
 
-export const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange }) => {
+export const Pagination = ({ totalItems, itemsPerPage, currentPage, onPageChange, className = '' }) => {
     const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
 
     if (totalPages <= 1) return null;
 
     return (
-        <div className="flex items-center justify-between px-4 py-3 bg-(--bg-card) border-t border-(--border-subtle) sm:px-6">
+        <div className={`flex items-center justify-between px-4 py-3 bg-(--bg-card) border-t border-(--border-subtle) sm:px-6 ${className}`}>
             <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
                 <div>
                     <p className="text-sm text-(--text-secondary)">

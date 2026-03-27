@@ -26,16 +26,18 @@ import { useAuth } from './AuthContext.jsx';
 import { useSyncStatus } from './SyncStatusContext.jsx';
 import { parseJsonRows } from '../utils/dbUtils.js';
 import { createLogger } from '../services/logService.js';
-import { syncPublicFiles } from '../services/sync/publicFileSyncService.js';
+import { syncPublicFiles, buildPublicFileCacheRow, getLatestSyncedIds } from '../services/sync/publicFileSyncService.js';
 import {
     uploadFile as apiUploadFile,
     updateFile as apiUpdateFile,
     deleteFile as apiDeleteFile,
+    getMyPermissions as apiGetMyPermissions,
     getPermissions as apiGetPermissions,
     setPermissions as apiSetPermissions,
     revokePermission as apiRevokePermission,
+    syncDown,
+    getLastModified,
 } from '../services/publicFileService.js';
-import { buildPublicFileCacheRow } from '../services/sync/publicFileSyncService.js';
 
 const PublicFilesContext = createContext(null);
 const logger = createLogger('public-files-context');
@@ -55,21 +57,17 @@ function reducer(state, action) {
             return { ...state, syncing: action.payload };
         case 'SET_INITIALIZED':
             return { ...state, initialized: action.payload };
-        case 'UPSERT_FILE': {
-            // exists se calcula sobre el array original, antes del map
-            const exists = state.allFiles.some((f) => String(f.id) === String(action.payload.id));
-            if (!exists) return { ...state, allFiles: [action.payload, ...state.allFiles] };
-            return {
-                ...state,
-                allFiles: state.allFiles.map((f) =>
-                    String(f.id) === String(action.payload.id) ? { ...f, ...action.payload } : f
-                ),
-            };
-        }
         case 'REMOVE_FILE':
             return {
                 ...state,
                 allFiles: state.allFiles.filter((f) => String(f.id) !== String(action.payload)),
+            };
+        case 'MARK_FILE_AS_SEEN':
+            return {
+                ...state,
+                allFiles: state.allFiles.map((f) =>
+                    String(f.id) === String(action.payload) ? { ...f, is_new: false } : f
+                ),
             };
         case 'RESET':
             return initialState;
@@ -89,20 +87,44 @@ export function PublicFilesProvider({ children }) {
         authEpochRef.current = authEpoch;
     }, [authEpoch]);
 
+    /**
+     * Decora un array de archivos con `is_owner_or_admin` calculado localmente.
+     * El campo no se persiste en SQLite porque es inferible y cambia por sesión.
+     */
+    const decorateFiles = useCallback((files) => {
+        const userId = user?.id ?? null;
+        const isAdmin = user?.role === 'admin';
+        return files.map((f) => ({
+            ...f,
+            is_owner_or_admin: isAdmin || String(f.user_id) === String(userId),
+        }));
+    }, [user?.id, user?.role]);
+
     /** Carga todos los archivos del cache SQLite local. */
     const loadLocalData = useCallback(async ({ epoch = authEpochRef.current } = {}) => {
         if (!window.electronAPI) return;
         try {
             const rows = await window.electronAPI.db.getAll(TABLE);
+            void logger.warn('loadLocalData — rows from SQLite', { count: rows?.length ?? 0 });
             if (authEpochRef.current !== epoch) return;
             const parsed = parseJsonRows(rows);
-            dispatch({ type: 'SET_ALL_FILES', payload: parsed });
+            dispatch({ type: 'SET_ALL_FILES', payload: decorateFiles(parsed) });
         } catch (err) {
             void logger.error('loadLocalData failed', err);
         }
-    }, []);
+    }, [decorateFiles]);
 
-    /** Lanza sync contra la API y recarga el cache local. */
+    /**
+     * Refresca los datos de la Biblioteca.
+     *
+     * Caso A — Cache vacío (primera vez o app limpia):
+     *   1. Llama a syncDown inmediatamente y despacha los resultados al estado
+     *      para que el usuario vea los archivos sin esperar la escritura a SQLite.
+     *   2. Persiste en SQLite en background (sin bloquear el render).
+     *
+     * Caso B — Cache poblado:
+     *   Usa el flujo normal de syncPublicFiles (check last-modified + incremental).
+     */
     const refreshData = useCallback(async () => {
         const epochAtStart = authEpochRef.current;
         if (isSyncingRef.current) return;
@@ -110,9 +132,67 @@ export function PublicFilesProvider({ children }) {
         dispatch({ type: 'SET_SYNCING', payload: true });
         setSyncStatus('PublicFiles', true);
         try {
-            await syncPublicFiles();
-            if (authEpochRef.current !== epochAtStart) return;
-            await loadLocalData({ epoch: epochAtStart });
+            const localRows = await window.electronAPI.db.getAll(TABLE);
+            const cacheEmpty = !localRows || localRows.length === 0;
+
+            if (cacheEmpty) {
+                // Caso A: fetch directo → muestra inmediato → persiste en background
+                const rawFiles = await syncDown('1970-01-01T00:00:00Z');
+                if (authEpochRef.current !== epochAtStart) return;
+
+                if (rawFiles.length > 0) {
+                    // Marcar TODOS como nuevos en el primer fetch de la sesión si el cache estaba vacío
+                    const markedFiles = rawFiles.map(f => ({ ...f, is_new: true }));
+                    
+                    // Despachar de inmediato para que el usuario vea los archivos
+                    dispatch({ type: 'SET_ALL_FILES', payload: decorateFiles(markedFiles) });
+
+                    // Persistir en background sin bloquear
+                    const rows = rawFiles.filter(f => !f.deleted_at).map(buildPublicFileCacheRow);
+                    ;(async () => {
+                        try {
+                            await window.electronAPI.db.clearTable(TABLE);
+                            if (rows.length > 0) {
+                                await window.electronAPI.db.upsertMany(TABLE, rows);
+                            }
+                            const ts = await getLastModified();
+                            await window.electronAPI.sync.setMeta(
+                                TABLE,
+                                new Date().toISOString(),
+                                ts || new Date().toISOString()
+                            );
+                        } catch (err) {
+                            void logger.warn('background cache persist failed', err);
+                        }
+                    })();
+                }
+            } else {
+                // Caso B: sync incremental normal
+                const result = await syncPublicFiles();
+                if (authEpochRef.current !== epochAtStart) return;
+
+                if (result) {
+                    // Si el sync devolvió true, hubo cambios o se completó con éxito.
+                    // Obtenemos los IDs que el servicio guardó internamente.
+                    const syncedIds = getLatestSyncedIds();
+                    
+                    if (syncedIds.size > 0) {
+                        // Cargamos datos locales y aplicamos la marca
+                        const rows = await window.electronAPI.db.getAll(TABLE);
+                        const parsed = parseJsonRows(rows);
+                        const decorated = decorateFiles(parsed).map(f => ({
+                            ...f,
+                            is_new: syncedIds.has(f.id)
+                        }));
+                        
+                        dispatch({ type: 'SET_ALL_FILES', payload: decorated });
+                    } else {
+                        await loadLocalData({ epoch: epochAtStart });
+                    }
+                } else {
+                    await loadLocalData({ epoch: epochAtStart });
+                }
+            }
         } catch (err) {
             void logger.warn('refreshData failed', err);
         } finally {
@@ -122,7 +202,7 @@ export function PublicFilesProvider({ children }) {
                 setSyncStatus('PublicFiles', false);
             }
         }
-    }, [loadLocalData, setSyncStatus]);
+    }, [loadLocalData, setSyncStatus, decorateFiles]);
 
     // Inicializar / resetear al cambiar usuario.
     // Se usa authEpoch (primitivo) como dependency en lugar del objeto user completo
@@ -173,14 +253,15 @@ export function PublicFilesProvider({ children }) {
     const uploadFile = useCallback(async (formData) => {
         const result = await apiUploadFile(formData);
         if (result.ok && result.data?.data) {
-            const file = result.data.data;
+            // La API no devuelve user_id en el upload — lo inyectamos manualmente.
+            // is_owner_or_admin lo calcula decorateFiles al recargar del cache.
+            const file = { ...result.data.data, user_id: user?.id ?? null };
             const cacheRow = buildPublicFileCacheRow(file);
-            // Persistir en SQLite y actualizar estado local optimistamente
             await window.electronAPI.db.upsertMany(TABLE, [cacheRow]);
-            dispatch({ type: 'UPSERT_FILE', payload: file });
+            await loadLocalData();
         }
         return result;
-    }, []);
+    }, [loadLocalData, user?.id]);
 
     /**
      * Renombra un archivo o lo mueve a otro catálogo.
@@ -195,15 +276,15 @@ export function PublicFilesProvider({ children }) {
         const result = await apiUpdateFile(id, body);
         if (result.ok) {
             const changes = { name, ...(catalogId != null ? { public_file_catalog_id: catalogId } : {}) };
-            dispatch({ type: 'UPSERT_FILE', payload: { id, ...changes } });
-            // Actualizar SQLite
+            // Actualizar SQLite y recargar desde cache para que is_owner se compute correctamente
             const existing = await window.electronAPI.db.getById(TABLE, id);
             if (existing) {
                 await window.electronAPI.db.upsertMany(TABLE, [{ ...existing, ...changes }]);
             }
+            await loadLocalData();
         }
         return result;
-    }, []);
+    }, [loadLocalData]);
 
     /**
      * Elimina (soft delete) un archivo de la Biblioteca.
@@ -224,6 +305,9 @@ export function PublicFilesProvider({ children }) {
         return window.electronAPI.publicFiles.download(fileId, suggestedName);
     }, []);
 
+    /** Consulta los permisos del usuario autenticado sobre un archivo. */
+    const getMyPermissions = useCallback((fileId) => apiGetMyPermissions(fileId), []);
+
     /** Obtiene los permisos explícitos de un archivo (llamada directa a la API). */
     const getPermissions = useCallback((fileId) => apiGetPermissions(fileId), []);
 
@@ -233,30 +317,50 @@ export function PublicFilesProvider({ children }) {
     /** Revoca los permisos de un usuario sobre un archivo. */
     const revokePermission = useCallback((fileId, userId) => apiRevokePermission(fileId, userId), []);
 
+    /** Marca un archivo como "visto" quitando el badge de nuevo (solo en memoria). */
+    const markAsSeen = useCallback((fileId) => {
+        dispatch({ type: 'MARK_FILE_AS_SEEN', payload: fileId });
+    }, []);
+
+    /** Genera un link firmado para descarga externa (QR). */
+    const generateSignedLink = useCallback((fileId) => {
+        return window.electronAPI.publicFiles.generateLink(fileId);
+    }, []);
+
     const value = useMemo(() => ({
-        getFilesForCatalog,
+        allFiles: state.allFiles,
         syncing: state.syncing,
         initialized: state.initialized,
         refreshData,
+        loadLocalData,
+        getFilesForCatalog,
         uploadFile,
         renameFile,
         deleteFile,
         downloadFile,
+        getMyPermissions,
         getPermissions,
         setPermissions,
         revokePermission,
+        generateSignedLink,
+        markAsSeen,
     }), [
         getFilesForCatalog,
+        state.allFiles,
         state.syncing,
         state.initialized,
         refreshData,
+        loadLocalData,
         uploadFile,
         renameFile,
         deleteFile,
         downloadFile,
+        getMyPermissions,
         getPermissions,
         setPermissions,
         revokePermission,
+        generateSignedLink,
+        markAsSeen,
     ]);
 
     return (
@@ -266,10 +370,28 @@ export function PublicFilesProvider({ children }) {
     );
 }
 
+const _noopPublicFiles = {
+    allFiles: [],
+    syncing: false,
+    initialized: false,
+    refreshData: async () => {},
+    loadLocalData: async () => {},
+    getFilesForCatalog: () => ({ data: [], total: 0, totalPages: 1, page: 1 }),
+    uploadFile: async () => ({ ok: false }),
+    renameFile: async () => ({ ok: false }),
+    deleteFile: async () => ({ ok: false }),
+    downloadFile: () => {},
+    getMyPermissions: async () => null,
+    getPermissions: async () => null,
+    setPermissions: async () => {},
+    revokePermission: async () => {},
+    generateSignedLink: async () => null,
+    markAsSeen: () => {},
+};
+
 export function usePublicFiles() {
-    const ctx = useContext(PublicFilesContext);
-    if (!ctx) throw new Error('usePublicFiles debe usarse dentro de PublicFilesProvider');
-    return ctx;
+    // Devuelve no-ops si se usa fuera del provider (ej: useProfileCacheResync desde Settings).
+    return useContext(PublicFilesContext) ?? _noopPublicFiles;
 }
 
 export default PublicFilesContext;

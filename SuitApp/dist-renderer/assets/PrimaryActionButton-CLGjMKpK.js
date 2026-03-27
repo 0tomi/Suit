@@ -1,0 +1,1 @@
+import{j as i}from"./vendor-react-BVefv4W0.js";import{B as n}from"./Button-BWJyN0VU.js";import{P as e}from"./vendor-lucide-mZwoLIPh.js";const u=({label:t,onClick:r,icon:o=e,variant:m="primary",className:s="",...a})=>i.jsx(n,{variant:m,onClick:r,icon:o,className:`min-w-fit whitespace-nowrap text-base font-normal ${s}`.trim(),...a,children:t});export{u as P};

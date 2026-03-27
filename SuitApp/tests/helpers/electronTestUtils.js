@@ -6,7 +6,7 @@ const SECTION_CONFIG = {
     reports: {
         navTestId: 'sidebar-nav-reports',
         titleTestId: 'page-reports-title',
-        titleText: 'Panel operativo del estudio',
+        titleText: 'Panel Informativo del Estudio',
     },
     agenda: {
         navTestId: 'sidebar-nav-agenda',
@@ -42,6 +42,11 @@ const SECTION_CONFIG = {
         navTestId: 'sidebar-nav-templates',
         titleTestId: 'page-templates-title',
         titleText: 'Galería de Modelos',
+    },
+    biblioteca: {
+        navTestId: 'sidebar-nav-biblioteca',
+        titleTestId: 'page-biblioteca-title',
+        titleText: 'Biblioteca',
     },
     admin: {
         navTestId: 'sidebar-nav-admin',
@@ -84,10 +89,15 @@ export async function launchElectronApp(options = {}) {
     const normalized = typeof options === 'string' ? { prefix: options } : options;
     const prefix = normalized.prefix || 'suit-test';
     const userDataDir = normalized.userDataDir || buildUserDataDir(prefix);
+    const rendererModeEnv = process.env.PLAYWRIGHT_USE_DIST === '1'
+        ? { SUITAPP_RENDERER_MODE: 'dist' }
+        : {};
+
     const electronApp = await electron.launch({
         args: ['electron/main.cjs', '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`],
         env: {
             ...process.env,
+            ...rendererModeEnv,
             ...(normalized.appEnv || {}),
             ELECTRON_RUN_AS_NODE: undefined,
             DISPLAY: process.env.DISPLAY || ':99',
@@ -114,7 +124,13 @@ export async function waitForPageReady(window, section = 'agenda', { timeout = 1
 
 export async function goToSection(window, section, { timeout = 15000 } = {}) {
     const config = getSectionConfig(section);
-    await window.getByTestId(config.navTestId).click();
+
+    // Cerrar cualquier modal/dialog abierto (Radix o nativo) antes de navegar.
+    // Si hay un overlay de modal cubriendo el sidebar, el click al nav se cuelga
+    // o falla. Escape es seguro porque solo cierra overlays sin destructores.
+    await window.keyboard.press('Escape').catch(() => {});
+
+    await window.getByTestId(config.navTestId).click({ timeout });
     await waitForPageReady(window, section, { timeout });
 }
 

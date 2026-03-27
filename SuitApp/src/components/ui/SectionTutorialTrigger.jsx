@@ -14,7 +14,7 @@ export function SectionTutorialTrigger({
     ariaLabel = 'Ver tutorial de la sección',
     title = 'Ver tutorial',
     testId,
-    iconSize = 20,
+    iconSize = 26,
     className = '',
 }) {
     const { showTutorials } = useSettings();
@@ -24,7 +24,7 @@ export function SectionTutorialTrigger({
         return null;
     }
 
-    const buttonClassName = `tutorial-icon-hop text-(--text-tertiary) hover:text-blue-500 transition-colors ${className}`.trim();
+    const buttonClassName = `tutorial-icon-glow text-(--text-tertiary) hover:text-blue-500 transition-colors ${className}`.trim();
 
     return (
         <>

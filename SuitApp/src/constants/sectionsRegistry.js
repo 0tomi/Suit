@@ -1,4 +1,4 @@
-import { Calendar, Clock, Users, Briefcase, FileText, LayoutTemplate, Shield, Landmark, Tag, BarChart3 } from 'lucide-react';
+import { Calendar, Clock, Users, Briefcase, FileText, LayoutTemplate, Shield, Landmark, Tag, BarChart3, Library } from 'lucide-react';
 
 /**
  * Registro centralizado de todas las secciones navegables de la aplicación.
@@ -87,9 +87,18 @@ export const SECTIONS_REGISTRY = [
         adminOnly: false,
     },
     {
+        key: 'biblioteca',
+        path: '/biblioteca',
+        label: 'Biblioteca',
+        description: 'Repositorio público de archivos y catálogos.',
+        icon: Library,
+        testId: 'sidebar-nav-biblioteca',
+        adminOnly: false,
+    },
+    {
         key: 'reports',
         path: '/reports',
-        label: 'Reportes',
+        label: 'Estadísticas',
         description: 'Panel operativo y económico del estudio.',
         icon: BarChart3,
         testId: 'sidebar-nav-reports',

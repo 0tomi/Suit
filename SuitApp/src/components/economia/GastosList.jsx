@@ -8,6 +8,7 @@ import { useGastosCaso } from '../../hooks/useGastosCaso.js';
 import { useModal } from '../../context/ModalContext';
 import { NewGastoModal } from './NewGastoModal';
 import { useAuth } from '../../context/AuthContext';
+import { useGastoCatalogo } from '../../context/GastoCatalogoContext.jsx';
 import { useUsers } from '../../context/UsersContext.jsx';
 import PropTypes from 'prop-types';
 
@@ -37,6 +38,7 @@ import { EconomiaFilterBar } from './EconomiaFilterBar';
 export const GastosList = ({ caseId, caseCacheReady = true }) => {
     const { openModal } = useModal();
     const { user: currentUser } = useAuth();
+    const { gastos_catalogo: gastosCatalogo = [] } = useGastoCatalogo();
     const { users = [] } = useUsers();
     const isAdmin = currentUser?.role === 'admin';
 
@@ -65,6 +67,15 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
     const toDate = formatDateForApi(dateRange.to);
     const rawActiveGastos = caseId ? cachedGastos : rangeGastos;
 
+    const gastosCatalogoMap = useMemo(() => new Map(
+        gastosCatalogo.map((gastoCatalogo) => [String(gastoCatalogo.id), gastoCatalogo])
+    ), [gastosCatalogo]);
+
+    const getGastoDisplay = useCallback((gastoCaso) => {
+        const resolvedGasto = gastoCaso.gasto || gastosCatalogoMap.get(String(gastoCaso.gasto_id));
+        return resolvedGasto?.titulo || resolvedGasto?.name || (gastoCaso.gasto_id ? `Tipo #${gastoCaso.gasto_id}` : 'N/A');
+    }, [gastosCatalogoMap]);
+
     const activeGastos = useMemo(() => {
         let filtered = [...rawActiveGastos];
 
@@ -78,7 +89,7 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
             const lowSearch = searchTerm.toLowerCase();
             filtered = filtered.filter(g => {
                 const caseTitle = (g.suit_case?.title || '').toLowerCase();
-                const gastoTitle = (g.gasto?.titulo || '').toLowerCase();
+                const gastoTitle = getGastoDisplay(g).toLowerCase();
                 return caseTitle.includes(lowSearch) || gastoTitle.includes(lowSearch);
             });
         }
@@ -99,7 +110,7 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
         });
 
         return filtered;
-    }, [isAdmin, selectedUserId, rawActiveGastos, searchTerm, sortBy, sortOrder]);
+    }, [getGastoDisplay, isAdmin, selectedUserId, rawActiveGastos, searchTerm, sortBy, sortOrder]);
 
     const activeLoading = caseId ? cachedGastosLoading : rangeLoading;
 
@@ -175,6 +186,7 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
             <Table
                 isEmpty={!activeLoading && activeGastos.length === 0}
                 emptyMessage={caseId ? "No se encontraron gastos para este caso." : "No se encontraron gastos con los filtros seleccionados."}
+                trigger={`${searchTerm}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}`}
                 columns={[
                     ...(!caseId ? [{ header: 'Caso' }] : []),
                     { header: 'Tipo de Gasto' },
@@ -186,7 +198,7 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
                 {activeGastos.map(g => (
                     <tr key={g.id} className="hover:bg-gray-50">
                         {!caseId && <td className="p-4">{g.suit_case?.title || `Caso #${g.suit_case_id}` || 'N/A'}</td>}
-                        <td className="p-4">{g.gasto?.titulo || 'N/A'}</td>
+                        <td className="p-4">{getGastoDisplay(g)}</td>
                         <td className="p-4">${g.monto}</td>
                         <td className="p-4">{formatDisplayDate(g.created_at)}</td>
                         {isAdmin && <td className="p-4">{getUserName(g.user_id)}</td>}

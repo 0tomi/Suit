@@ -24,3 +24,23 @@ export function buildDocumentCreatePath(options = null) {
 export function buildDocumentEditPath(documentId) {
     return `/documents/edit/${documentId}`;
 }
+
+export function buildDocumentVersionPath(documentId, versionId, versionNumber = null) {
+    const searchParams = new URLSearchParams({
+        versionId: String(versionId),
+    });
+
+    if (versionNumber !== null && versionNumber !== undefined && versionNumber !== '') {
+        searchParams.set('versionNumber', String(versionNumber));
+    }
+
+    return `${buildDocumentEditPath(documentId)}?${searchParams.toString()}`;
+}
+
+export function buildTemplateCreatePath() {
+    return '/templates/new';
+}
+
+export function buildTemplateEditPath(templateId) {
+    return `/templates/edit/${templateId}`;
+}

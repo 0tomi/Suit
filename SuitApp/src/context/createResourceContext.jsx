@@ -3,6 +3,8 @@ import { useAuth } from './AuthContext.jsx';
 import { useSyncStatus } from './SyncStatusContext.jsx';
 import { parseJsonRows } from '../utils/dbUtils.js';
 import { createLogger } from '../services/logService.js';
+import SyncScheduler, { TIER_STANDARD } from '../services/sync/SyncScheduler.js';
+import { clearStaleResources } from '../services/sync/syncCore.js';
 
 /**
  * Normaliza el nombre del recurso para construir aliases públicos estables.
@@ -21,6 +23,9 @@ export function createResourceContext({
     syncFn,
     parseRows = parseJsonRows,
     autoRefreshOnMount = true,
+    // Prioridad de sync en el SyncScheduler. Determina el orden de despacho
+    // cuando múltiples recursos están en cola al hacer login.
+    syncPriority = TIER_STANDARD,
 }) {
     const Context = createContext(null);
     const logger = createLogger(`${resourceName.toLowerCase()}-context`);
@@ -89,6 +94,9 @@ export function createResourceContext({
         const [state, dispatch] = useReducer(resourceReducer, initialState);
         const syncGenerationRef = useRef(0);
         const isSyncingRef = useRef(false);
+        // Promesa del sync en curso: permite que llamadas concurrentes esperen
+        // al sync activo en lugar de ignorarse silenciosamente.
+        const syncPromiseRef = useRef(Promise.resolve());
         const authEpochRef = useRef(authEpoch);
 
         useEffect(() => {
@@ -117,34 +125,71 @@ export function createResourceContext({
             }
         }, []);
 
-        const refreshData = useCallback(async () => {
+        /**
+         * Implementación real del sync para este recurso.
+         * Separada de refreshData para evitar llamada circular:
+         *   refreshData → SyncScheduler.requestSync → _doSync
+         * El scheduler llama a esta función directamente cuando despacha el recurso.
+         */
+        const _doSync = useCallback(async () => {
             const epochAtStart = authEpochRef.current;
-            if (isSyncingRef.current) return;
+
+            // Guard secundario: el scheduler ya dedup a nivel de cola, pero esto
+            // protege contra llamadas directas accidentales fuera del scheduler.
+            if (isSyncingRef.current) {
+                await syncPromiseRef.current;
+                return;
+            }
+
             isSyncingRef.current = true;
             dispatch({ type: 'SET_SYNCING', payload: true });
             dispatch({ type: 'SET_ERROR', payload: null });
             setSyncStatus(resourceName, true);
-            try {
-                await syncFn();
-                if (authEpochRef.current !== epochAtStart) return;
-                await loadLocalData({ epoch: epochAtStart });
-            } catch (err) {
-                // Background sync puede fallar por red/startup: no genera snapshot
-                void logger.warn('refreshData failed', err);
-                if (authEpochRef.current === epochAtStart) {
-                    dispatch({
-                        type: 'SET_ERROR',
-                        payload: err?.message || `No se pudieron actualizar los datos de ${resourceName}.`,
-                    });
+
+            const promise = (async () => {
+                try {
+                    await syncFn();
+                    if (authEpochRef.current !== epochAtStart) return;
+                    await loadLocalData({ epoch: epochAtStart });
+                } catch (err) {
+                    // Background sync puede fallar por red/startup: no genera snapshot
+                    void logger.warn('refreshData failed', err);
+                    if (authEpochRef.current === epochAtStart) {
+                        dispatch({
+                            type: 'SET_ERROR',
+                            payload: err?.message || `No se pudieron actualizar los datos de ${resourceName}.`,
+                        });
+                    }
+                } finally {
+                    isSyncingRef.current = false;
+                    if (authEpochRef.current === epochAtStart) {
+                        dispatch({ type: 'SET_SYNCING', payload: false });
+                        setSyncStatus(resourceName, false);
+                    }
                 }
-            } finally {
-                isSyncingRef.current = false;
-                if (authEpochRef.current === epochAtStart) {
-                    dispatch({ type: 'SET_SYNCING', payload: false });
-                    setSyncStatus(resourceName, false);
-                }
-            }
+            })();
+
+            syncPromiseRef.current = promise;
+            await promise;
         }, [loadLocalData, setSyncStatus]);
+
+        // Registrar este recurso en el scheduler al montar. El scheduler llama a _doSync
+        // cuando despacha este recurso. Cleanup al desmontar para evitar llamadas a providers
+        // ya desmontados.
+        useEffect(() => {
+            SyncScheduler.register(resourceName.toLowerCase(), _doSync, syncPriority);
+            return () => SyncScheduler.unregister(resourceName.toLowerCase());
+        }, [_doSync]);
+
+        /**
+         * API pública de refresh. Enruta través del SyncScheduler para:
+         * - Deduplicar: si el recurso ya está sincronizando/en cola, retorna la promesa existente.
+         * - Priorizar: el scheduler despacha por TIER antes que por tiempo de llegada.
+         * - Rate-limitar: máximo MAX_CONCURRENT syncs concurrentes en toda la app.
+         */
+        const refreshData = useCallback(async () => {
+            await SyncScheduler.requestSync(resourceName.toLowerCase());
+        }, []);
 
         const updateItem = useCallback((id, changes) => {
             const epochAtStart = authEpochRef.current;
@@ -196,13 +241,18 @@ export function createResourceContext({
             const epochAtStart = authEpochRef.current;
 
             const init = async () => {
+                // Iniciar el scheduler (idempotente: solo el primer contexto que llega
+                // ejecuta clearStaleResources; el resto encola y espera que termine).
+                void SyncScheduler.start(clearStaleResources);
+
                 await loadLocalData({ epoch: epochAtStart });
                 if (authEpochRef.current !== epochAtStart) return;
                 if (syncGenerationRef.current !== generation) return;
 
                 dispatch({ type: 'SET_INITIALIZED', payload: true });
                 if (autoRefreshOnMount) {
-                    refreshData();
+                    // refreshData() pasa por el scheduler: rate-limitado + deduplicado
+                    void refreshData();
                 }
             };
 

@@ -50,4 +50,15 @@ describe('FilterAutosuggest', () => {
         expect(screen.getByRole('button', { name: 'Caso Beta' })).toBeInTheDocument();
         expect(screen.queryByRole('button', { name: 'Caso Alfa' })).not.toBeInTheDocument();
     });
+
+    it('selecciona el texto actual al enfocar un valor elegido para permitir buscar enseguida', () => {
+        renderAutosuggest('12');
+
+        const input = screen.getByLabelText('Caso asociado');
+        fireEvent.focus(input);
+        fireEvent.change(input, { target: { value: 'beta' } });
+
+        expect(screen.getByRole('button', { name: 'Caso Beta' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Caso Alfa' })).not.toBeInTheDocument();
+    });
 });

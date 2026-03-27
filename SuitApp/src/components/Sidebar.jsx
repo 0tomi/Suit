@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import * as ScrollArea from '@radix-ui/react-scroll-area';
-import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import {
     ChevronsLeft,
     ChevronsRight,
@@ -9,6 +8,7 @@ import {
     RefreshCw,
     Bell,
     LayoutGrid,
+    ExternalLink,
 } from 'lucide-react';
 import { SECTIONS_REGISTRY } from '../constants/sectionsRegistry.js';
 import suitLogo from '../assets/SuitLogo.png';
@@ -18,23 +18,27 @@ import { useAuth } from '../context/AuthContext';
 import { useApi } from '../context/ApiContext';
 import { useSettings } from '../context/SettingsContext';
 import { useSyncStatus } from '../context/SyncStatusContext';
+import { useTabs } from '../context/TabsContext';
 import { useNotificationBadge } from '../hooks/useNotificationBadge';
 import { useDeadlineBadge } from '../hooks/useDeadlineBadge';
 import MissedNotificationsModal from './Agenda/MissedNotificationsModal';
 import { markPastNotificationAsRead } from '../services/missedNotificationService.js';
+import { ContextMenu, useContextMenu } from './ui/ContextMenu.jsx';
 import { createLogger } from '../services/logService.js';
 const logger = createLogger('component:sidebar');
 
 
 const Sidebar = () => {
-    const navigate = useNavigate();
-    const location = useLocation();
     const { user } = useAuth();
     const { connected, setShowSetup } = useApi();
     const { isAnySyncing: syncing } = useSyncStatus();
     const { sidebarMode, sidebarAnimationSpeed, pinnedSections } = useSettings();
+    const { openTab, openInNewTab, activeTab } = useTabs();
     const [isHoveringSidebar, setIsHoveringSidebar] = useState(false);
     const [isClickExpanded, setIsClickExpanded] = useState(false);
+
+    // Estado del menú contextual (compartido para todo el sidebar)
+    const { contextMenuState, openContextMenu, closeContextMenu } = useContextMenu();
 
     const {
         count: missedCount,
@@ -50,16 +54,10 @@ const Sidebar = () => {
 
     const handleOpenMissedEvent = async (eventId, notifyAt) => {
         await markPastNotificationAsRead(eventId, notifyAt).catch((err) => {
-            // Side effect secundario: la navegación al evento ya se completó
             void logger.warn('no se pudo marcar la notificacion pasada como leida', err);
         });
         closeMissedModal();
-        navigate('/agenda', {
-            state: {
-                highlightedEventId: eventId,
-                notificationNonce: Date.now(),
-            },
-        });
+        openTab('/agenda');
     };
 
     const isExpanded = useMemo(() => {
@@ -74,7 +72,6 @@ const Sidebar = () => {
         if (sidebarAnimationSpeed === 'x0') return 0;
         return 420;
     }, [sidebarAnimationSpeed]);
-    const isSettingsArea = location.pathname.startsWith('/settings');
 
     const textAnimationStyle = useMemo(() => ({
         transitionProperty: 'max-width, opacity, transform',
@@ -83,8 +80,7 @@ const Sidebar = () => {
         transitionDelay: isExpanded && animationDurationMs > 0 ? `${Math.round(animationDurationMs * 0.18)}ms` : '0ms',
     }), [animationDurationMs, isExpanded]);
 
-    // navItems derivado del registro global filtrado por secciones ancladas y rol de usuario.
-    // El orden del registro se preserva para un sidebar estable independientemente del orden de pinning.
+    // navItems derivado del registro global filtrado por secciones ancladas y rol de usuario
     const navItems = useMemo(() => {
         return SECTIONS_REGISTRY
             .filter((s) => {
@@ -96,6 +92,32 @@ const Sidebar = () => {
                 dotColor: s.key === 'deadlines' ? deadlineBadgeColor : undefined,
             }));
     }, [pinnedSections, user?.role, deadlineBadgeColor]);
+
+    /**
+     * Determina si un ítem del sidebar está "activo" comparando con el path
+     * de la pestaña activa actual.
+     */
+    const isPathActive = useCallback((path) => {
+        const current = activeTab?.currentPath ?? '';
+        return current === path || current.startsWith(path + '/') || (path === '/agenda' && current === '/');
+    }, [activeTab?.currentPath]);
+
+    /**
+     * Genera los ítems del menú contextual para una ruta del sidebar.
+     */
+    const buildContextItems = useCallback((path) => [
+        {
+            label: 'Abrir en nueva pestaña',
+            icon: ExternalLink,
+            onClick: () => openInNewTab(path),
+        },
+    ], [openInNewTab]);
+
+    // Clases compartidas para los botones de navegación del sidebar
+    const navBtnBase = `relative flex items-center rounded-xl transition-colors group ${isExpanded ? 'gap-3 px-4 py-3' : 'justify-center px-2 py-3'}`;
+    const navBtnActive = 'bg-blue-600 shadow-lg text-white';
+    const navBtnInactive = 'text-slate-400 hover:bg-slate-800 hover:text-white';
+    const isSettingsActive = isPathActive('/settings');
 
     return (
         <>
@@ -114,21 +136,18 @@ const Sidebar = () => {
             >
                 <div className={`py-4 border-b border-slate-800 flex items-center ${isExpanded ? 'px-5 gap-3' : 'px-2 justify-center'}`}>
                     {isExpanded ? (
-                        <>
-                            {/* Logo SUIT con blend mode para fondo blanco invisible */}
-                            <img
-                                src={suitLogo}
-                                alt="Suit"
-                                className="h-10 w-auto"
-                                style={{
-                                    mixBlendMode: 'screen',
-                                    filter: 'invert(1) hue-rotate(180deg) brightness(1.1)',
-                                    transform: 'scale(2)',
-                                    transformOrigin: 'left center',
-                                    marginLeft: '-10px',
-                                }}
-                            />
-                        </>
+                        <img
+                            src={suitLogo}
+                            alt="Suit"
+                            className="h-10 w-auto"
+                            style={{
+                                mixBlendMode: 'screen',
+                                filter: 'invert(1) hue-rotate(180deg) brightness(1.1)',
+                                transform: 'scale(2)',
+                                transformOrigin: 'left center',
+                                marginLeft: '-10px',
+                            }}
+                        />
                     ) : (
                         <img
                             src={suitLogoCompacto}
@@ -151,28 +170,23 @@ const Sidebar = () => {
                 </div>
 
                 <div className="flex-1 min-h-0 flex flex-col relative">
-                    {/* Las secciones ancladas scrollean de forma independiente para no mover el bloque inferior. */}
                     <ScrollArea.Root className="ScrollAreaRoot flex-1 min-h-0">
                         <ScrollArea.Viewport className="ScrollAreaViewport [&>div]:!block" data-testid="sidebar-sections-scroll">
                             <nav
                                 className={`py-6 space-y-2 ${isExpanded ? 'px-3' : 'px-2'}`}
                             >
-                                {/* Acceso directo a la gestión de secciones (Opción Híbrida) */}
-                                <NavLink
-                                    to="/sections"
+                                {/* Acceso a gestión de secciones */}
+                                <button
                                     data-testid="sidebar-nav-sections-manager"
                                     title="Gestionar Secciones"
                                     aria-label="Gestionar Secciones"
-                                    className={({ isActive }) =>
-                                        `relative flex items-center rounded-xl transition-colors group ${isExpanded ? 'gap-3 px-4 py-3' : 'justify-center px-2 py-3'} ${isActive
-                                            ? 'bg-blue-600 shadow-lg text-white'
-                                            : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                                        }`
-                                    }
+                                    onClick={() => openTab('/sections')}
+                                    onContextMenu={(e) => openContextMenu(e, buildContextItems('/sections'))}
+                                    className={`w-full ${navBtnBase} ${isPathActive('/sections') ? navBtnActive : navBtnInactive}`}
                                 >
                                     <LayoutGrid className="h-6 w-6" />
                                     <span
-                                        className="font-medium text-lg flex-1 whitespace-nowrap overflow-hidden"
+                                        className="font-medium text-lg flex-1 whitespace-nowrap overflow-hidden text-left"
                                         style={{
                                             ...textAnimationStyle,
                                             maxWidth: isExpanded ? '220px' : '0px',
@@ -182,30 +196,26 @@ const Sidebar = () => {
                                     >
                                         Secciones
                                     </span>
-                                </NavLink>
+                                </button>
 
                                 {/* Divisor sutil después del gestor de secciones */}
                                 <div className={`h-px bg-slate-800 mx-4 my-2 ${!isExpanded && 'hidden'}`} />
 
                                 {navItems.map((item) => {
-                                    const isActive = location.pathname.startsWith(item.path) || (item.path === '/agenda' && location.pathname === '/');
+                                    const active = isPathActive(item.path);
                                     return (
-                                        <NavLink
+                                        <button
                                             key={item.path}
-                                            to={item.path}
                                             data-testid={item.testId}
                                             title={item.label}
                                             aria-label={`Ir a ${item.label}`}
-                                            className={({ isActive: routeActive }) =>
-                                                `relative flex items-center rounded-xl transition-colors group ${isExpanded ? 'gap-3 px-4 py-3' : 'justify-center px-2 py-3'} ${routeActive || isActive
-                                                    ? 'bg-blue-600 shadow-lg text-white'
-                                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                                                }`
-                                            }
+                                            onClick={() => openTab(item.path)}
+                                            onContextMenu={(e) => openContextMenu(e, buildContextItems(item.path))}
+                                            className={`w-full ${navBtnBase} ${active ? navBtnActive : navBtnInactive}`}
                                         >
                                             <item.icon className="h-6 w-6" />
                                             <span
-                                                className="font-medium text-lg flex-1 whitespace-nowrap overflow-hidden"
+                                                className="font-medium text-lg flex-1 whitespace-nowrap overflow-hidden text-left"
                                                 style={{
                                                     ...textAnimationStyle,
                                                     maxWidth: isExpanded ? '220px' : '0px',
@@ -229,16 +239,16 @@ const Sidebar = () => {
                                                     aria-label={item.dotColor === 'red' ? 'Vencimientos vencidos' : 'Vencimientos urgentes'}
                                                 />
                                             )}
-                                            {syncing && isActive && isExpanded && !item.badge && (
+                                            {syncing && active && isExpanded && !item.badge && (
                                                 <RefreshCw className="h-4 w-4 animate-spin text-blue-200" />
                                             )}
-                                        </NavLink>
+                                        </button>
                                     );
                                 })}
                             </nav>
                         </ScrollArea.Viewport>
-                        <ScrollArea.Scrollbar 
-                            className="ScrollAreaScrollbar z-20" 
+                        <ScrollArea.Scrollbar
+                            className="ScrollAreaScrollbar z-20"
                             orientation="vertical"
                         >
                             <ScrollArea.Thumb className="ScrollAreaThumb" />
@@ -246,21 +256,21 @@ const Sidebar = () => {
                         <ScrollArea.Corner className="ScrollAreaCorner" />
                     </ScrollArea.Root>
 
-                    <div className={`shrink-0 border-t border-slate-800 space-y-2 relative z-10 sidebar-footer-gradient ${isExpanded ? 'p-4' : 'p-2'}`}>
+                    <div className={`shrink-0 border-t border-slate-800 space-y-2 relative z-10 sidebar-footer-gradient ${isExpanded ? 'px-3 py-4' : 'px-2 py-2'}`}>
                         {sidebarMode === 'click' && (
                             <button
                                 id="sidebar-click-toggle"
                                 type="button"
                                 onClick={() => setIsClickExpanded((prev) => !prev)}
-                                className={`w-full rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-colors text-sm ${isExpanded ? 'flex items-center space-x-3 px-4 py-2.5' : 'flex justify-center py-2.5'}`}
+                                className={`w-full rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-colors ${isExpanded ? 'flex items-center gap-3 px-4 py-3' : 'flex justify-center py-3'}`}
                                 title={isExpanded ? 'Contraer sidebar' : 'Expandir sidebar'}
                                 aria-label={isExpanded ? 'Contraer sidebar' : 'Expandir sidebar'}
                             >
                                 {isExpanded ? (
                                     <>
-                                        <ChevronsLeft className="h-5 w-5" />
+                                        <ChevronsLeft className="h-6 w-6" />
                                         <span
-                                            className="flex-1 text-left truncate whitespace-nowrap overflow-hidden"
+                                            className="font-medium text-lg flex-1 text-left whitespace-nowrap overflow-hidden"
                                             style={{
                                                 ...textAnimationStyle,
                                                 maxWidth: isExpanded ? '220px' : '0px',
@@ -272,7 +282,7 @@ const Sidebar = () => {
                                         </span>
                                     </>
                                 ) : (
-                                    <ChevronsRight className="h-5 w-5" />
+                                    <ChevronsRight className="h-6 w-6" />
                                 )}
                             </button>
                         )}
@@ -280,13 +290,13 @@ const Sidebar = () => {
                         <button
                             id="sidebar-missed-button"
                             onClick={openMissedModal}
-                            className={`relative w-full rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-colors text-sm ${isExpanded ? 'flex items-center space-x-3 px-4 py-2.5' : 'flex justify-center py-2.5'}`}
+                            className={`relative w-full rounded-xl text-slate-400 hover:bg-slate-800 hover:text-white transition-colors p-0 ${isExpanded ? 'flex items-center gap-3 px-4 py-3' : 'flex justify-center py-3'}`}
                             title="Notificaciones pasadas"
                             aria-label="Notificaciones pasadas"
                         >
-                            <Bell className="h-5 w-5" />
+                            <Bell className="h-6 w-6" />
                             <span
-                                className="flex-1 text-left truncate whitespace-nowrap overflow-hidden"
+                                className="font-medium text-lg flex-1 text-left whitespace-nowrap overflow-hidden"
                                 style={{
                                     ...textAnimationStyle,
                                     maxWidth: isExpanded ? '220px' : '0px',
@@ -308,21 +318,17 @@ const Sidebar = () => {
                             )}
                         </button>
 
-                        <NavLink
-                            to="/settings"
+                        <button
                             data-testid="sidebar-nav-settings"
                             title="Ajustes"
                             aria-label="Ajustes"
-                            className={() =>
-                                `w-full rounded-xl transition-colors text-sm ${isExpanded ? 'flex items-center space-x-3 px-4 py-2.5' : 'flex justify-center py-2.5'} ${isSettingsArea
-                                    ? 'bg-blue-600 text-white'
-                                    : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-                                }`
-                            }
+                            onClick={() => openTab('/settings')}
+                            onContextMenu={(e) => openContextMenu(e, buildContextItems('/settings'))}
+                            className={`relative w-full rounded-xl transition-colors ${isExpanded ? 'flex items-center gap-3 px-4 py-3' : 'flex justify-center py-3'} ${isSettingsActive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800 hover:text-white'}`}
                         >
-                            <Settings className="h-5 w-5" />
+                            <Settings className="h-6 w-6" />
                             <span
-                                className="flex-1 text-left truncate whitespace-nowrap overflow-hidden"
+                                className="font-medium text-lg flex-1 text-left whitespace-nowrap overflow-hidden"
                                 style={{
                                     ...textAnimationStyle,
                                     maxWidth: isExpanded ? '220px' : '0px',
@@ -332,7 +338,7 @@ const Sidebar = () => {
                             >
                                 Ajustes
                             </span>
-                        </NavLink>
+                        </button>
                     </div>
 
                 </div>
@@ -346,6 +352,16 @@ const Sidebar = () => {
                 onDismissItem={dismissMissedItem}
                 onDismissAll={dismissAllMissed}
             />
+
+            {/* Menú contextual compartido del sidebar */}
+            {contextMenuState.visible && (
+                <ContextMenu
+                    x={contextMenuState.x}
+                    y={contextMenuState.y}
+                    items={contextMenuState.items}
+                    onClose={closeContextMenu}
+                />
+            )}
         </>
     );
 };

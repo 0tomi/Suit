@@ -101,11 +101,12 @@ export function useEntityDetail({
         await resolveRemoteEntity(generation);
     }, [id, isSameEntity, resolveRemoteEntity]);
 
-    const entity = localEntity || initialMatch || (isSameEntity(state.entity, id) ? state.entity : null);
-    const error = localEntity || initialMatch ? null : state.error;
-    const loading = localEntity || initialMatch
+    const resolvedStateEntity = isSameEntity(state.entity, id) ? state.entity : null;
+    const entity = resolvedStateEntity || localEntity || initialMatch || null;
+    const error = entity ? null : state.error;
+    const loading = resolvedStateEntity || localEntity || initialMatch
         ? false
-        : (isSameEntity(state.entity, id) ? state.loading : state.loading || !state.error);
+        : (state.loading || !state.error);
 
     return {
         entity,

@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { Search, Briefcase, Users, FileText, X } from 'lucide-react';
 import { useCases } from '../../context/CasesContext';
 import { useClients } from '../../context/ClientsContext';
 import { useDocuments } from '../../context/DocumentsContext';
+import { useTabs } from '../../context/TabsContext';
 
 export const CommandPalette = ({ onClose }) => {
     const [query, setQuery] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
     const inputRef = useRef(null);
-    const navigate = useNavigate();
+    const { openTab } = useTabs();
     const { cases = [] } = useCases();
     const { clients = [] } = useClients();
     const { documents = [] } = useDocuments();
@@ -79,14 +79,14 @@ export const CommandPalette = ({ onClose }) => {
                 const selected = results[activeIndex];
                 if (selected) {
                     onClose();
-                    navigate(selected.path);
+                    openTab(selected.path);
                 }
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [activeIndex, navigate, onClose, results]);
+    }, [activeIndex, openTab, onClose, results]);
 
     return (
         <div className="fixed inset-0 z-[90] flex items-start justify-center pt-[12vh]">

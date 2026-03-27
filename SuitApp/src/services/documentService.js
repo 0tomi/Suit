@@ -2,12 +2,23 @@
  * documentService.js — CRUD de documentos contra la API SuitAPI.
  */
 import { apiGet, apiRequest } from './api.js';
+import { createLogger } from './logService.js';
+
+const logger = createLogger('document-service');
 
 /**
  * Lista documentos paginados.
  */
 export async function getDocuments(page = 1) {
     const result = await apiGet('/documents', { params: { page } });
+    if (!result.ok) {
+        void logger.warn('getDocuments request failed', {
+            page,
+            status: result.status,
+            error: result.error || null,
+            message: result.data?.message || null,
+        });
+    }
     return result.ok ? result.data : { data: [] };
 }
 
@@ -15,44 +26,140 @@ export async function getDocuments(page = 1) {
  * Obtiene un documento individual (descifrado).
  */
 export async function getDocument(id) {
-    const result = await apiGet(`/documents/${id}`);
-    return result.ok ? result.data : null;
-}
-
-/**
- * Convierte contenido HTML en un FormData listo para enviar a la API.
- * La API espera un campo `file` de tipo multipart (mimes: html, txt).
- */
-function htmlToFormData(htmlContent, extraFields = {}) {
-    const blob = new Blob([htmlContent], { type: 'text/html' });
-    const formData = new FormData();
-    formData.append('file', blob, 'document.html');
-    for (const [key, value] of Object.entries(extraFields)) {
-        if (value !== null && value !== undefined) {
-            formData.append(key, value);
-        }
+    const result = await apiGet(`/documents/${id}`, { responseType: 'text' });
+    if (!result.ok) {
+        void logger.warn('getDocument request failed', {
+            documentId: id,
+            status: result.status,
+            error: result.error || null,
+            message: result.data?.message || null,
+        });
+        return null;
     }
-    return formData;
+
+    if (typeof result.data !== 'string') {
+        void logger.warn('getDocument returned non-text payload', {
+            documentId: id,
+            status: result.status,
+            payloadType: typeof result.data,
+        });
+        return null;
+    }
+
+    return result.data;
 }
 
 /**
  * Crea un documento nuevo.
  */
 export async function createDocument(docData) {
-    const { content = '', ...meta } = docData;
-    const formData = htmlToFormData(content, meta);
-    return await apiRequest('/documents', { method: 'POST', body: formData });
+    const { content = '', status = 'Borrador', ...meta } = docData || {};
+    const normalizedName = typeof (meta.name || meta.title) === 'string'
+        ? (meta.name || meta.title).trim()
+        : '';
+
+    if (!normalizedName) {
+        void logger.error('createDocument aborted: missing document name', {
+            providedFields: Object.keys(docData || {}),
+        });
+        return {
+            ok: false,
+            status: 422,
+            data: null,
+            error: 'El documento necesita un título.',
+        };
+    }
+
+    if (typeof content !== 'string') {
+        void logger.error('createDocument aborted: invalid content type', {
+            contentType: typeof content,
+        });
+        return {
+            ok: false,
+            status: 422,
+            data: null,
+            error: 'El contenido del documento debe ser HTML en formato string.',
+        };
+    }
+
+    const payload = {
+        name: normalizedName,
+        content,
+        status,
+    };
+
+    if (meta.suit_case_id !== null && meta.suit_case_id !== undefined) {
+        payload.suit_case_id = meta.suit_case_id;
+    }
+
+    if (meta.event_id !== null && meta.event_id !== undefined) {
+        payload.event_id = meta.event_id;
+    }
+
+    const result = await apiRequest('/documents', { method: 'POST', body: payload });
+    if (!result.ok) {
+        void logger.error('createDocument request failed', {
+            status: result.status,
+            error: result.error || null,
+            message: result.data?.message || null,
+            payloadKeys: Object.keys(payload),
+            payloadPreview: payload,
+        });
+    }
+
+    return result;
 }
 
 /**
- * Actualiza un documento (requiere lock previo).
+ * Actualiza el contenido de un documento (requiere lock previo).
+ * El endpoint crea siempre una nueva versión.
  */
 export async function updateDocument(id, docData) {
-    const { content = '', ...meta } = docData;
-    const formData = htmlToFormData(content, meta);
-    // Laravel PUT con multipart no funciona bien — usar POST con _method=PUT
-    formData.append('_method', 'PUT');
-    return await apiRequest(`/documents/${id}`, { method: 'POST', body: formData });
+    const { content } = docData || {};
+    const payload = Object.fromEntries(Object.entries({
+        ...(content !== undefined ? { content } : {}),
+    }).filter(([, value]) => value !== undefined && value !== null));
+
+    const result = await apiRequest(`/documents/${id}`, { method: 'PUT', body: payload });
+    if (!result.ok) {
+        void logger.error('updateDocument request failed', {
+            documentId: id,
+            status: result.status,
+            error: result.error || null,
+            message: result.data?.message || null,
+            payloadKeys: Object.keys(payload),
+            payloadPreview: payload,
+        });
+    }
+
+    return result;
+}
+
+/**
+ * Actualiza el nombre de un documento sin crear versión nueva.
+ */
+export async function updateDocumentName(id, name) {
+    const payload = Object.fromEntries(Object.entries({
+        ...(name ? { name } : {}),
+    }).filter(([, value]) => value !== undefined && value !== null));
+
+    const result = await apiRequest(`/documents/${id}/name`, {
+        method: 'PATCH',
+        body: payload,
+    });
+
+    if (!result.ok) {
+        void logger.error('updateDocumentName request failed', {
+            documentId: id,
+            status: result.status,
+            error: result.error || null,
+            message: result.data?.message || null,
+            payloadKeys: Object.keys(payload),
+            payloadPreview: payload,
+        });
+    }
+
+    return result;
 }
 
 /**
@@ -73,7 +180,18 @@ export async function lockDocument(id) {
  * Desbloquea un documento.
  */
 export async function unlockDocument(id) {
-    return await apiRequest(`/documents/${id}/lock`, { method: 'DELETE' });
+    return await apiRequest(`/documents/${id}/unlock`, { method: 'POST' });
+}
+
+/**
+ * Actualiza el estado de un documento.
+ */
+export async function updateDocumentStatus(id, status) {
+    const result = await apiRequest(`/documents/${id}/status`, {
+        method: 'PATCH',
+        body: { status },
+    });
+    return result;
 }
 
 /**
@@ -119,6 +237,8 @@ export async function linkClientsToDocument(docId, clientIds) {
     });
 }
 
+
+
 /**
  * Desvincula un cliente de un documento.
  */
@@ -131,8 +251,7 @@ export async function unlinkClientFromDocument(docId, clientId) {
  * La API devuelve text/plain con el HTML, no JSON.
  */
 export async function getDocumentContent(id) {
-    const result = await apiGet(`/documents/${id}`, { responseType: 'text' });
-    return result.ok ? result.data : null;
+    return await getDocument(id);
 }
 
 function parseVersionContentResponse(rawResponse) {

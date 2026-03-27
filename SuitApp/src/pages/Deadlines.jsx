@@ -1,13 +1,14 @@
-import { useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useHotkeyAction } from '../hotkeys/useHotkeysSystem';
 import { HOTKEY_ACTIONS } from '../hotkeys/hotkeys';
-import { Plus, CheckCircle } from 'lucide-react';
+import { Plus, CheckCircle, Trash2 } from 'lucide-react';
 import { useDeadlines } from '../context/DeadlinesContext';
 import {
     getDeadlineActionErrorMessage,
     markDeadlineCompleted,
     postponeDeadline,
+    deleteDeadline,
 } from '../services/deadlineService';
 import { useConfirmDialog } from '../hooks/useConfirmDialog';
 import { useDeadlinesPageState } from '../hooks/useDeadlinesPageState.js';
@@ -29,6 +30,11 @@ import { createLogger } from '../services/logService.js';
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import { format, addDays } from 'date-fns';
+import { Pagination } from '../components/ui/Pagination';
+import { AnimatedFilterContent } from '../components/ui/AnimatedFilterContent';
+import { useAuth } from '../context/AuthContext';
+import { getDeadlineAgendaLabel } from '../utils/deadlines/deadlineLabelUtils';
+import { usePageFocus } from '../hooks/usePageFocus.js';
 
 const FILTER_STORAGE_KEY = 'deadlines-filter-state';
 const logger = createLogger('deadlines-page');
@@ -89,8 +95,13 @@ function applySort(list, mode) {
 }
 
 export default function Deadlines() {
-    const navigate = useNavigate();
     const { deadlines, currentMonth, currentYear, setMonthYear, refreshDeadlines } = useDeadlines();
+
+    // Sincronizar al volver a la pestaña
+    usePageFocus({ onFocus: refreshDeadlines });
+
+    const navigate = useNavigate();
+    const { user } = useAuth();
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
 
     // Hotkeys contextuales
@@ -103,6 +114,7 @@ export default function Deadlines() {
         searchTerm, setSearchTerm,
         categoryFilter, setCategoryFilter,
         priorityFilter, setPriorityFilter,
+        agendaFilter, setAgendaFilter,
         sortMode, setSortMode,
         dateFilter, setDateFilter,
         isCreateModalOpen, setIsCreateModalOpen,
@@ -112,16 +124,25 @@ export default function Deadlines() {
         batchLoading, setBatchLoading,
     } = useDeadlinesPageState(savedFilters);
 
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
     // Persistir filtros
     useEffect(() => {
-        saveFilterState({ searchTerm, categoryFilter, priorityFilter, sortMode });
-    }, [searchTerm, categoryFilter, priorityFilter, sortMode]);
+        saveFilterState({ searchTerm, categoryFilter, priorityFilter, agendaFilter, sortMode });
+    }, [searchTerm, categoryFilter, priorityFilter, agendaFilter, sortMode]);
+
+    // Resetear a pág 1 al filtrar o cambiar mes/año
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, categoryFilter, priorityFilter, agendaFilter, sortMode, dateFilter, currentMonth, currentYear]);
 
     // Handler KPI card "Vencidos" — muestra solo vencidos
     const handleFilterVencidos = () => {
         setDateFilter('vencidos');
         setSearchTerm('');
         setPriorityFilter('all');
+        setAgendaFilter('all');
     };
 
     // Handler KPI cards de fecha — muestra todos menos cumplidos, filtra por rango
@@ -129,13 +150,37 @@ export default function Deadlines() {
         setDateFilter(range);
         setSearchTerm('');
         setPriorityFilter('all');
+        setAgendaFilter('all');
     };
 
     // Al cambiar filtros manuales, limpiar KPI override
     const handleCategoryChange = (v) => { setDateFilter('all'); setCategoryFilter(v); };
     const handlePriorityChange = (v) => { setDateFilter('all'); setPriorityFilter(v); };
+    const handleAgendaChange = (v) => { setDateFilter('all'); setAgendaFilter(v); };
     const handleSearchChange = (val) => { setDateFilter('all'); setSearchTerm(val); };
     const handleSortChange = (v) => setSortMode(v);
+
+    // Agendas disponibles para filtrar, categorizadas por tipo
+    const availableAgendas = useMemo(() => {
+        const usersSet = new Set();
+        const casesSet = new Set();
+        (deadlines || []).forEach(d => {
+            if (d.status !== 'Cumplido') {
+                const label = getDeadlineAgendaLabel(d, user);
+                if (label && label !== 'Sin agenda') {
+                    if (!d.suit_case_id) {
+                        usersSet.add(label);
+                    } else {
+                        casesSet.add(label);
+                    }
+                }
+            }
+        });
+        return {
+            users: Array.from(usersSet).sort(),
+            cases: Array.from(casesSet).sort(),
+        };
+    }, [deadlines, user]);
 
     // Filtros combinados
     const filteredDeadlines = useMemo(() => {
@@ -181,12 +226,17 @@ export default function Deadlines() {
             // Filtro de prioridad
             if (priorityFilter !== 'all' && d.priority !== priorityFilter) return false;
 
+            // Filtro de agenda
+            if (agendaFilter !== 'all') {
+                const label = getDeadlineAgendaLabel(d, user);
+                if (label !== agendaFilter) return false;
+            }
+
             return true;
         });
 
         return applySort(result, sortMode);
-    }, [deadlines, searchTerm, categoryFilter, priorityFilter, dateFilter, sortMode]);
-    const paginationResetKey = `${currentMonth}-${currentYear}-${dateFilter}-${categoryFilter}-${priorityFilter}-${sortMode}-${searchTerm}-${filteredDeadlines.length}`;
+    }, [deadlines, searchTerm, categoryFilter, priorityFilter, agendaFilter, dateFilter, sortMode, user]);
 
     // Batch: toggle individual
     const handleToggleSelect = useCallback((id) => {
@@ -196,7 +246,7 @@ export default function Deadlines() {
             else next.add(id);
             return next;
         });
-    }, []);
+    }, [setSelectedIds]);
 
     // Batch: toggle todos los de la página actual
     const handleToggleAll = useCallback((pageItems) => {
@@ -210,7 +260,7 @@ export default function Deadlines() {
             }
             return next;
         });
-    }, []);
+    }, [setSelectedIds]);
 
     // Batch: completar seleccionados
     const handleBatchComplete = () => {
@@ -232,6 +282,56 @@ export default function Deadlines() {
                     await refreshDeadlines();
                     setSelectedIds(new Set());
                     showAppToast({ title: 'Éxito', description: 'Vencimientos marcados como cumplidos', variant: 'success' });
+                    closeDialog();
+                } catch (e) {
+                    closeDialog();
+                    openDialog({ title: 'Error', desc: e.message, type: 'danger', onConfirm: closeDialog });
+                } finally {
+                    setBatchLoading(false);
+                }
+            },
+        });
+    };
+
+    // Batch: eliminar seleccionados
+    const handleBatchDelete = () => {
+        if (selectedIds.size === 0) return;
+        openDialog({
+            title: 'Eliminar vencimientos',
+            desc: `¿Deseas eliminar ${selectedIds.size} vencimiento${selectedIds.size !== 1 ? 's' : ''}? Esta acción no se puede deshacer.`,
+            type: 'danger',
+            confirmText: 'Sí, eliminar',
+            onConfirm: async () => {
+                setDialogLoading(true);
+                setBatchLoading(true);
+                try {
+                    const results = await Promise.all([...selectedIds].map(async (id) => {
+                        return { id, result: await deleteDeadline(id) };
+                    }));
+                    
+                    const failed = results.filter(r => !r.result?.ok);
+                    const isForbidden = failed.some(r => r.result?.status === 403);
+
+                    if (failed.length > 0) {
+                        if (isForbidden) {
+                            showAppToast({ 
+                                title: 'Permisos insuficientes', 
+                                description: 'Algunos eventos no se pudieron eliminar porque no sos propietario de ellos.', 
+                                variant: 'destructive' 
+                            });
+                        } else {
+                            showAppToast({ 
+                                title: 'Error', 
+                                description: 'No se pudieron eliminar todos los vencimientos.', 
+                                variant: 'destructive' 
+                            });
+                        }
+                    } else {
+                        showAppToast({ title: 'Éxito', description: 'Vencimientos eliminados correctamente', variant: 'success' });
+                    }
+
+                    await refreshDeadlines();
+                    setSelectedIds(new Set());
                     closeDialog();
                 } catch (e) {
                     closeDialog();
@@ -300,6 +400,7 @@ export default function Deadlines() {
 
     return (
         <div className="space-y-4 relative p-6 max-w-7xl mx-auto">
+
             {/* Header */}
             <div className="flex justify-between items-start gap-4">
                 <div>
@@ -337,11 +438,25 @@ export default function Deadlines() {
                 onCategoryChange={handleCategoryChange}
                 priorityFilter={priorityFilter}
                 onPriorityChange={handlePriorityChange}
+                agendaFilter={agendaFilter}
+                onAgendaChange={handleAgendaChange}
+                availableAgendas={availableAgendas}
                 sortMode={sortMode}
                 onSortChange={handleSortChange}
                 resultCount={filteredDeadlines.length}
             />
 
+            {/* Paginación - Nueva ubicación sugerida por usuario (debajo de searchbar) */}
+            {filteredDeadlines.length > itemsPerPage && (
+                <Pagination
+                    totalItems={filteredDeadlines.length}
+                    itemsPerPage={itemsPerPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
+                />
+            )}
+            
             {/* Barra de acciones batch */}
             {selectedIds.size > 0 && (
                 <div className="flex items-center gap-3 p-3 bg-(--bg-card) border border-(--border-default) rounded-xl shadow-sm">
@@ -353,16 +468,26 @@ export default function Deadlines() {
                         variant="secondary"
                         onClick={() => setSelectedIds(new Set())}
                     >
-                        Cancelar selección
+                        Cancelar
+                    </Button>
+                    <Button
+                        size="sm"
+                        variant="danger"
+                        onClick={handleBatchDelete}
+                        disabled={batchLoading}
+                        className="flex items-center gap-1.5"
+                    >
+                        <Trash2 className="h-4 w-4" />
+                        Eliminar
                     </Button>
                     <Button
                         size="sm"
                         onClick={handleBatchComplete}
                         disabled={batchLoading}
-                        className="flex items-center gap-1.5"
+                        className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700"
                     >
                         <CheckCircle className="h-4 w-4" />
-                        Marcar como cumplidos
+                        Completar
                     </Button>
                 </div>
             )}
@@ -376,7 +501,10 @@ export default function Deadlines() {
                 onToggleSelect={handleToggleSelect}
                 onToggleAll={handleToggleAll}
                 sortMode={sortMode}
-                paginationResetKey={paginationResetKey}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
+                hideAgenda={agendaFilter !== 'all'}
+                trigger={`${currentMonth}-${currentYear}-${searchTerm}-${categoryFilter}-${priorityFilter}-${agendaFilter}-${dateFilter}-${sortMode}`}
             />
 
             {/* Modal crear */}

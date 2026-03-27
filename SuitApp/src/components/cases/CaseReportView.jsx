@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { getCaseStatusLabel } from '../../utils/caseStatus';
+import { getClientDisplayName } from '../../utils/clientDisplayName.js';
 
 dayjs.locale('es');
 
@@ -27,7 +28,7 @@ export const CaseReportView = ({ data }) => {
         </div>
     );
 
-    const { caseData, participants, clients, events, honorarios, gastos, documents, multimedia, files, partes, generatedAt } = data;
+    const { caseData, caseMetadata, participants, clients, events, honorarios, gastos, documents, multimedia, files, partes, generatedAt } = data;
 
     // Cálculos financieros con defensa extra por si llegan como objetos {data:[]}
     const honorariosList = Array.isArray(honorarios) ? honorarios : (honorarios?.data || []);
@@ -94,8 +95,22 @@ export const CaseReportView = ({ data }) => {
                         <p className="text-lg font-bold text-slate-900">{caseData?.title || 'Sin Título'}</p>
                     </div>
                     <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Categoría / Tipo de Expediente</p>
-                        <p className="text-slate-700 font-medium">{caseData?.case_type?.name || caseData?.category || 'General'}</p>
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Fuero</p>
+                        <p className="text-slate-700 font-medium">{caseMetadata?.fuero || 'Sin fuero'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Tipos de Expediente</p>
+                        {Array.isArray(caseMetadata?.tipoExpedientes) && caseMetadata.tipoExpedientes.length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-2">
+                                {caseMetadata.tipoExpedientes.map((tipo) => (
+                                    <Badge key={tipo} variant="secondary">
+                                        {tipo}
+                                    </Badge>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-slate-700 font-medium">Sin tipos de expediente</p>
+                        )}
                     </div>
                     <div>
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Estado del Proceso</p>
@@ -108,6 +123,18 @@ export const CaseReportView = ({ data }) => {
                     <div>
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Fecha de Apertura</p>
                         <p className="text-slate-700 font-medium">{formatDate(caseData?.created_at || caseData?.start_date)}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Radicación</p>
+                        <p className="text-slate-700 font-medium">{caseMetadata?.radicacion || 'Sin radicación'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Jurisdicción</p>
+                        <p className="text-slate-700 font-medium">{caseMetadata?.jurisdiccion || 'Sin jurisdicción'}</p>
+                    </div>
+                    <div>
+                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Dependencia (Juzgado)</p>
+                        <p className="text-slate-700 font-medium">{caseMetadata?.dependencia || 'Sin juzgado'}</p>
                     </div>
                 </div>
             </section>
@@ -155,9 +182,9 @@ export const CaseReportView = ({ data }) => {
                             </thead>
                             <tbody>
                                 {(Array.isArray(clients) ? clients : (clients?.data || [])).length > 0 ? (Array.isArray(clients) ? clients : (clients?.data || [])).map((c) => (
-                                    <tr key={safeKey('client', c.id, c.document_number, c.dni, c.name)} className="border-b border-slate-100 last:border-0">
-                                        <td className="px-4 py-2 font-medium text-slate-900">{c.name}</td>
-                                        <td className="px-4 py-2 text-slate-500 text-xs">{c.dni || c.document_number || 'S/D'}</td>
+                                    <tr key={safeKey('client', c.id, c.identification_number, c.first_name, c.last_name)} className="border-b border-slate-100 last:border-0">
+                                        <td className="px-4 py-2 font-medium text-slate-900">{getClientDisplayName(c)}</td>
+                                        <td className="px-4 py-2 text-slate-500 text-xs">{c.identification_number ?? ''}</td>
                                     </tr>
                                 )) : (
                                     <tr>
@@ -231,7 +258,7 @@ export const CaseReportView = ({ data }) => {
                                     </td>
                                     <td className="px-4 py-2 text-center">
                                         <Badge variant="ghost" className="text-[10px] uppercase font-bold tracking-wider">
-                                            {p.rol?.titulo || 'Parte'}
+                                            {p.rol?.titulo ?? p.rol_titulo}
                                         </Badge>
                                     </td>
                                 </tr>

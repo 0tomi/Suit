@@ -45,13 +45,58 @@ contextBridge.exposeInMainWorld('electronAPI', {
         request: (payload) => ipcRenderer.invoke('http:request', payload),
     },
 
+    clients: {
+        list: (options) => ipcRenderer.invoke('clients:list', options),
+        get: (id) => ipcRenderer.invoke('clients:get', id),
+        create: (payload) => ipcRenderer.invoke('clients:create', payload),
+        update: (id, payload) => ipcRenderer.invoke('clients:update', id, payload),
+        delete: (id) => ipcRenderer.invoke('clients:delete', id),
+        getLastModified: () => ipcRenderer.invoke('clients:lastModified'),
+        sync: () => ipcRenderer.invoke('clients:sync'),
+    },
+
+    partes: {
+        list: (options) => ipcRenderer.invoke('partes:list', options),
+        get: (id) => ipcRenderer.invoke('partes:get', id),
+        create: (payload) => ipcRenderer.invoke('partes:create', payload),
+        update: (id, payload) => ipcRenderer.invoke('partes:update', id, payload),
+        delete: (id) => ipcRenderer.invoke('partes:delete', id),
+        getLastModified: () => ipcRenderer.invoke('partes:lastModified'),
+        sync: () => ipcRenderer.invoke('partes:sync'),
+        listByCase: (caseId) => ipcRenderer.invoke('partes:listByCase', caseId),
+        linkToCase: (caseId, parteId) => ipcRenderer.invoke('partes:linkToCase', caseId, parteId),
+        unlinkFromCase: (caseId, parteId) => ipcRenderer.invoke('partes:unlinkFromCase', caseId, parteId),
+    },
+
     dialog: {
         openImage: (options) => ipcRenderer.invoke('dialog:openImage', options),
+        openFile: (options) => ipcRenderer.invoke('dialog:openFile', options),
         saveFile: (options) => ipcRenderer.invoke('dialog:saveFile', options),
     },
 
     documents: {
         exportPdf: (payload) => ipcRenderer.invoke('documents:exportPdf', payload),
+        /**
+         * Convierte un archivo DOCX o PDF a HTML.
+         * Si se pasa keyword, reemplaza sus ocurrencias por #1#, #2#, ..., #n#.
+         * Retorna { ok, html, warnings, placeholderCount } | { ok: false, error }
+         */
+        convertToHtml: (filePath, keyword) =>
+            ipcRenderer.invoke('documents:convertToHtml', { filePath, keyword }),
+        getVersionHistory: (documentId) =>
+            ipcRenderer.invoke('documents:getVersionHistory', documentId),
+        getVersionContent: (documentId, versionId, fallbackVersion) =>
+            ipcRenderer.invoke('documents:getVersionContent', documentId, versionId, fallbackVersion),
+        getListingPage: (options) =>
+            ipcRenderer.invoke('documents:getListingPage', options),
+        invalidateListingCache: () =>
+            ipcRenderer.invoke('documents:invalidateListingCache'),
+    },
+
+    bitacora: {
+        list: (options) => ipcRenderer.invoke('bitacora:list', options),
+        clear: () => ipcRenderer.invoke('bitacora:clear'),
+        cleanup: (days) => ipcRenderer.invoke('bitacora:cleanup', days),
     },
 
     publicFiles: {
@@ -59,6 +104,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
         // Retorna { saved: true, filePath } o { saved: false, error? }
         download: (fileId, suggestedName) =>
             ipcRenderer.invoke('publicFiles:download', { fileId, suggestedName }),
+
+        // Genera un enlace temporal firmado (válido por 5 min) para descarga externa.
+        // Retorna { signed_url, expires_at }
+        generateLink: (fileId) => ipcRenderer.invoke('publicFiles:generateLink', fileId),
+
+        // Genera un enlace temporal firmado para carga externa.
+        // Retorna { upload_url, expires_at }
+        generateUploadLink: (options) => ipcRenderer.invoke('publicFiles:generateUploadLink', options),
+    },
+
+    cases: {
+        // Genera un enlace temporal para carga/descarga de archivos o multimedia en un caso.
+        // Retorna { upload_url | download_url, expires_at }
+        generateLink: (options) => ipcRenderer.invoke('cases:generateLink', options),
     },
 
     // --- Sincronización ---
@@ -77,9 +136,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     // --- Base de datos local (caché) ---
     db: {
         getAll: (table) => ipcRenderer.invoke('db:getAll', table),
+        count: (table) => ipcRenderer.invoke('db:count', table),
         getById: (table, id) => ipcRenderer.invoke('db:getById', table, id),
         getCaseKpis: (caseId) => ipcRenderer.invoke('db:getCaseKpis', caseId),
         getCaseNextEvent: (caseId) => ipcRenderer.invoke('db:getCaseNextEvent', caseId),
+        getEnrichedDependencies: (jurisdiccionId, radicacionId) =>
+            ipcRenderer.invoke('db:getEnrichedDependencies', jurisdiccionId, radicacionId),
+        getTemplateRequirements: (templateId) =>
+            ipcRenderer.invoke('db:getTemplateRequirements', templateId),
+        searchEvents: (options) => ipcRenderer.invoke('db:searchEvents', options),
         upsertMany: (table, rows) => ipcRenderer.invoke('db:upsertMany', table, rows),
         reconcileEventsForAgenda: (agendaId, rows) =>
             ipcRenderer.invoke('db:reconcileEventsForAgenda', agendaId, rows),
@@ -87,6 +152,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
             ipcRenderer.invoke('db:replaceEventsForAgendaMonth', agendaId, year, month, rows),
         reconcileEventsForAgendaMonth: (agendaId, year, month, rows) =>
             ipcRenderer.invoke('db:reconcileEventsForAgendaMonth', agendaId, year, month, rows),
+        reconcileEventsForAgendasMonth: (year, month, rowsByAgendaId) =>
+            ipcRenderer.invoke('db:reconcileEventsForAgendasMonth', year, month, rowsByAgendaId),
         deleteById: (table, id) => ipcRenderer.invoke('db:deleteById', table, id),
         deleteWhere: (table, conditions) => ipcRenderer.invoke('db:deleteWhere', table, conditions),
         clearTable: (table) => ipcRenderer.invoke('db:clearTable', table),
@@ -102,6 +169,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
         deletePendingEventBundle: (localEventId) => ipcRenderer.invoke('db:deletePendingEventBundle', localEventId),
         promotePendingEvent: (localEventId, remoteEventRow, options) =>
             ipcRenderer.invoke('db:promotePendingEvent', localEventId, remoteEventRow, options),
+    },
+
+    system: {
+        getFonts: () => ipcRenderer.invoke('system:getFonts'),
     },
 
     notifications: {

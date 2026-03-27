@@ -110,6 +110,14 @@ const Indent = Extension.create({
                 dispatch?.(tr);
                 return true;
             },
+            setIndentLevel: (level) => ({ state, dispatch }) => {
+                const tr = state.tr;
+                const changed = updateSelectedIndent(tr, state.selection, () => Math.max(INDENT_MIN_LEVEL, Math.min(INDENT_MAX_LEVEL, level)));
+
+                if (!changed) return false;
+                dispatch?.(tr);
+                return true;
+            },
         };
     },
 

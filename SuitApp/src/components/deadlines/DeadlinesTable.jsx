@@ -12,11 +12,14 @@ import { Badge } from '../ui/Badge';
 import { CheckCircle, Clock } from 'lucide-react';
 import { EmptyState } from '../ui/EmptyState';
 import { Pagination } from '../ui/Pagination';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '../ui/Button';
 import { useDeadlineColors } from '../../hooks/useDeadlineColors';
 import { canPostponeDeadline } from '../../services/deadlineService.js';
 import { useSettings } from '../../context/SettingsContext';
+import { useAuth } from '../../context/AuthContext';
+import { getDeadlineAgendaLabel } from '../../utils/deadlines/deadlineLabelUtils';
+import { AnimatedFilterContent } from '../ui/AnimatedFilterContent';
 
 /** Badge de estado con colores correctos según valores de la API. */
 function getStatusBadge(deadline) {
@@ -57,6 +60,7 @@ function getCountdownText(deadline) {
 const COLUMNS = [
     { header: '' },           // Checkbox
     { header: 'Vencimiento' },
+    { header: 'Agenda' },
     { header: 'Fecha Límite' },
     { header: 'Estado' },
     { header: 'Prioridad' },
@@ -79,15 +83,22 @@ export default function DeadlinesTable({
     onToggleSelect,
     onToggleAll,
     sortMode,
-    paginationResetKey = 'default',
+    currentPage = 1,
+    // onPageChange no se usa aquí pero se recibe como prop (se pasa a Table si fuera necesario, pero Table usa currentPage)
+    trigger, // Nuevo prop trigger
+    hideAgenda = false,
+    newIds = new Set(), // IDs de nuevos items
+    onMarkAsSeen = () => {}, // Limpia el badge
 }) {
-    const [paginationState, setPaginationState] = useState({
-        page: 1,
-        resetKey: paginationResetKey,
-    });
+    const { user } = useAuth();
     const itemsPerPage = 10;
     const { getDeadlineStyle } = useDeadlineColors();
     const { urgentBlinkOnEntry } = useSettings();
+
+    // Logic for long press and selection mode
+    const isSelectionMode = selectedIds && selectedIds.size > 0;
+    const timerRef = useRef(null);
+    const [wasLongPress, setWasLongPress] = useState(false);
 
     // Activa el parpadeo de entrada para filas urgentes durante 2 segundos al montar.
     const [isBlinking, setIsBlinking] = useState(true);
@@ -96,18 +107,6 @@ export default function DeadlinesTable({
         const timer = setTimeout(() => setIsBlinking(false), 2000);
         return () => clearTimeout(timer);
     }, [urgentBlinkOnEntry]);
-
-    // Derivamos la página efectiva desde una clave explícita para evitar setState
-    // sincrónico en efectos cuando cambian filtros o resultados.
-    const currentPage = paginationState.resetKey === paginationResetKey
-        ? paginationState.page
-        : 1;
-    const setCurrentPage = (page) => {
-        setPaginationState({
-            page,
-            resetKey: paginationResetKey,
-        });
-    };
 
     if (!deadlines || deadlines.length === 0) {
         return (
@@ -118,11 +117,38 @@ export default function DeadlinesTable({
         );
     }
 
-    const totalPages = Math.ceil(deadlines.length / itemsPerPage);
     const currentData = deadlines.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
     // ¿Están todos los items de la página seleccionados?
     const allPageSelected = currentData.length > 0 && currentData.every((d) => selectedIds?.has(d.id));
+
+    const handleRowClick = (d) => {
+        if (wasLongPress) {
+            setWasLongPress(false);
+            return;
+        }
+        if (isSelectionMode) {
+            onToggleSelect?.(d.id);
+        } else {
+            onNavigate(d);
+        }
+    };
+
+    const startLongPress = (d) => {
+        setWasLongPress(false);
+        if (isSelectionMode) return;
+        timerRef.current = setTimeout(() => {
+            onToggleSelect?.(d.id);
+            setWasLongPress(true);
+        }, 250);
+    };
+
+    const cancelLongPress = () => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    };
 
     // Pre-computar los items con sus headers de grupo (evita mutación durante render)
     const showGroupHeaders = sortMode === 'urgentes-first' || sortMode === 'normales-first';
@@ -139,14 +165,40 @@ export default function DeadlinesTable({
         return acc;
     }, []);
 
+    const dynamicColumns = isSelectionMode
+        ? [
+            {
+                header: (
+                    <input
+                        type="checkbox"
+                        checked={allPageSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            onToggleAll?.(currentData);
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                ),
+                key: 'selection-col',
+                className: 'w-10'
+            },
+            ...COLUMNS.slice(1)
+        ]
+        : COLUMNS.slice(1);
+
+    const finalColumns = hideAgenda 
+        ? dynamicColumns.filter(c => c.header !== 'Agenda') 
+        : dynamicColumns;
+
     return (
-        <div className="space-y-4">
-            <Table columns={COLUMNS} isEmpty={false} emptyMessage="">
+        <AnimatedFilterContent trigger={trigger} className="space-y-4 select-none">
+            <Table columns={finalColumns} isEmpty={false} emptyMessage="" currentPage={currentPage}>
                 {rowItems.map((item) => {
                     if (item.type === 'group') {
+                        const colSpan = isSelectionMode ? (hideAgenda ? 5 : 6) : (hideAgenda ? 4 : 5);
                         return (
                             <tr key={`group-${item.group}`} className="pointer-events-none">
-                                <td colSpan={6} className="px-6 py-2 text-xs font-semibold text-(--text-secondary) uppercase tracking-widest bg-(--bg-page)">
+                                <td colSpan={colSpan} className="px-6 py-2 text-xs font-semibold text-(--text-secondary) uppercase tracking-widest bg-(--bg-page)">
                                     {item.label}
                                 </td>
                             </tr>
@@ -156,43 +208,84 @@ export default function DeadlinesTable({
                     const d = item.data;
                     const rowStyle = getDeadlineStyle(d);
                     const isSelected = selectedIds?.has(d.id) ?? false;
+                    const isNew = newIds.has(Number(d.id));
                     const countdown = getCountdownText(d);
                     const isUrgentBlink = urgentBlinkOnEntry && isBlinking && d.priority === 'Urgente' && d.status !== 'Cumplido';
                     return (
                         <tr
                             key={d.id}
-                            className={`hover:brightness-95 transition-all cursor-pointer group${isUrgentBlink ? ' deadline-urgent-blink' : ''}`}
+                            className={`hover:brightness-95 transition-all cursor-pointer group${isUrgentBlink ? ' deadline-urgent-blink' : ''}${isSelected ? ' ring-2 ring-blue-500 ring-inset brightness-95' : ''}`}
                             style={rowStyle}
-                            onClick={() => onNavigate(d)}
+                            onClick={() => handleRowClick(d)}
+                            onMouseEnter={() => isNew && onMarkAsSeen('events', d.id)}
+                            onMouseDown={() => startLongPress(d)}
+                            onMouseUp={cancelLongPress}
+                            onMouseLeave={cancelLongPress}
+                            onTouchStart={() => startLongPress(d)}
+                            onTouchEnd={cancelLongPress}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter' || e.key === ' ') {
                                     e.preventDefault();
-                                    onNavigate(d);
+                                    handleRowClick(d);
                                 }
                             }}
                             role="button"
                             tabIndex={0}
                         >
-                            {/* Checkbox */}
-                            <td className="pl-4 pr-2 py-4 w-10">
-                                <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => onToggleSelect?.(d.id)}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onKeyDown={(e) => e.stopPropagation()}
-                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                                    aria-label={`Seleccionar ${d.title}`}
-                                />
-                            </td>
+                            {/* Checkbox condicional */}
+                            {isSelectionMode && (
+                                <td className="pl-4 pr-2 py-4 w-10">
+                                    <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => onToggleSelect?.(d.id)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        onKeyDown={(e) => e.stopPropagation()}
+                                        className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                        aria-label={`Seleccionar ${d.title}`}
+                                    />
+                                </td>
+                            )}
 
                             {/* Título */}
                             <td className="px-6 py-4">
-                                <span className="font-medium text-(--text-primary) block">{d.title}</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="font-medium text-(--text-primary)">{d.title}</span>
+                                    {isNew && (
+                                        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black bg-red-500 text-white border border-red-600 shadow-sm animate-pulse-subtle">
+                                            NUEVO
+                                        </span>
+                                    )}
+                                </div>
                                 {d.description && (
-                                    <span className="text-xs text-(--text-secondary) truncate max-w-xs block">{d.description}</span>
+                                    <span className="text-xs text-(--text-secondary) truncate max-w-xs block mt-0.5">{d.description}</span>
                                 )}
                             </td>
+
+                            {/* Agenda */}
+                            {!hideAgenda && (
+                                <td className="px-6 py-4">
+                                    {(() => {
+                                        const displayName = getDeadlineAgendaLabel(d, user);
+
+                                        if (displayName === 'Sin agenda') {
+                                            return <span className="text-xs text-(--text-tertiary) italic">Sin agenda</span>;
+                                        }
+
+                                        return (
+                                            <div className="flex items-center gap-2">
+                                                <div 
+                                                    className="w-2 h-2 rounded-full flex-shrink-0" 
+                                                    style={{ backgroundColor: d.agenda_color || 'var(--text-tertiary)' }}
+                                                />
+                                                <span className="text-sm text-(--text-secondary) truncate max-w-[120px]" title={displayName}>
+                                                    {displayName}
+                                                </span>
+                                            </div>
+                                        );
+                                    })()}
+                                </td>
+                            )}
 
                             {/* Fecha + countdown */}
                             <td className="px-6 py-4 text-sm">
@@ -229,6 +322,7 @@ export default function DeadlinesTable({
                                                     e.stopPropagation();
                                                     onComplete(d);
                                                 }}
+                                                onMouseDown={(e) => e.stopPropagation()}
                                                 title="Marcar como cumplido"
                                                 className="text-(--text-tertiary) hover:text-green-600 hover:bg-green-500/10"
                                             >
@@ -242,6 +336,7 @@ export default function DeadlinesTable({
                                                         e.stopPropagation();
                                                         onPostpone(d);
                                                     }}
+                                                    onMouseDown={(e) => e.stopPropagation()}
                                                     title="Prorrogar"
                                                     className="text-(--text-tertiary) hover:text-amber-600 hover:bg-amber-500/10"
                                                 >
@@ -257,27 +352,18 @@ export default function DeadlinesTable({
                 })}
             </Table>
 
-            {/* Select all + info de selección */}
+            {/* Info de selección fallback */}
             {selectedIds && selectedIds.size > 0 && (
-                <div className="flex items-center gap-2 text-sm text-(--text-secondary)">
-                    <input
-                        type="checkbox"
-                        checked={allPageSelected}
-                        onChange={() => onToggleAll?.(currentData)}
-                        className="w-4 h-4 rounded border-gray-300"
-                    />
-                    <span>{selectedIds.size} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-2 text-xs text-(--text-tertiary) px-1 italic">
+                    <span>{selectedIds.size} vencimiento{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+                    <button 
+                         onClick={() => onToggleAll?.(currentData)}
+                         className="underline hover:text-blue-600"
+                    >
+                        {allPageSelected ? 'Deseleccionar todos en esta página' : 'Seleccionar todos en esta página'}
+                    </button>
                 </div>
             )}
-
-            {totalPages > 1 && (
-                <Pagination
-                    totalItems={deadlines.length}
-                    itemsPerPage={itemsPerPage}
-                    currentPage={currentPage}
-                    onPageChange={setCurrentPage}
-                />
-            )}
-        </div>
+        </AnimatedFilterContent>
     );
 }

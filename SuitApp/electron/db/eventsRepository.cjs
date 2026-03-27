@@ -234,6 +234,96 @@ function reconcileEventsForAgendaMonth(dbInstance, agendaId, year, month, rows =
     return summary;
 }
 
+function reconcileEventsForAgendasMonth(dbInstance, year, month, rowsByAgendaId = {}) {
+    if (!dbInstance) return { inserted: 0, updated: 0, deleted: 0, preservedPending: 0 };
+
+    const { startDate, endDateExclusive } = normalizeMonthBounds(year, month);
+
+    const selectStmt = dbInstance.prepare(`
+        SELECT *
+        FROM events
+        WHERE agenda_id = ?
+          AND starts_at >= ?
+          AND starts_at < ?
+    `);
+    const deleteStmt = dbInstance.prepare('DELETE FROM events WHERE id = ?');
+    const upsertStmt = dbInstance.prepare(`
+        INSERT OR REPLACE INTO events (
+            id,
+            agenda_id,
+            suit_case_id,
+            event_type_id,
+            title,
+            description,
+            starts_at,
+            is_all_day,
+            data_json,
+            synced_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const summary = {
+        inserted: 0,
+        updated: 0,
+        deleted: 0,
+        preservedPending: 0,
+    };
+
+    const batchTransaction = dbInstance.transaction(() => {
+        for (const [agendaIdStr, rows] of Object.entries(rowsByAgendaId)) {
+            const agendaId = Number(agendaIdStr);
+            if (!Number.isInteger(agendaId) || agendaId < 1) continue;
+
+            const safeRows = Array.isArray(rows)
+                ? rows.map((row) => normalizeEventRowForMonthReplace(row, agendaId)).filter(Boolean)
+                : [];
+
+            const existingRows = selectStmt.all(agendaId, startDate, endDateExclusive);
+            const existingById = new Map(existingRows.map((row) => [Number(row.id), row]));
+            const remoteIds = new Set();
+
+            for (const row of safeRows) {
+                remoteIds.add(Number(row.id));
+                const existing = existingById.get(Number(row.id));
+                const rowToPersist = existing ? mergePendingSyncStateForReconcile(existing, row) : row;
+
+                if (existing) {
+                    summary.updated += 1;
+                } else {
+                    summary.inserted += 1;
+                }
+
+                upsertStmt.run(
+                    rowToPersist.id,
+                    rowToPersist.agenda_id,
+                    rowToPersist.suit_case_id,
+                    rowToPersist.event_type_id,
+                    rowToPersist.title,
+                    rowToPersist.description,
+                    rowToPersist.starts_at,
+                    rowToPersist.is_all_day,
+                    rowToPersist.data_json,
+                    rowToPersist.synced_at,
+                );
+            }
+
+            for (const existingRow of existingRows) {
+                const existingId = Number(existingRow.id);
+                if (remoteIds.has(existingId)) continue;
+                if (isPendingEventRow(existingRow)) {
+                    summary.preservedPending += 1;
+                    continue;
+                }
+                deleteStmt.run(existingId);
+                summary.deleted += 1;
+            }
+        }
+    });
+
+    batchTransaction();
+    return summary;
+}
+
 /**
  * Reemplaza la foto completa de eventos de una agenda preservando eventos pendientes locales.
  * Se usa para hidratar la agenda completa de un caso sin quedar atados a una sola vista mensual.
@@ -329,4 +419,5 @@ module.exports = {
     reconcileEventsForAgenda,
     replaceEventsForAgendaMonth,
     reconcileEventsForAgendaMonth,
+    reconcileEventsForAgendasMonth,
 };

@@ -10,6 +10,9 @@ const SCOPE_LABELS = {
     agenda: 'Agenda',
     documentos: 'Documentos',
     sistema: 'Sistema',
+    biblioteca: 'Biblioteca',
+    secciones: 'Secciones',
+    economia: 'Economía',
 };
 
 const normalizeRecordKey = (key) => {

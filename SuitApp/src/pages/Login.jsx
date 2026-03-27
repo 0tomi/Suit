@@ -2,7 +2,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useApi } from '../context/ApiContext';
-import { Briefcase, Loader2, Server } from 'lucide-react';
+import { Eye, EyeOff, Briefcase, Loader2, Server } from 'lucide-react';
+import { unstable_PasswordToggleField as PasswordToggleField } from 'radix-ui';
 
 const Login = () => {
     const tagInputId = useId();
@@ -92,15 +93,24 @@ const Login = () => {
                     </div>
                     <div>
                         <label htmlFor={passwordInputId} className="block text-sm font-medium text-(--text-primary) mb-1.5">Contraseña</label>
-                        <input
-                            id={passwordInputId}
-                            type="password"
-                            data-testid="login-password"
-                            className="bg-(--bg-input) text-(--text-primary) w-full px-4 py-2.5 border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
-                            placeholder="Tu contraseña"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                        />
+                        <PasswordToggleField.Root>
+                            <div className="relative">
+                                <PasswordToggleField.Input
+                                    id={passwordInputId}
+                                    data-testid="login-password"
+                                    className="bg-(--bg-input) text-(--text-primary) w-full px-4 py-2.5 border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all pr-12"
+                                    placeholder="Tu contraseña"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                />
+                                <PasswordToggleField.Toggle className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 transition-colors cursor-pointer flex items-center justify-center">
+                                    <PasswordToggleField.Icon
+                                        visible={<Eye className="w-5 h-5" />}
+                                        hidden={<EyeOff className="w-5 h-5" />}
+                                    />
+                                </PasswordToggleField.Toggle>
+                            </div>
+                        </PasswordToggleField.Root>
                     </div>
 
                     {error && (

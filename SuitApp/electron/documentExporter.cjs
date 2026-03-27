@@ -24,19 +24,17 @@ function buildSuggestedPdfFilename(title) {
   return `${normalized || 'documento-sin-titulo'}.pdf`;
 }
 
-function buildPdfExportHtml({ title, html, styles = '' }) {
-  function normalizePdfFontFamily(fontFamily) {
-    if (typeof fontFamily === 'string' && fontFamily.trim()) {
-      return fontFamily.trim();
-    }
-
-    return '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+function normalizePdfFontFamily(fontFamily) {
+  if (typeof fontFamily === 'string' && fontFamily.trim()) {
+    return fontFamily.trim();
   }
+  return '"Inter", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif';
+}
 
-  function buildPdfExportHtml({ title, html, fontFamily }) {
-    const resolvedFontFamily = normalizePdfFontFamily(fontFamily);
+function buildPdfExportHtml({ title, html, styles = '', fontFamily }) {
+  const resolvedFontFamily = normalizePdfFontFamily(fontFamily);
 
-    return `<!doctype html>
+  return `<!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
@@ -48,18 +46,17 @@ function buildPdfExportHtml({ title, html, styles = '' }) {
     <style>
       @page {
         size: A4;
-        margin: 10mm;
+        margin: 0;
       }
       body {
         margin: 0;
         padding: 0;
         background: #ffffff;
         -webkit-print-color-adjust: exact;
-        font-family: 'Inter', sans-serif;
-        color: #111827;
         font-family: ${resolvedFontFamily};
         font-size: 12pt;
         line-height: 1.55;
+        color: #111827;
       }
       .pdf-wrapper {
         width: 100%;
@@ -68,6 +65,17 @@ function buildPdfExportHtml({ title, html, styles = '' }) {
         -moz-osx-font-smoothing: grayscale;
       }
       ${styles}
+
+      /* Garantiza fondo blanco sin importar los colores del tema de la app
+         que getReportStyles() haya exportado (e.g. --bg-page: #f9fafb). */
+      html, body {
+        background-color: #ffffff !important;
+      }
+      /* Elimina transiciones y animaciones en el contexto de impresión. */
+      *, *::before, *::after {
+        transition: none !important;
+        animation-duration: 0s !important;
+      }
 
       main {
         width: 100%;
@@ -110,15 +118,16 @@ function buildPdfExportHtml({ title, html, styles = '' }) {
       }
 
       [data-page-break="true"] {
-        break-before: page;
-        page-break-before: always;
-        margin: 0;
-        border: 0;
-        height: 0;
+        break-before: page !important;
+        page-break-before: always !important;
+        margin: 0 !important;
+        border: 0 !important;
+        height: 0 !important;
+        overflow: hidden !important;
       }
 
       [data-page-break="true"] > span {
-        display: none;
+        display: none !important;
       }
     </style>
   </head>
@@ -126,94 +135,92 @@ function buildPdfExportHtml({ title, html, styles = '' }) {
     <main>${html || ''}</main>
   </body>
 </html>`;
+}
+
+async function exportDocumentToPdf({
+  browserWindow = null,
+  browserWindowFactory = null,
+  dialogModule = null,
+  fsModule = fs,
+  title,
+  html,
+  styles = '',
+  fontFamily,
+} = {}) {
+  const electron = require('electron');
+  const { BrowserWindow, dialog } = electron;
+  const saveDialog = dialogModule || dialog;
+  const createWindow = browserWindowFactory || ((options) => new BrowserWindow(options));
+
+  const os = require('os');
+  const crypto = require('crypto');
+
+  const saveResult = await saveDialog.showSaveDialog(browserWindow, {
+    title: 'Exportar documento a PDF',
+    defaultPath: buildSuggestedPdfFilename(title),
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+
+  if (saveResult.canceled || !saveResult.filePath) {
+    return { canceled: true };
   }
 
-  async function exportDocumentToPdf({
-    browserWindow = null,
-    browserWindowFactory = null,
-    dialogModule = null,
-    fsModule = fs,
-    title,
-    html,
-    styles = '',
-    fontFamily,
-  } = {}) {
-    const electron = require('electron');
-    const { BrowserWindow, dialog } = electron;
-    const saveDialog = dialogModule || dialog;
-    const createWindow = browserWindowFactory || ((options) => new BrowserWindow(options));
+  const printWindow = createWindow({
+    show: false,
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      sandbox: false, // Permitir acceso a archivo local temporal
+      nodeIntegration: false,
+    },
+  });
 
-    const os = require('os');
-    const crypto = require('crypto');
+  let tempHtmlPath = null;
 
-    const saveResult = await saveDialog.showSaveDialog(browserWindow, {
-      title: 'Exportar documento a PDF',
-      defaultPath: buildSuggestedPdfFilename(title),
-      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  try {
+    // Generar archivo temporal para evitar límites de tamaño de data-url y encodeURIComponent
+    const tempFileName = `suitapp_export_${crypto.randomBytes(4).toString('hex')}.html`;
+    tempHtmlPath = path.join(os.tmpdir(), tempFileName);
+    const fullHtml = buildPdfExportHtml({ title, html, styles, fontFamily });
+
+    const fsNative = require('fs');
+    fsNative.writeFileSync(tempHtmlPath, fullHtml);
+
+    await printWindow.loadFile(tempHtmlPath);
+
+    const pdfBuffer = await printWindow.webContents.printToPDF({
+      printBackground: true,
+      preferCSSPageSize: true,
+      marginsType: 0, // Usamos los márgenes definidos en el CSS @page
     });
 
-    if (saveResult.canceled || !saveResult.filePath) {
-      return { canceled: true };
-    }
+    const fsPromise = fsModule || fs;
+    await fsPromise.writeFile(saveResult.filePath, pdfBuffer);
 
-    const printWindow = createWindow({
-      show: false,
-      autoHideMenuBar: true,
-      webPreferences: {
-        contextIsolation: true,
-        sandbox: false, // Permitir acceso a archivo local temporal
-        nodeIntegration: false,
-      },
-    });
-
-    let tempHtmlPath = null;
-
-    try {
-      // Generar archivo temporal para evitar límites de tamaño de data-url y encodeURIComponent
-      const tempFileName = `suitapp_export_${crypto.randomBytes(4).toString('hex')}.html`;
-      tempHtmlPath = path.join(os.tmpdir(), tempFileName);
-      const fullHtml = buildPdfExportHtml({ title, html, styles });
-
-      const fsModule = require('fs');
-      fsModule.writeFileSync(tempHtmlPath, fullHtml);
-
-      await printWindow.loadFile(tempHtmlPath);
-      const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(buildPdfExportHtml({ title, html, fontFamily }))}`;
-      await printWindow.loadURL(dataUrl);
-
-      const pdfBuffer = await printWindow.webContents.printToPDF({
-        printBackground: true,
-        pageSize: 'A4',
-        marginsType: 0, // Usamos los márgenes definidos en el CSS @page
-      });
-
-      await fs.writeFile(saveResult.filePath, pdfBuffer);
-
-      return {
-        canceled: false,
-        filePath: saveResult.filePath,
-      };
-    } finally {
-      if (tempHtmlPath) {
-        try {
-          const fsSync = require('fs');
-          if (fsSync.existsSync(tempHtmlPath)) {
-            fsSync.unlinkSync(tempHtmlPath);
-          }
-        } catch (err) {
-          console.error('Error cleaning up temp PDF html:', err);
+    return {
+      canceled: false,
+      filePath: saveResult.filePath,
+    };
+  } finally {
+    if (tempHtmlPath) {
+      try {
+        const fsSync = require('fs');
+        if (fsSync.existsSync(tempHtmlPath)) {
+          fsSync.unlinkSync(tempHtmlPath);
         }
-      }
-      if (printWindow && !printWindow.isDestroyed()) {
-        printWindow.destroy();
+      } catch (err) {
+        console.error('Error cleaning up temp PDF html:', err);
       }
     }
-  }
-
-  module.exports = {
-    buildPdfExportHtml,
-    buildSuggestedPdfFilename,
-    exportDocumentToPdf,
-    normalizePdfFontFamily,
+    if (printWindow && !printWindow.isDestroyed()) {
+      printWindow.destroy();
+    }
   }
 }
+
+module.exports = {
+  buildPdfExportHtml,
+  buildSuggestedPdfFilename,
+  exportDocumentToPdf,
+  normalizePdfFontFamily,
+};

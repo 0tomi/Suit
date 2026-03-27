@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { usePartes } from '../../context/PartesContext';
 import { useRoles } from '../../context/RolesContext';
@@ -76,6 +76,10 @@ const PartesTab = () => {
     }, [searchTerm, sortBy, sortOrder]);
 
     useEffect(() => {
+        void refreshPartes();
+    }, [refreshPartes]);
+
+    useEffect(() => {
         // Cuando la parte ya llegó desde el contexto global, dejamos de sostenerla
         // en el estado optimista local para no duplicar filas en la tabla.
         setOptimisticPartes((prev) => prev.filter((parte) => (
@@ -100,10 +104,10 @@ const PartesTab = () => {
         }, { overlayClass: 'bg-black/10 backdrop-blur-[2px]' });
     };
 
-    const getRolName = (rolId) => {
+    const getRolName = useCallback((rolId) => {
         const rol = roles.find(r => r.id === rolId);
         return rol ? rol.titulo : 'N/A';
-    };
+    }, [roles]);
 
     const visiblePartes = useMemo(() => {
         const persistedIds = new Set(partes.map((parte) => String(parte.id)));
@@ -127,7 +131,7 @@ const PartesTab = () => {
         }
         
         return sortPartes(filtered, sortBy, sortOrder);
-    }, [visiblePartes, searchTerm, sortBy, sortOrder, roles]);
+    }, [visiblePartes, searchTerm, sortBy, sortOrder, getRolName]);
 
     const paginatedPartes = useMemo(() => {
         const startIndex = (currentPage - 1) * itemsPerPage;
@@ -146,15 +150,12 @@ const PartesTab = () => {
                 try {
                     const result = await deleteParte(id);
                     if (result.ok) {
-                        // PAR-6: limpiar filas huérfanas del pivot parte_caso para
-                        // evitar JOIN inválidos al leer offline en casos vinculados.
-                        await window.electronAPI.db.deleteWhere('parte_caso', { parte_id: id });
                         showAppToast({
                             title: 'Éxito',
                             description: 'Parte eliminada correctamente.',
                             variant: 'success',
                         });
-                        refreshPartes();
+                        await refreshPartes();
                     } else {
                         showAppToast({
                             title: 'Error',
@@ -238,11 +239,12 @@ const PartesTab = () => {
                 );
             }}
             paginationProps={{
-                totalItems: filteredPartes.length,
-                itemsPerPage,
                 currentPage,
-                onPageChange: setCurrentPage
+                onPageChange: setCurrentPage,
+                totalItems: filteredPartes.length,
+                itemsPerPage
             }}
+            trigger={`${searchTerm}-${sortBy}-${sortOrder}`}
         >
             <ConfirmDialog {...dialogProps} />
         </PeopleSectionLayout>

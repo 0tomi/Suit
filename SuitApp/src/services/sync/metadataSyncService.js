@@ -1,5 +1,6 @@
 import { syncResource } from './syncCore.js';
 import { apiGet } from '../api.js';
+import { syncPartes as syncPartesFromBackend } from './parteSyncService.js';
 import {
     createAuditLogger,
     extractMetadataCollection,
@@ -10,13 +11,13 @@ import {
 // ─── Catálogos nuevos ──────────────────────────────────────────────────────────
 
 export async function syncRadicaciones() {
-    return await syncResource('radicaciones', null, fetchAndCacheSimpleCatalog({
+    return await syncResource('radicaciones', '/radicaciones/last-modified', fetchAndCacheSimpleCatalog({
         endpoint: '/radicaciones',
         table: 'radicaciones',
         buildRow: (item) => ({
             id: item.id,
-            // La API devuelve el campo como `nombre_lugar`
-            name: item.nombre_lugar || null,
+            // La API devuelve el campo como `tipo`
+            name: item.tipo || null,
             data_json: JSON.stringify(item),
             synced_at: new Date().toISOString(),
         }),
@@ -80,21 +81,51 @@ export async function syncGastosCatalogo() {
     }));
 }
 
-export async function syncPartes() {
-    return await syncResource('partes', null, fetchAndCacheSimpleCatalog({
-        endpoint: '/partes',
-        table: 'partes',
+export async function syncCompetencias() {
+    return await syncResource('competencias', '/competencias/last-modified', fetchAndCacheSimpleCatalog({
+        endpoint: '/competencias',
+        table: 'competencias',
         buildRow: (item) => ({
             id: item.id,
-            nombre: item.nombre,
-            apellido: item.apellido,
-            email: item.email || null,
-            telefono: item.telefono || null,
-            rol_id: item.rol_id || null,
+            // La API devuelve el campo como `fuero`
+            fuero: item.fuero || null,
             data_json: JSON.stringify(item),
             synced_at: new Date().toISOString(),
         }),
     }));
+}
+
+export async function syncJurisdicciones() {
+    return await syncResource('jurisdicciones', '/jurisdicciones/last-modified', fetchAndCacheSimpleCatalog({
+        endpoint: '/jurisdicciones',
+        table: 'jurisdicciones',
+        buildRow: (item) => ({
+            id: item.id,
+            nombre: item.nombre || null,
+            data_json: JSON.stringify(item),
+            synced_at: new Date().toISOString(),
+        }),
+    }));
+}
+
+export async function syncDependenciasJudiciales() {
+    return await syncResource('dependencias_judiciales', '/dependencias-judiciales/last-modified', fetchAndCacheSimpleCatalog({
+        endpoint: '/dependencias-judiciales',
+        table: 'dependencias_judiciales',
+        buildRow: (item) => ({
+            id: item.id,
+            jurisdiccion_id: item.jurisdiccion_id || null,
+            competencia_id: item.competencia_id || null,
+            radicacion_id: item.radicacion_id || null,
+            nombre_juzgado: item.nombre_juzgado || null,
+            data_json: JSON.stringify(item),
+            synced_at: new Date().toISOString(),
+        }),
+    }));
+}
+
+export async function syncPartes() {
+    return await syncPartesFromBackend();
 }
 
 /**

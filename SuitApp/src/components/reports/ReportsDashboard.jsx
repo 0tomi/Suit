@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import 'dayjs/locale/es';
@@ -14,6 +14,7 @@ import {
     HandCoins,
     PiggyBank,
     Receipt,
+    LayoutDashboard,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useApi } from '../../context/ApiContext.jsx';
@@ -22,6 +23,7 @@ import { useCases } from '../../context/CasesContext.jsx';
 import { useClients } from '../../context/ClientsContext.jsx';
 import { useDeadlines } from '../../context/DeadlinesContext.jsx';
 import { useEvents } from '../../context/EventsContext.jsx';
+import { useEventTypes } from '../../context/EventTypesContext.jsx';
 import { useHotkeyAction } from '../../hotkeys/useHotkeysSystem';
 import { useReportsDashboardState } from '../../hooks/useReportsDashboardState.js';
 import { HOTKEY_ACTIONS } from '../../hotkeys/hotkeys';
@@ -37,6 +39,9 @@ import EconomiaBarChart from './EconomiaBarChart.jsx';
 import HonorariosVsGastosChart from './HonorariosVsGastosChart.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
 import { buildReportsMetrics } from '../../utils/reports/reportMetrics.js';
+import SideMenuPageLayout from '../ui/SideMenuPageLayout.jsx';
+import { SectionTutorialTrigger } from '../ui/SectionTutorialTrigger.jsx';
+import { estadisticasSteps } from '../../constants/tutorialSteps.js';
 
 dayjs.extend(localizedFormat);
 dayjs.locale('es');
@@ -111,6 +116,15 @@ function formatDeadlineTimestamp(deadline) {
     return parsed.isValid() ? parsed.format('dddd D [de] MMMM') : 'Fecha pendiente';
 }
 
+// Separa el horario del due_date para mostrarlo como metadata secundaria.
+function formatDeadlineTime(deadline) {
+    if (!deadline?.due_date) return '';
+    const parsed = dayjs(deadline.due_date);
+    if (!parsed.isValid()) return '';
+    const normalizedTime = parsed.format('HH:mm:ss');
+    return normalizedTime === '00:00:00' ? '' : `${parsed.format('HH:mm')} hs`;
+}
+
 function buildEventDescription(eventItem) {
     const details = [];
     if (eventItem?.description) details.push(eventItem.description);
@@ -118,35 +132,49 @@ function buildEventDescription(eventItem) {
     return details.join(' · ');
 }
 
+function buildEventTypeLabel(eventItem, eventTypesById) {
+    const directLabel = eventItem?.event_type?.name
+        || eventItem?.eventType?.name
+        || eventItem?.event_type_name
+        || '';
+
+    if (directLabel) return directLabel;
+
+    const eventTypeId = String(eventItem?.event_type_id ?? eventItem?.eventTypeId ?? '');
+    return eventTypesById.get(eventTypeId)?.name || '';
+}
+
+// En vencimientos priorizamos la descripción explícita; si falta, caemos a prioridad.
 function buildDeadlineDescription(deadline) {
-    const details = [];
-    if (deadline?.priority) details.push(`Prioridad ${deadline.priority}`);
-    if (deadline?.suit_case_id) details.push(`Caso #${deadline.suit_case_id}`);
-    if (deadline?.description) details.push(deadline.description);
-    return details.join(' · ');
+    const primaryDescription = String(deadline?.description || '').trim();
+    if (primaryDescription) return primaryDescription;
+    if (deadline?.priority) return `Prioridad ${deadline.priority}`;
+    if (deadline?.suit_case_id) return `Caso #${deadline.suit_case_id}`;
+    return '';
 }
 
 function ReportsDashboardHero() {
-
     return (
-        <section className="overflow-hidden rounded-[32px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_36%),linear-gradient(135deg,_rgba(15,23,42,0.98),_rgba(30,41,59,0.94))] p-8 text-white shadow-[0_28px_80px_-45px_rgba(15,23,42,0.8)]">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-                <div className="max-w-3xl space-y-4">
-                    <div>
-                        <h1 data-testid="page-reports-title" className="text-4xl font-semibold tracking-tight">
-                            Panel informativo del estudio
-                        </h1>
-                        <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-200">
-                            Resumen de datos operativos sobre el estudio.
-                        </p>
-                    </div>
+        <section className="relative overflow-hidden rounded-[32px] border border-blue-500/10 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 p-8 text-white shadow-2xl">
+            {/* Ambient gradients */}
+            <div className="absolute -top-24 -left-24 h-64 w-64 rounded-full bg-blue-600/10 blur-[80px]" />
+            <div className="absolute -bottom-24 -right-24 h-64 w-64 rounded-full bg-indigo-600/10 blur-[80px]" />
+
+            <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+                <div className="space-y-2">
+                    <h1 data-testid="page-reports-title" className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+                        Panel Informativo del Estudio
+                    </h1>
+                    <p className="max-w-md text-sm leading-relaxed text-slate-400 font-medium">
+                        Visualiza el pulso operativo y financiero de tu estudio en tiempo real.
+                    </p>
                 </div>
 
-                <div className="flex flex-wrap items-stretch gap-3">
-                    <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-right flex flex-col justify-center">
-                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Actualizado</p>
-                        <p className="mt-1 text-lg font-semibold">
-                            {dayjs().format('D [de] MMMM, HH:mm')}
+                <div className="flex items-center gap-3">
+                    <div className="glass-effect rounded-2xl border border-white/5 bg-white/5 px-5 py-3 text-right backdrop-blur-md">
+                        <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Última actualización</p>
+                        <p className="mt-1 text-base font-bold text-white">
+                            {dayjs().format('D [de] MMM, HH:mm')}
                         </p>
                     </div>
                 </div>
@@ -224,13 +252,14 @@ function ReportsDashboardActivity({ activity }) {
     );
 }
 
-function ReportsDashboardUpcoming({ upcoming }) {
+function ReportsDashboardUpcoming({ upcoming, eventTypesById }) {
     return (
         <section className="grid gap-4 xl:grid-cols-3">
             <ReportsUpcomingCard
                 icon={CalendarClock}
                 label="Evento proximo"
                 title={upcoming.nextEvent?.title || ''}
+                metadataLabel={buildEventTypeLabel(upcoming.nextEvent, eventTypesById)}
                 timestamp={upcoming.nextEvent ? formatEventTimestamp(upcoming.nextEvent) : ''}
                 description={buildEventDescription(upcoming.nextEvent)}
                 href="/agenda"
@@ -244,7 +273,8 @@ function ReportsDashboardUpcoming({ upcoming }) {
                 icon={AlertTriangle}
                 label="Vencimiento proximo"
                 title={upcoming.nextDeadline?.title || ''}
-                timestamp={upcoming.nextDeadline ? formatDeadlineTimestamp(upcoming.nextDeadline) : ''}
+                metadataLabel={upcoming.nextDeadline ? formatDeadlineTimestamp(upcoming.nextDeadline) : ''}
+                timestamp={upcoming.nextDeadline ? formatDeadlineTime(upcoming.nextDeadline) : ''}
                 description={buildDeadlineDescription(upcoming.nextDeadline)}
                 href="/deadlines"
                 ctaLabel="Ver vencimientos"
@@ -257,7 +287,8 @@ function ReportsDashboardUpcoming({ upcoming }) {
                 icon={AlertTriangle}
                 label="Vencimiento urgente proximo"
                 title={upcoming.nextUrgentDeadline?.title || ''}
-                timestamp={upcoming.nextUrgentDeadline ? formatDeadlineTimestamp(upcoming.nextUrgentDeadline) : ''}
+                metadataLabel={upcoming.nextUrgentDeadline ? formatDeadlineTimestamp(upcoming.nextUrgentDeadline) : ''}
+                timestamp={upcoming.nextUrgentDeadline ? formatDeadlineTime(upcoming.nextUrgentDeadline) : ''}
                 description={buildDeadlineDescription(upcoming.nextUrgentDeadline)}
                 href="/deadlines"
                 ctaLabel="Atender urgentes"
@@ -298,14 +329,17 @@ export function ReportsDashboard() {
     const { clients, refreshClients } = useClients();
     const { deadlines, refreshDeadlines } = useDeadlines();
     const { events, refreshEvents } = useEvents();
+    const { event_types: eventTypes = [] } = useEventTypes();
     const {
         globalHonorarios, globalGastos, previousHonorarios, honorarios12, gastos12,
         selectedUserId, setSelectedUserId,
         usersList, setUsersList,
         caseClientMap, setCaseClientMap,
-        isRefreshing, setIsRefreshing,
+        setIsRefreshing,
         setEconomyData,
     } = useReportsDashboardState();
+
+    const [activeTab, setActiveTab] = useState('summary');
 
     // Carga las asociaciones caso↔cliente desde SQLite al montar.
     useEffect(() => {
@@ -323,7 +357,7 @@ export function ReportsDashboard() {
             .catch((err) => {
                 void logger.warn('No se pudo cargar case_client desde SQLite', { error: err?.message });
             });
-    }, []);
+    }, [setCaseClientMap]);
 
     // Carga el listado de usuarios para el selector admin.
     useEffect(() => {
@@ -331,10 +365,9 @@ export function ReportsDashboard() {
         getUsersDirectory()
             .then(setUsersList)
             .catch((err) => void logger.warn('No se pudo cargar usuarios', { error: err?.message }));
-    }, [isAdmin, connected]);
+    }, [isAdmin, connected, setUsersList]);
 
     // Carga datos financieros globales: mes actual, mes anterior y 12 meses para gráficos.
-    // Se re-ejecuta cuando cambia el usuario seleccionado en el selector admin.
     useEffect(() => {
         if (!connected) return;
 
@@ -344,7 +377,6 @@ export function ReportsDashboard() {
         const endOfMonth      = now.endOf('month').format('YYYY-MM-DD');
         const startOfPrevMonth = now.subtract(1, 'month').startOf('month').format('YYYY-MM-DD');
         const endOfPrevMonth   = now.subtract(1, 'month').endOf('month').format('YYYY-MM-DD');
-        // Rango de 12 meses: primer día del mes hace 11 meses → fin del mes actual.
         const from12 = now.subtract(11, 'month').startOf('month').format('YYYY-MM-DD');
         const to12   = endOfMonth;
 
@@ -359,8 +391,6 @@ export function ReportsDashboard() {
                 ]);
 
                 if (cancelled) return;
-
-                // Un único dispatch batchea los 5 arrays → 1 re-render en vez de 5.
                 setEconomyData({ hCurrent, gCurrent, hPrev, h12, g12 });
             } catch (err) {
                 void logger.error('Error cargando datos economicos globales', err);
@@ -369,7 +399,7 @@ export function ReportsDashboard() {
 
         void loadEconomy();
         return () => { cancelled = true; };
-    }, [connected, selectedUserId]);
+    }, [connected, selectedUserId, setEconomyData]);
 
     const reportsMetrics = useMemo(() => {
         return buildReportsMetrics({
@@ -390,6 +420,11 @@ export function ReportsDashboard() {
         });
     }, [previousHonorarios]);
 
+    const eventTypesById = useMemo(
+        () => new Map((eventTypes || []).map((item) => [String(item.id), item])),
+        [eventTypes],
+    );
+
     const handleRefresh = useCallback(async () => {
         setIsRefreshing(true);
         try {
@@ -408,11 +443,15 @@ export function ReportsDashboard() {
         } finally {
             setIsRefreshing(false);
         }
-    }, [refreshCases, refreshClients, refreshDeadlines, refreshEvents]);
+    }, [refreshCases, refreshClients, refreshDeadlines, refreshEvents, setIsRefreshing]);
 
     useHotkeyAction(HOTKEY_ACTIONS.REFRESH_MODULE, () => {
         void handleRefresh();
     });
+
+    useEffect(() => {
+        void refreshDeadlines();
+    }, [refreshDeadlines]);
 
     useEffect(() => {
         void refreshEvents({
@@ -424,131 +463,168 @@ export function ReportsDashboard() {
         });
     }, [refreshEvents]);
 
-    // Genera los 12 buckets mensuales para los gráficos de tendencia económica.
     const economyTimeline = useMemo(
         () => buildEconomyTimeline(honorarios12, gastos12),
         [honorarios12, gastos12],
     );
 
-    const activeClientsHelper = 'Clientes vinculados a expedientes actualmente activos.';
+    const TABS = [
+        { id: 'summary', label: 'Vista General', icon: LayoutDashboard, testId: 'reports-tab-summary' },
+        { id: 'economy', label: 'Panorama Económico', icon: TrendingUp, testId: 'reports-tab-economy' },
+        { id: 'activity', label: 'Ritmo de Actividad', icon: Activity, testId: 'reports-tab-activity' },
+    ];
+
+    const renderContent = () => {
+        switch (activeTab) {
+            case 'summary':
+                return (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <ReportsDashboardHero />
+                        <ReportsDashboardSummary
+                            counts={reportsMetrics.counts}
+                            activeClientsHelper="Clientes vinculados a expedientes actualmente activos."
+                        />
+                        <ReportsDashboardUpcoming upcoming={reportsMetrics.upcoming} eventTypesById={eventTypesById} />
+                    </div>
+                );
+            case 'economy':
+                return (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <div className="flex items-center justify-between gap-4 px-1">
+                            <div className="space-y-1">
+                                <h2 className="text-2xl font-bold tracking-tight text-(--text-primary)">Panorama Económico</h2>
+                                <p className="text-sm text-(--text-secondary) font-medium opacity-80">Rendimiento financiero detallado del periodo.</p>
+                            </div>
+
+                            {isAdmin && (
+                                <Select
+                                    value={selectedUserId != null ? String(selectedUserId) : '__all__'}
+                                    onValueChange={(v) => setSelectedUserId(v === '__all__' ? null : Number(v))}
+                                >
+                                    <SelectTrigger className="w-56 glass-effect">
+                                        <SelectValue placeholder="Todos los usuarios" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="__all__">Todos los usuarios</SelectItem>
+                                        {usersList.map((u) => (
+                                            <SelectItem key={u.id} value={String(u.id)}>
+                                                {u.name} ({u.tag})
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                            <ReportsStatCard
+                                icon={Wallet}
+                                label="Facturación Total"
+                                value={reportsMetrics.economy.totalHonorarios}
+                                previousValue={prevReportsMetrics.economy.totalHonorarios}
+                                isCurrency
+                                helper="Suma de honorarios creados en el periodo."
+                                accentClassName="from-indigo-500"
+                            />
+                            <ReportsStatCard
+                                icon={HandCoins}
+                                label="Recaudación"
+                                value={reportsMetrics.economy.totalEntregas}
+                                previousValue={prevReportsMetrics.economy.totalEntregas}
+                                isCurrency
+                                helper="Total percibido por entregas de honorarios."
+                                accentClassName="from-emerald-500"
+                                valueClassName="text-emerald-600 dark:text-emerald-400"
+                            />
+                            <ReportsStatCard
+                                icon={PiggyBank}
+                                label="Saldo Pendiente"
+                                value={reportsMetrics.economy.pendingBalance}
+                                isCurrency
+                                helper="Diferencia bruta entre facturado y cobrado."
+                                accentClassName="from-amber-500"
+                                valueClassName="text-amber-600 dark:text-amber-400"
+                            />
+                            <ReportsStatCard
+                                icon={Receipt}
+                                label="Gastos de Expediente"
+                                value={reportsMetrics.economy.totalGastos}
+                                isCurrency
+                                helper="Gastos registrados asociados a casos."
+                                accentClassName="from-rose-500"
+                                valueClassName="text-rose-600 dark:text-rose-400"
+                            />
+                        </div>
+
+                        <div className="grid gap-6 lg:grid-cols-2">
+                            <EconomiaBarChart
+                                title="Honorarios"
+                                helper="Monto total de honorarios creados cada mes."
+                                data={economyTimeline.map((b) => ({ ...b, value: b.honorarios }))}
+                                gradientFrom="from-slate-950"
+                                gradientVia="via-indigo-900"
+                                gradientTo="to-indigo-500"
+                                gradientHoverTo="hover:to-indigo-400"
+                                lineColor="#6366f1"
+                            />
+                            <EconomiaBarChart
+                                title="Gastos"
+                                helper="Gastos de expediente registrados cada mes."
+                                data={economyTimeline.map((b) => ({ ...b, value: b.gastos }))}
+                                gradientFrom="from-slate-950"
+                                gradientVia="via-rose-900"
+                                gradientTo="to-rose-500"
+                                gradientHoverTo="hover:to-rose-400"
+                                lineColor="#f43f5e"
+                            />
+                            <EconomiaBarChart
+                                title="Entregas"
+                                helper="Total cobrado en entregas cada mes."
+                                data={economyTimeline.map((b) => ({ ...b, value: b.entregas }))}
+                                gradientFrom="from-slate-950"
+                                gradientVia="via-emerald-900"
+                                gradientTo="to-emerald-500"
+                                gradientHoverTo="hover:to-emerald-400"
+                                lineColor="#10b981"
+                            />
+                            <HonorariosVsGastosChart data={economyTimeline} />
+                        </div>
+                    </div>
+                );
+            case 'activity':
+                return (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                        <ReportsDashboardActivity activity={reportsMetrics.activity} />
+                        <ReportsDashboardNotes />
+                    </div>
+                );
+            default:
+                return null;
+        }
+    };
 
     return (
-        <div className="space-y-6">
-            <ReportsDashboardHero />
-            
-            <ReportsDashboardSummary
-                counts={reportsMetrics.counts}
-                activeClientsHelper={activeClientsHelper}
-            />
-            <ReportsDashboardActivity activity={reportsMetrics.activity} />
-            <ReportsDashboardUpcoming upcoming={reportsMetrics.upcoming} />
-
-            <section className="space-y-4">
-                <div className="flex items-center gap-2 px-1 text-(--text-primary) flex-wrap">
-                    <TrendingUp className="h-5 w-5 text-emerald-600 shrink-0" />
-                    <h2 className="text-xl font-semibold tracking-tight">Panorama Económico</h2>
-
-                    {/* Selector de usuario — solo para admin */}
-                    {isAdmin && (
-                        <Select
-                            value={selectedUserId != null ? String(selectedUserId) : '__all__'}
-                            onValueChange={(v) => setSelectedUserId(v === '__all__' ? null : Number(v))}
-                        >
-                            <SelectTrigger className="w-48 ml-1">
-                                <SelectValue placeholder="Todos los usuarios" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__all__">Todos los usuarios</SelectItem>
-                                {usersList.map((u) => (
-                                    <SelectItem key={u.id} value={String(u.id)}>
-                                        {u.name} ({u.tag})
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
-                    )}
-
-                    <span className="text-xs font-medium text-(--text-tertiary) uppercase tracking-widest ml-auto">Resultados del mes</span>
-                </div>
-
-                {/* Contadores del mes actual */}
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <ReportsStatCard
-                        icon={Wallet}
-                        label="Facturación Total"
-                        value={reportsMetrics.economy.totalHonorarios}
-                        previousValue={prevReportsMetrics.economy.totalHonorarios}
-                        isCurrency
-                        helper="Suma de honorarios creados en el periodo."
-                        accentClassName="from-indigo-500/15"
-                    />
-                    <ReportsStatCard
-                        icon={HandCoins}
-                        label="Recaudación"
-                        value={reportsMetrics.economy.totalEntregas}
-                        previousValue={prevReportsMetrics.economy.totalEntregas}
-                        isCurrency
-                        helper="Total percibido por entregas de honorarios."
-                        accentClassName="from-emerald-500/15"
-                        valueClassName="text-emerald-600 dark:text-emerald-400"
-                    />
-                    <ReportsStatCard
-                        icon={PiggyBank}
-                        label="Saldo Pendiente"
-                        value={reportsMetrics.economy.pendingBalance}
-                        isCurrency
-                        helper="Diferencia bruta entre facturado y cobrado."
-                        accentClassName="from-amber-500/15"
-                        valueClassName="text-amber-600 dark:text-amber-400"
-                    />
-                    <ReportsStatCard
-                        icon={Receipt}
-                        label="Gastos de Expediente"
-                        value={reportsMetrics.economy.totalGastos}
-                        isCurrency
-                        helper="Gastos registrados asociados a casos."
-                        accentClassName="from-rose-500/15"
-                        valueClassName="text-rose-600 dark:text-rose-400"
+        <SideMenuPageLayout
+            title={
+                <div className="flex items-center gap-3">
+                    <span>Panel Informativo del Estudio</span>
+                    <SectionTutorialTrigger
+                        steps={estadisticasSteps}
+                        ariaLabel="Ver tutorial de estadísticas"
+                        testId="reports-main-tutorial-trigger"
                     />
                 </div>
-
-                {/* Gráficos de tendencia de 12 meses */}
-                <div className="grid gap-4 lg:grid-cols-2">
-                    <EconomiaBarChart
-                        title="Honorarios"
-                        helper="Monto total de honorarios creados cada mes."
-                        data={economyTimeline.map((b) => ({ ...b, value: b.honorarios }))}
-                        gradientFrom="from-indigo-950"
-                        gradientVia="via-indigo-700"
-                        gradientTo="to-indigo-400"
-                        gradientHoverTo="hover:to-indigo-300"
-                        lineColor="#6366f1"
-                    />
-                    <EconomiaBarChart
-                        title="Gastos"
-                        helper="Gastos de expediente registrados cada mes."
-                        data={economyTimeline.map((b) => ({ ...b, value: b.gastos }))}
-                        gradientFrom="from-rose-950"
-                        gradientVia="via-rose-700"
-                        gradientTo="to-rose-400"
-                        gradientHoverTo="hover:to-rose-300"
-                        lineColor="#f43f5e"
-                    />
-                    <EconomiaBarChart
-                        title="Entregas"
-                        helper="Total cobrado en entregas de honorarios cada mes."
-                        data={economyTimeline.map((b) => ({ ...b, value: b.entregas }))}
-                        gradientFrom="from-emerald-950"
-                        gradientVia="via-emerald-700"
-                        gradientTo="to-emerald-400"
-                        gradientHoverTo="hover:to-emerald-300"
-                        lineColor="#10b981"
-                    />
-                    <HonorariosVsGastosChart data={economyTimeline} />
-                </div>
-            </section>
-            <ReportsDashboardNotes />
-        </div>
+            }
+            titleTestId="page-reports-title-main"
+            icon={LayoutDashboard}
+            sections={TABS}
+            activeSection={activeTab}
+            onSectionChange={setActiveTab}
+            sectionIdPrefix="reports-tab"
+            maxWidthClass="max-w-full"
+        >
+            {renderContent()}
+        </SideMenuPageLayout>
     );
 }
 

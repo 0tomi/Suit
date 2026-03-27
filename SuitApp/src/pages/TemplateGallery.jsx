@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from 'react';
+import { useMemo, useReducer, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutTemplate,
@@ -8,6 +8,7 @@ import {
     Loader2,
     Trash2,
     Eye,
+    Pencil,
 } from 'lucide-react';
 import { PrimaryActionButton } from '../components/ui/PrimaryActionButton';
 import { SearchBar } from '../components/ui/SearchBar';
@@ -19,11 +20,15 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { showAppToast } from '../components/ui/show-app-toast.jsx';
-import { createTemplateCategory, deleteTemplate, getTemplate } from '../services/templateService.js';
-import { buildDocumentCreatePath } from '../utils/appRoutes.js';
+import { createTemplateCategory, deleteTemplate } from '../services/templateService.js';
+import { getTemplateForPreview } from '../services/templatePreviewService.js';
 import { Button } from '../components/ui/Button.jsx';
 import TemplatePreviewModal from '../components/Editor/TemplatePreviewModal.jsx';
+import UseTemplateModal from '../components/Editor/UseTemplateModal.jsx';
 import { createLogger } from '../services/logService.js';
+import NewTemplateModal from '../components/templates/NewTemplateModal.jsx';
+import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
+import { templatesSteps } from '../constants/tutorialSteps.js';
 const logger = createLogger('page:template-gallery');
 
 const INITIAL_STATE = {
@@ -36,6 +41,9 @@ const INITIAL_STATE = {
     previewModalOpen: false,
     previewLoading: false,
     previewTemplate: null,
+    newTemplateModalOpen: false,
+    useModalOpen: false,
+    useModalTemplate: null,
 };
 
 function templateGalleryReducer(state, action) {
@@ -78,6 +86,14 @@ function templateGalleryReducer(state, action) {
                 previewLoading: false,
                 previewTemplate: null,
             };
+        case 'OPEN_NEW_TEMPLATE_MODAL':
+            return { ...state, newTemplateModalOpen: true };
+        case 'CLOSE_NEW_TEMPLATE_MODAL':
+            return { ...state, newTemplateModalOpen: false };
+        case 'OPEN_USE_MODAL':
+            return { ...state, useModalOpen: true, useModalTemplate: action.payload };
+        case 'CLOSE_USE_MODAL':
+            return { ...state, useModalOpen: false, useModalTemplate: null };
         default:
             return state;
     }
@@ -100,12 +116,19 @@ const TemplateGalleryHeader = ({
     isRefreshing,
     canCreateCategory,
     onOpenCategoryModal,
-    onCreateBlankDocument,
+    onOpenNewTemplateModal,
 }) => (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
             <div className="flex items-center gap-3">
-                <h1 data-testid="page-templates-title" className="text-3xl font-bold text-(--text-primary)">Galería de Modelos</h1>
+                <h1 data-testid="page-templates-title" className="flex items-center gap-3 text-3xl font-bold text-(--text-primary)">
+                    <span>Galería de Modelos</span>
+                    <SectionTutorialTrigger
+                        steps={templatesSteps}
+                        ariaLabel="Ver tutorial de Modelos"
+                        testId="templates-tutorial-trigger"
+                    />
+                </h1>
                 {isRefreshing && (
                     <span className="inline-flex items-center gap-2 rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-700">
                         <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -124,9 +147,9 @@ const TemplateGalleryHeader = ({
                 />
             )}
             <PrimaryActionButton
-                onClick={onCreateBlankDocument}
+                onClick={onOpenNewTemplateModal}
                 icon={PenTool}
-                label="Documento en Blanco"
+                label="Crear nuevo Modelo"
             />
         </div>
     </div>
@@ -190,10 +213,11 @@ const TemplateCard = ({
     description,
     canDeleteTemplates,
     onDelete,
+    onEdit,
     onPreview,
     onUseTemplate,
 }) => (
-    <article className="group bg-(--bg-card) rounded-xl shadow-sm border border-(--border-subtle) hover:shadow-lg hover:border-blue-500 transition-all overflow-hidden flex flex-col relative">
+    <article className="group self-start bg-(--bg-card) rounded-xl shadow-sm border border-(--border-subtle) hover:shadow-lg hover:border-blue-500 transition-all overflow-hidden flex flex-col relative">
         {canDeleteTemplates && (
             <button
                 type="button"
@@ -212,7 +236,7 @@ const TemplateCard = ({
         >
             <div className="h-2 bg-gradient-to-r from-blue-500 to-indigo-600 w-full" />
             <div className="p-5 flex-1 flex flex-col">
-                <div className="flex items-start justify-between mb-3 gap-3">
+                <div className="flex items-center mb-3 gap-3">
                     <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                         <LayoutTemplate size={22} />
                     </div>
@@ -233,28 +257,39 @@ const TemplateCard = ({
 
                 <div className="mt-auto flex items-center justify-between pt-3 border-t border-(--border-subtle)">
                     <span className="text-xs text-(--text-tertiary)">Modelo #{template.id}</span>
-                    <div className="flex items-center text-blue-500 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-2 group-hover:translate-x-0">
-                        Usar <FileText size={16} className="ml-1" />
-                    </div>
                 </div>
             </div>
         </button>
 
-        <div className="flex items-center justify-end gap-2 border-t border-(--border-subtle) bg-(--bg-header) px-4 py-3">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-(--border-subtle) bg-(--bg-header) px-4 py-3">
             <Button
                 variant="outline"
                 size="sm"
                 icon={Eye}
                 onClick={() => onPreview(template)}
                 data-testid={`template-card-preview-${template.id}`}
+                className="whitespace-nowrap"
             >
-                Vista previa
+                Previa
             </Button>
+            {canDeleteTemplates && (
+                <Button
+                    variant="outline"
+                    size="sm"
+                    icon={Pencil}
+                    onClick={(e) => { e.stopPropagation(); onEdit(template.id); }}
+                    data-testid={`template-card-edit-${template.id}`}
+                    className="whitespace-nowrap"
+                >
+                    Editar
+                </Button>
+            )}
             <Button
                 variant="primary"
                 size="sm"
                 icon={FileText}
                 onClick={() => onUseTemplate(template.id)}
+                className="whitespace-nowrap"
             >
                 Usar
             </Button>
@@ -267,7 +302,8 @@ const TemplateGalleryGrid = ({
     categoryMap,
     canDeleteTemplates,
     onDeleteTemplate,
-    onCreateBlankDocument,
+    onEditTemplate,
+    onOpenNewTemplateModal,
     onPreviewTemplate,
     onUseTemplate,
 }) => {
@@ -277,28 +313,31 @@ const TemplateGalleryGrid = ({
                 icon={LayoutTemplate}
                 title="No hay modelos para mostrar"
                 description="No se encontraron plantillas para los filtros actuales o todavía no existen modelos sincronizados."
-                actionLabel="Documento en blanco"
-                onAction={onCreateBlankDocument}
+                actionLabel="Crear nuevo Modelo"
+                onAction={onOpenNewTemplateModal}
             />
         );
     }
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 flex-1 overflow-y-auto p-1">
-            <BlankTemplateCard onClick={onCreateBlankDocument} />
+        <div className="flex flex-1 min-h-0 flex-col overflow-y-auto pr-1 pb-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 items-start p-1">
+                <BlankTemplateCard onClick={onOpenNewTemplateModal} />
 
-            {filteredTemplates.map((template) => (
-                <TemplateCard
-                    key={template.id}
-                    template={template}
-                    categoryName={categoryMap.get(String(template.template_category_id))?.name || 'Sin categoría'}
-                    description={getTemplateDescription(template, categoryMap)}
-                    canDeleteTemplates={canDeleteTemplates}
-                    onDelete={onDeleteTemplate}
-                    onPreview={onPreviewTemplate}
-                    onUseTemplate={onUseTemplate}
-                />
-            ))}
+                {filteredTemplates.map((template) => (
+                    <TemplateCard
+                        key={template.id}
+                        template={template}
+                        categoryName={categoryMap.get(String(template.template_category_id))?.name || 'Sin categoría'}
+                        description={getTemplateDescription(template, categoryMap)}
+                        canDeleteTemplates={canDeleteTemplates}
+                        onDelete={onDeleteTemplate}
+                        onEdit={onEditTemplate}
+                        onPreview={onPreviewTemplate}
+                        onUseTemplate={onUseTemplate}
+                    />
+                ))}
+            </div>
         </div>
     );
 };
@@ -389,12 +428,7 @@ const TemplateGallery = () => {
     const previewRequestIdRef = useRef(0);
 
     const canDeleteTemplates = Boolean(user?.role && user.role !== 'user');
-    const canCreateCategory = user?.role === 'admin';
-
-    useEffect(() => {
-        void refreshTemplateCategories();
-        void refreshTemplates();
-    }, [refreshTemplateCategories, refreshTemplates]);
+    const canCreateCategory = user?.role === 'admin' || user?.role === 'lawyer';
 
     const categoryMap = useMemo(
         () => new Map(categories.map((category) => [String(category.id), category])),
@@ -432,29 +466,19 @@ const TemplateGallery = () => {
         });
     }, [activeCategory, categoryMap, state.searchTerm, templates]);
 
+    const handleEditTemplate = (templateId) => {
+        navigate(`/templates/edit/${templateId}`);
+    };
+
     const handleUseTemplate = (templateId) => {
-        navigate(buildDocumentCreatePath(templateId));
+        // Busca el template en la lista cacheada para tener id y title disponibles.
+        // El modal cargará el body completo internamente.
+        const found = templates.find((t) => String(t.id) === String(templateId));
+        dispatch({ type: 'OPEN_USE_MODAL', payload: found || { id: templateId } });
     };
 
-    const handleCreateBlankDocument = () => {
-        navigate(buildDocumentCreatePath());
-    };
-
-    const resolvePreviewTemplate = async (template) => {
-        if (typeof template?.content === 'string') {
-            return template;
-        }
-
-        const fetched = await getTemplate(template.id);
-        if (!fetched) {
-            throw new Error('No se pudo cargar el contenido de la plantilla.');
-        }
-
-        return {
-            ...template,
-            ...fetched,
-            content: typeof fetched.content === 'string' ? fetched.content : '',
-        };
+    const handleOpenNewTemplateModal = () => {
+        dispatch({ type: 'OPEN_NEW_TEMPLATE_MODAL' });
     };
 
     const handlePreviewTemplate = async (template) => {
@@ -470,9 +494,8 @@ const TemplateGallery = () => {
         });
 
         try {
-            // La galería trabaja contra caché local; si el listado no trae `content`,
-            // rehidratamos sólo la plantilla elegida para no forzar un reload global.
-            const previewTemplate = await resolvePreviewTemplate(template);
+            // Cache-first via templatePreviewService: SQLite primero, API solo si falta content.
+            const previewTemplate = await getTemplateForPreview(template);
             if (previewRequestIdRef.current !== requestId) return;
 
             dispatch({ type: 'SET_PREVIEW_TEMPLATE', payload: previewTemplate });
@@ -599,12 +622,12 @@ const TemplateGallery = () => {
     }
 
     return (
-        <div className="space-y-6 h-full flex flex-col">
+        <div className="space-y-6 h-full min-h-0 flex flex-col">
             <TemplateGalleryHeader
                 isRefreshing={isRefreshing}
                 canCreateCategory={canCreateCategory}
                 onOpenCategoryModal={() => dispatch({ type: 'OPEN_CATEGORY_MODAL' })}
-                onCreateBlankDocument={handleCreateBlankDocument}
+                onOpenNewTemplateModal={handleOpenNewTemplateModal}
             />
 
             <TemplateGalleryFilters
@@ -620,7 +643,8 @@ const TemplateGallery = () => {
                 categoryMap={categoryMap}
                 canDeleteTemplates={canDeleteTemplates}
                 onDeleteTemplate={requestDeleteTemplate}
-                onCreateBlankDocument={handleCreateBlankDocument}
+                onEditTemplate={handleEditTemplate}
+                onOpenNewTemplateModal={handleOpenNewTemplateModal}
                 onPreviewTemplate={handlePreviewTemplate}
                 onUseTemplate={handleUseTemplate}
             />
@@ -636,6 +660,12 @@ const TemplateGallery = () => {
                 onUseTemplate={handleUsePreviewTemplate}
             />
 
+            <UseTemplateModal
+                open={state.useModalOpen}
+                template={state.useModalTemplate}
+                onClose={() => dispatch({ type: 'CLOSE_USE_MODAL' })}
+            />
+
             <CategoryModal
                 open={state.categoryModalOpen}
                 creatingCategory={state.creatingCategory}
@@ -645,6 +675,11 @@ const TemplateGallery = () => {
                 onSubmit={handleCreateCategory}
                 onNameChange={(event) => dispatch({ type: 'SET_NEW_CATEGORY_NAME', payload: event.target.value })}
                 onDescriptionChange={(event) => dispatch({ type: 'SET_NEW_CATEGORY_DESCRIPTION', payload: event.target.value })}
+            />
+
+            <NewTemplateModal
+                open={state.newTemplateModalOpen}
+                onClose={() => dispatch({ type: 'CLOSE_NEW_TEMPLATE_MODAL' })}
             />
         </div>
     );

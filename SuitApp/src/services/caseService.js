@@ -68,6 +68,18 @@ export async function getCaseClients(caseId) {
     return [];
 }
 
+export async function getCaseParticipants(caseId) {
+    const res = await apiGet(`/cases/${caseId}/participants`, { dedupe: false });
+    if (!res.ok) return [];
+
+    const payload = res.data;
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.data)) return payload.data;
+    if (Array.isArray(payload?.participants)) return payload.participants;
+    if (Array.isArray(payload?.case?.participants)) return payload.case.participants;
+    return [];
+}
+
 export async function removeParticipant(caseId, userId) {
     return await apiRequest(`/cases/${caseId}/participants/${userId}`, {
         method: 'DELETE'
@@ -113,4 +125,14 @@ export async function getCaseSyncDown(caseId, sinceDate) {
     const encodedDate = encodeURIComponent(sinceDate);
     const result = await apiGet(`/cases/${caseId}/syncDown/${encodedDate}`, { dedupe: false });
     return result.ok ? result.data : null;
+}
+
+/**
+ * Genera un enlace temporal (QR) para carga/descarga de archivos de un caso.
+ * @param {number} caseId
+ * @param {{ type: 'upload'|'download', modelType: 'file'|'multimedia', modelId?: number }} options
+ */
+export async function generateCaseLink(caseId, options) {
+    console.log('[caseService] generateCaseLink calling IPC. CaseId:', caseId, 'Options:', JSON.stringify(options));
+    return await window.electronAPI.cases.generateLink({ suit_case_id: caseId, ...options });
 }

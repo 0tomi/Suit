@@ -3,6 +3,8 @@ import { Users, UserCheck } from 'lucide-react';
 import SideMenuPageLayout from '../components/ui/SideMenuPageLayout.jsx';
 import ClientsTab from '../components/people/ClientsTab.jsx';
 import PartesTab from '../components/people/PartesTab.jsx';
+import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
+import { personasSteps } from '../constants/tutorialSteps.js';
 
 const TABS = [
     { id: 'clients', label: 'Clientes', icon: UserCheck },
@@ -19,7 +21,16 @@ const People = () => {
 
     return (
         <SideMenuPageLayout
-            title="Personas"
+            title={(
+                <div className="flex items-center gap-2">
+                    <span>Personas</span>
+                    <SectionTutorialTrigger
+                        steps={personasSteps}
+                        ariaLabel="Ver tutorial de la sección"
+                        testId="people-tutorial-trigger"
+                    />
+                </div>
+            )}
             titleTestId="page-people-title"
             description="Gestiona clientes y partes vinculadas a los casos."
             icon={Users}

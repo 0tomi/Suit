@@ -41,19 +41,6 @@ function extractParteFromResponse(data) {
     return null;
 }
 
-function buildParteCacheRow(parte) {
-    return {
-        id: parte.id,
-        nombre: parte.nombre || '',
-        apellido: parte.apellido || '',
-        email: parte.email || null,
-        telefono: parte.telefono || null,
-        rol_id: parte.rol_id || null,
-        data_json: JSON.stringify(parte),
-        synced_at: new Date().toISOString(),
-    };
-}
-
 function validateParteForm(form) {
     const trimmedNombre = form.nombre.trim();
     const trimmedEmail = form.email.trim();
@@ -138,13 +125,8 @@ export function NewParteModal({ onClose, closeModal, onParteCreated }) {
                 const createdPartePayload = createdParte ? { ...payload, ...createdParte } : { ...payload, ...result.data };
 
                 try {
-                    if (createdParte?.id && window.electronAPI?.db) {
-                        await window.electronAPI.db.upsertMany('partes', [buildParteCacheRow(createdPartePayload)]);
-                        await loadLocalPartes();
-                        void refreshPartes();
-                    } else {
-                        await refreshPartes();
-                    }
+                    await loadLocalPartes();
+                    void refreshPartes();
                 } catch (cacheError) {
                     logger.warn('loadLocalPartes failed after create — fallback a refreshPartes', cacheError);
                     await refreshPartes();

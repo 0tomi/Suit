@@ -1,7 +1,12 @@
 import { getCase, getParticipants, getCaseClients, getCaseAgenda } from './caseService.js';
+import { getCaseTypes } from './adminService.js';
 import { getHonorariosByCaso } from './honorarioService.js';
 import { getGastosByCaso } from './gastoSuitCaseService.js';
 import { getDocuments } from './documentService.js';
+import { getPartesByCaso } from './parteService.js';
+import { getRadicaciones } from './radicacionService.js';
+import { resolverDependencia } from './dependenciaJudicialService.js';
+import { getCaseTipoExpedientes } from './tipoExpedienteService.js';
 import { apiGet } from './api.js';
 
 /**
@@ -75,81 +80,256 @@ export async function getCaseOverviewMetrics(caseId) {
     };
 }
 
+// Resuelve el fuero visible del caso usando primero el payload del caso y luego el catálogo.
+function resolveCaseTypeLabel(caseData, caseTypes) {
+    if (typeof caseData?.case_type === 'string' && caseData.case_type.trim()) {
+        return caseData.case_type.trim();
+    }
+
+    if (typeof caseData?.type === 'string' && caseData.type.trim()) {
+        return caseData.type.trim();
+    }
+
+    if (caseData?.case_type?.name) {
+        return caseData.case_type.name;
+    }
+
+    const caseTypeId = caseData?.case_type_id;
+    const matchedCaseType = caseTypes.find((item) => String(item.id) === String(caseTypeId ?? ''));
+    if (matchedCaseType?.name) {
+        return matchedCaseType.name;
+    }
+
+    if (caseTypeId != null) {
+        return `Fuero #${caseTypeId} no resuelto`;
+    }
+
+    return 'Sin fuero';
+}
+
+// Toma la radicación desde el payload embebido o desde el catálogo sincronizado.
+function resolveRadicacionLabel(caseData, radicaciones) {
+    if (caseData?.radicacion?.tipo) {
+        return caseData.radicacion.tipo;
+    }
+
+    if (caseData?.radicacion?.name) {
+        return caseData.radicacion.name;
+    }
+
+    if (caseData?.radicacion?.nombre_lugar) {
+        return caseData.radicacion.nombre_lugar;
+    }
+
+    if (typeof caseData?.radicacion_name === 'string' && caseData.radicacion_name.trim()) {
+        return caseData.radicacion_name.trim();
+    }
+
+    const radicacionId = caseData?.radicacion_id;
+    const matchedRadicacion = radicaciones.find((item) => String(item.id) === String(radicacionId ?? ''));
+    if (matchedRadicacion) {
+        return matchedRadicacion.tipo || matchedRadicacion.name || matchedRadicacion.nombre_lugar || `Radicación #${matchedRadicacion.id}`;
+    }
+
+    if (radicacionId != null) {
+        return `Radicación #${radicacionId} no resuelta`;
+    }
+
+    return 'Sin radicación';
+}
+
+// Normaliza distintas formas de tipo de expediente para poder listarlas en el reporte.
+function resolveTipoExpedienteLabel(tipo) {
+    if (typeof tipo === 'string' && tipo.trim()) {
+        return tipo.trim();
+    }
+
+    if (typeof tipo === 'number') {
+        return `#${tipo}`;
+    }
+
+    if (!tipo || typeof tipo !== 'object') {
+        return null;
+    }
+
+    if (typeof tipo.title === 'string' && tipo.title.trim()) {
+        return tipo.title.trim();
+    }
+
+    if (typeof tipo.titulo === 'string' && tipo.titulo.trim()) {
+        return tipo.titulo.trim();
+    }
+
+    if (typeof tipo.name === 'string' && tipo.name.trim()) {
+        return tipo.name.trim();
+    }
+
+    if (tipo.id != null) {
+        return `#${tipo.id}`;
+    }
+
+    return null;
+}
+
+// Mezcla la relación remota y cualquier payload embebido, deduplicando por etiqueta visible.
+function resolveTipoExpedienteLabels(caseData, linkedTipoExpedientes) {
+    const rawCollections = [
+        linkedTipoExpedientes,
+        caseData?.tipo_expedientes,
+        caseData?.tipoExpedientes,
+        caseData?.linkedTipoExpedientes,
+    ].filter(Array.isArray);
+
+    const labels = rawCollections
+        .flatMap((collection) => collection.map((item) => resolveTipoExpedienteLabel(item)))
+        .filter(Boolean);
+
+    return Array.from(new Set(labels));
+}
+
+// Prioriza la dependencia enriquecida porque trae el nombre real del juzgado.
+function resolveDependenciaLabel(caseData, dependencia) {
+    if (caseData?.dependencia?.nombre_juzgado) {
+        return caseData.dependencia.nombre_juzgado;
+    }
+
+    if (caseData?.dependencia?.nombre) {
+        return caseData.dependencia.nombre;
+    }
+
+    if (dependencia?.nombre_juzgado) {
+        return dependencia.nombre_juzgado;
+    }
+
+    if (dependencia?.nombre) {
+        return dependencia.nombre;
+    }
+
+    if (caseData?.dependencia_id != null) {
+        return `Dependencia #${caseData.dependencia_id} no resuelta`;
+    }
+
+    return 'Sin juzgado';
+}
+
+// La jurisdicción del reporte sale de la dependencia resuelta; si falta, lo mostramos explícitamente.
+function resolveJurisdiccionLabel(caseData, dependencia) {
+    if (caseData?.dependencia?.jurisdiccion?.nombre) {
+        return caseData.dependencia.jurisdiccion.nombre;
+    }
+
+    if (dependencia?.jurisdiccion?.nombre) {
+        return dependencia.jurisdiccion.nombre;
+    }
+
+    if (caseData?.dependencia_id != null) {
+        return `Jurisdicción de dependencia #${caseData.dependencia_id} no resuelta`;
+    }
+
+    return 'Sin jurisdicción';
+}
+
+function normalizeCollection(payload) {
+    if (Array.isArray(payload)) {
+        return payload;
+    }
+
+    if (Array.isArray(payload?.data)) {
+        return payload.data;
+    }
+
+    return [];
+}
+
 /**
  * REPORTE DE CASO: Consolida toda la información para la Ficha Ejecutiva.
  */
 export async function getCaseReportData(caseId) {
     if (!caseId) return null;
 
-    try {
-        const [
-            caseData,
-            participants,
-            clients,
-            agenda,
-            honorarios,
-            gastos,
-            documentsResponse,
-            multimediaResponse,
-            filesResponse,
-            partesResponse,
-        ] = await Promise.all([
-            getCase(caseId),
-            getParticipants(caseId),
-            getCaseClients(caseId),
-            getCaseAgenda(caseId),
-            getHonorariosByCaso(caseId),
-            getGastosByCaso(caseId),
-            getDocuments(1),
-            apiGet('/multimedia'),
-            apiGet('/files'),
-            apiGet(`/suit-cases/${caseId}/partes`),
-        ]);
+    const [
+        caseData,
+        participants,
+        clients,
+        agenda,
+        honorarios,
+        gastos,
+        documentsResponse,
+        multimediaResponse,
+        filesResponse,
+        partes,
+    ] = await Promise.all([
+        getCase(caseId),
+        getParticipants(caseId),
+        getCaseClients(caseId),
+        getCaseAgenda(caseId),
+        getHonorariosByCaso(caseId),
+        getGastosByCaso(caseId),
+        getDocuments(1),
+        apiGet('/multimedia'),
+        apiGet('/files'),
+        getPartesByCaso(caseId),
+    ]);
 
-        // Normalizar colecciones
-        const normalizedParticipants = Array.isArray(participants) ? participants : (Array.isArray(participants?.data) ? participants.data : []);
-        const normalizedClients = Array.isArray(clients) ? clients : (Array.isArray(clients?.data) ? clients.data : []);
-        const normalizedEvents = Array.isArray(agenda?.events) ? agenda.events : (Array.isArray(agenda?.events?.data) ? agenda.events.data : (Array.isArray(agenda) ? agenda : []));
-        const normalizedHonorarios = Array.isArray(honorarios) ? honorarios : (Array.isArray(honorarios?.data) ? honorarios.data : []);
-        const normalizedGastos = Array.isArray(gastos) ? gastos : (Array.isArray(gastos?.data) ? gastos.data : []);
+    const normalizedCaseData = caseData?.data || caseData;
 
-        // Filtrar documentos del caso
-        const allDocs = Array.isArray(documentsResponse?.data) ? documentsResponse.data : (Array.isArray(documentsResponse) ? documentsResponse : []);
-        const caseDocuments = allDocs.filter(doc => Number(doc.suit_case_id) === Number(caseId));
+    const [caseTypes, linkedTipoExpedientes, radicaciones, dependencia] = await Promise.all([
+        getCaseTypes(),
+        getCaseTipoExpedientes(caseId),
+        getRadicaciones(),
+        normalizedCaseData?.dependencia_id ? resolverDependencia(normalizedCaseData.dependencia_id) : Promise.resolve(null),
+    ]);
 
-        // Filtrar multimedia y files del caso
-        const allMedia = Array.isArray(multimediaResponse?.data) ? multimediaResponse.data : (Array.isArray(multimediaResponse) ? multimediaResponse : []);
-        const allFiles = Array.isArray(filesResponse?.data) ? filesResponse.data : (Array.isArray(filesResponse) ? filesResponse : []);
-        const caseMedia = allMedia.filter(m => Number(m.suit_case_id) === Number(caseId));
-        const caseFiles = allFiles.filter(f => Number(f.suit_case_id) === Number(caseId));
-        const casePartes = Array.isArray(partesResponse?.data) ? partesResponse.data : (Array.isArray(partesResponse) ? partesResponse : []);
+    const normalizedCaseTypes = normalizeCollection(caseTypes);
+    const normalizedTipoExpedientes = normalizeCollection(linkedTipoExpedientes);
+    const normalizedRadicaciones = normalizeCollection(radicaciones);
 
-        // Enriquecer honorarios con sus entregas (pagos) individuales
-        const honorariosWithEntregas = await Promise.all(
-            normalizedHonorarios.map(async (h) => {
-                const res = await apiGet(`/honorarios/${h.id}/entregas`);
-                return {
-                    ...h,
-                    entregas: res.ok ? (res.data?.data || res.data || []) : []
-                };
-            })
-        );
+    // Normalizar colecciones
+    const normalizedParticipants = Array.isArray(participants) ? participants : (Array.isArray(participants?.data) ? participants.data : []);
+    const normalizedClients = Array.isArray(clients) ? clients : (Array.isArray(clients?.data) ? clients.data : []);
+    const normalizedEvents = Array.isArray(agenda?.events) ? agenda.events : (Array.isArray(agenda?.events?.data) ? agenda.events.data : (Array.isArray(agenda) ? agenda : []));
+    const normalizedHonorarios = Array.isArray(honorarios) ? honorarios : (Array.isArray(honorarios?.data) ? honorarios.data : []);
+    const normalizedGastos = Array.isArray(gastos) ? gastos : (Array.isArray(gastos?.data) ? gastos.data : []);
 
-        return {
-            caseData: caseData?.data || caseData,
-            participants: normalizedParticipants,
-            clients: normalizedClients,
-            events: normalizedEvents,
-            honorarios: honorariosWithEntregas,
-            gastos: normalizedGastos,
-            documents: caseDocuments,
-            multimedia: caseMedia,
-            files: caseFiles,
-            partes: casePartes,
-            generatedAt: new Date().toISOString(),
-        };
-    } catch (error) {
-        console.error('Error al generar data para reporte de caso:', error);
-        return null;
-    }
+    // Filtrar documentos del caso
+    const allDocs = Array.isArray(documentsResponse?.data) ? documentsResponse.data : (Array.isArray(documentsResponse) ? documentsResponse : []);
+    const caseDocuments = allDocs.filter(doc => Number(doc.suit_case_id) === Number(caseId));
+
+    // Filtrar multimedia y files del caso
+    const allMedia = Array.isArray(multimediaResponse?.data) ? multimediaResponse.data : (Array.isArray(multimediaResponse) ? multimediaResponse : []);
+    const allFiles = Array.isArray(filesResponse?.data) ? filesResponse.data : (Array.isArray(filesResponse) ? filesResponse : []);
+    const caseMedia = allMedia.filter(m => Number(m.suit_case_id) === Number(caseId));
+    const caseFiles = allFiles.filter(f => Number(f.suit_case_id) === Number(caseId));
+
+    // Enriquecer honorarios con sus entregas (pagos) individuales
+    const honorariosWithEntregas = await Promise.all(
+        normalizedHonorarios.map(async (h) => {
+            const res = await apiGet(`/honorarios/${h.id}/entregas`);
+            return {
+                ...h,
+                entregas: res.ok ? (res.data?.data || res.data || []) : []
+            };
+        })
+    );
+
+    return {
+        caseData: normalizedCaseData,
+        caseMetadata: {
+            fuero: resolveCaseTypeLabel(normalizedCaseData, normalizedCaseTypes),
+            tipoExpedientes: resolveTipoExpedienteLabels(normalizedCaseData, normalizedTipoExpedientes),
+            radicacion: resolveRadicacionLabel(normalizedCaseData, normalizedRadicaciones),
+            jurisdiccion: resolveJurisdiccionLabel(normalizedCaseData, dependencia),
+            dependencia: resolveDependenciaLabel(normalizedCaseData, dependencia),
+        },
+        participants: normalizedParticipants,
+        clients: normalizedClients,
+        events: normalizedEvents,
+        honorarios: honorariosWithEntregas,
+        gastos: normalizedGastos,
+        documents: caseDocuments,
+        multimedia: caseMedia,
+        files: caseFiles,
+        partes,
+        generatedAt: new Date().toISOString(),
+    };
 }

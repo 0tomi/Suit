@@ -13,9 +13,13 @@ const {
     clearCaseSyncMeta,
     upsertMany,
     getAll,
+    count,
     getById,
     getCaseKpis,
     getCaseNextEvent,
+    getAllDeadlinesEnriched,
+    getEnrichedDependencies,
+    getTemplateRequirements,
     deleteById,
     deleteWhere,
     clearTable,
@@ -38,8 +42,8 @@ const {
 } = require('./db/notificationsRepository.cjs');
 const {
     reconcileEventsForAgenda,
-    replaceEventsForAgendaMonth,
     reconcileEventsForAgendaMonth,
+    reconcileEventsForAgendasMonth,
     normalizeEventRowForMonthReplace,
 } = require('./db/eventsRepository.cjs');
 const {
@@ -52,6 +56,7 @@ const {
     deletePendingEventBundle,
     promotePendingEvent,
 } = require('./db/outboxRepository.cjs');
+const { searchEvents } = require('./db/eventsSearchRepository.cjs');
 const {
     getProfileById,
     getProfileByRemoteUserId,
@@ -191,7 +196,13 @@ module.exports = {
         replaceEventsForAgendaMonth(getActiveProfileDb(), agendaId, year, month, rows),
     reconcileEventsForAgendaMonth: (agendaId, year, month, rows) =>
         reconcileEventsForAgendaMonth(getActiveProfileDb(), agendaId, year, month, rows),
-    getAll: (table) => getAll(getActiveProfileDb(), table),
+    reconcileEventsForAgendasMonth: (year, month, rowsByAgendaId) =>
+        reconcileEventsForAgendasMonth(getActiveProfileDb(), year, month, rowsByAgendaId),
+    getAll: (table) => {
+        if (table === 'deadlines') return getAllDeadlinesEnriched(getActiveProfileDb());
+        return getAll(getActiveProfileDb(), table);
+    },
+    count: (table) => count(getActiveProfileDb(), table),
     getById: (table, id) => getById(getActiveProfileDb(), table, id),
     getCaseKpis: (caseId) => getCaseKpis(getActiveProfileDb(), caseId),
     getCaseNextEvent: (caseId) => getCaseNextEvent(getActiveProfileDb(), caseId),
@@ -242,6 +253,11 @@ module.exports = {
         updateEventNotificationStatus(getActiveProfileDb(), eventId, userId, options),
     clearNotificationStateForUser: (userId) =>
         clearNotificationStateForUser(getActiveProfileDb(), userId),
+    getEnrichedDependencies: (jurisdiccionId, radicacionId) =>
+        getEnrichedDependencies(getActiveProfileDb(), jurisdiccionId, radicacionId),
+    getTemplateRequirements: (templateId) =>
+        getTemplateRequirements(getActiveProfileDb(), templateId),
+    searchEvents: (options) => searchEvents(getActiveProfileDb(), options),
     // Solo para tests internos del main process.
     _unsafe: {
         getActiveProfileDb,

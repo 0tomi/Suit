@@ -27,6 +27,8 @@ import { casosSteps } from '../constants/tutorialSteps.js';
 import { buildCaseCacheRow } from '../services/cache/caseCacheRow.js';
 import { createLogger } from '../services/logService.js';
 import { getCaseStatusLabel } from '../utils/caseStatus.js';
+import { usePageFocus } from '../hooks/usePageFocus.js';
+import caseSyncService from '../services/sync/caseSyncService.js';
 
 // ─── Persistencia de filtros en localStorage ─────────────────────────────────
 const FILTER_STORAGE_KEY = 'cases-filter-state';
@@ -142,6 +144,9 @@ const DEFAULT_FILTERS = {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 const Cases = () => {
+    // Sincronizar al volver a la pestaña
+    usePageFocus({ onFocus: caseSyncService.syncCases });
+
     const navigate = useNavigate();
     const location = useLocation();
     const { cases, refreshCases: refreshAll, loadLocalData: loadLocalCases } = useCases();
@@ -176,10 +181,6 @@ const Cases = () => {
         saveFilterState({ searchTerm, statusFilter, typeFilter, sortBy, sortOrder });
     }, [searchTerm, statusFilter, typeFilter, sortBy, sortOrder]);
 
-    useEffect(() => {
-        refreshAll();
-    }, [refreshAll]);
-
     // Manejar trigger global de nuevo caso
     useEffect(() => {
         if (location.state?.openNewCaseModal) {
@@ -187,7 +188,7 @@ const Cases = () => {
             // Limpiar estado
             navigate(location.pathname, { replace: true, state: {} });
         }
-    }, [location.state, navigate, location.pathname]);
+    }, [location.state, navigate, location.pathname, setIsModalOpen]);
 
     // Hotkeys contextuales
     useHotkeyAction(HOTKEY_ACTIONS.NEW_CASE, () => setIsModalOpen(true));
@@ -240,7 +241,7 @@ const Cases = () => {
             setLoadingClosed(false);
             setClosedLoaded(true);
         }
-    }, []);
+    }, [setClosedCases, setClosedLoaded, setLoadingClosed]);
 
     // Si el toggle arranca con showFinished=true (restaurado de localStorage), cargar automáticamente
     useEffect(() => {
@@ -256,7 +257,7 @@ const Cases = () => {
         if (needsClosed && !closedLoaded) {
             loadClosedCases();
         }
-    }, [closedLoaded, loadClosedCases]);
+    }, [closedLoaded, loadClosedCases, setStatusFilter]);
 
     // Combinar activos + cerrados (evitar duplicados por ID)
     const allDisplayedCases = useMemo(() => {
@@ -472,12 +473,14 @@ const Cases = () => {
                 open={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 title="Iniciar Nuevo Caso"
-                maxWidth="max-w-2xl"
+                subtitle="Completá la información básica para dar de alta el expediente del caso."
+                maxWidth="max-w-5xl"
+                maxHeight="max-h-[95vh]"
                 footer={
                     <div className="flex w-full justify-center">
-                        <Button 
-                            type="submit" 
-                            form="new-case-form" 
+                        <Button
+                            type="submit"
+                            form="new-case-form"
                             icon={Briefcase}
                             className="px-8"
                         >
@@ -488,8 +491,8 @@ const Cases = () => {
             >
                 <NewCaseForm
                     onSuccess={handleCaseCreated}
-                    openDialog={openDialog}
-                    closeDialog={closeDialog}
+                    onClose={() => setIsModalOpen(false)}
+                    showFooter={false}
                 />
             </Modal>
 
@@ -551,6 +554,7 @@ const Cases = () => {
                 onClose={handleClose}
                 onGenerateReport={handleGenerateReport}
                 isLoading={loadingClosed}
+                trigger={`${searchTerm}-${statusFilter}-${typeFilter}-${sortBy}-${sortOrder}`}
             />
 
             <ConfirmDialog {...dialogProps} />

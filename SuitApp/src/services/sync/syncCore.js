@@ -108,6 +108,8 @@ export async function clearStaleResources() {
         'cases', 'documents', 'clients', 'users', 'templates', 'template_categories',
         // Catálogos nuevos — se limpian si no se sincronizan en 3 días para forzar re-fetch
         'radicaciones', 'tipo_expedientes', 'roles', 'tipo_pagos', 'gastos_catalogo', 'partes',
+        // Catálogos judiciales
+        'jurisdicciones', 'competencias', 'dependencias_judiciales',
         // Multimedia y archivos generales — metadatos cacheados, contenido binario on-demand
         'multimedia', 'files',
         // Biblioteca de archivos públicos
@@ -116,7 +118,10 @@ export async function clearStaleResources() {
     const thresholdMs = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
     const now = Date.now();
 
-    for (const resource of resources) {
+    // Las 19 operaciones son independientes entre sí: Promise.allSettled las
+    // paraleliza eliminando el waterfall secuencial (cada await ya no bloquea al siguiente).
+    // allSettled en lugar de all: un fallo en un recurso no cancela los demás.
+    await Promise.allSettled(resources.map(async (resource) => {
         try {
             const meta = await window.electronAPI.sync.getMeta(resource);
             const lastSync = meta?.last_sync ? parseISO(String(meta.last_sync).replace(' ', 'T')).getTime() : null;
@@ -131,7 +136,7 @@ export async function clearStaleResources() {
         } catch (err) {
             void logger.warn(`error checking stale resource ${resource}`, err);
         }
-    }
+    }));
 }
 
 /**
@@ -165,9 +170,10 @@ export async function syncResource(resourceName, lastModifiedEndpoint, fetchFn) 
             const meta = await window.electronAPI.sync.getMeta(resourceName);
             const localTimestamp = meta?.last_server || null;
 
-            let isTableEmpty = true;
-            const localRows = await window.electronAPI.db.getAll(resourceName);
-            if (localRows && localRows.length > 0) isTableEmpty = false;
+            // Usar count en lugar de getAll: evita serializar toda la tabla por IPC
+            // solo para responder si está vacía. SELECT COUNT(*) es instantáneo en SQLite.
+            const rowCount = await window.electronAPI.db.count(resourceName);
+            const isTableEmpty = rowCount === 0;
 
             if (lastModifiedEndpoint) {
                 // Si no hay timestamp local: hacemos full fetch directamente y luego persistimos
@@ -212,9 +218,14 @@ export async function syncResource(resourceName, lastModifiedEndpoint, fetchFn) 
                 }
 
                 if (isServerUpToDate(serverTimestamp, localTimestamp)) {
-                    void logger.info(`${resourceName} up-to-date`);
-                    startupMark('sync:resource:up-to-date', { resourceName });
-                    return false;
+                    // Si los timestamps coinciden pero la tabla está vacía, el sync anterior
+                    // registró el meta pero falló al poblar el cache. Forzar re-fetch.
+                    if (!isTableEmpty) {
+                        void logger.info(`${resourceName} up-to-date`);
+                        startupMark('sync:resource:up-to-date', { resourceName });
+                        return false;
+                    }
+                    void logger.warn(`${resourceName} timestamps match but table is empty — forcing re-fetch`);
                 }
 
                 await fetchFn();

@@ -1,4 +1,4 @@
-import { useDeferredValue, useMemo, useState } from 'react';
+import { useDeferredValue, useMemo, useState, useEffect } from 'react';
 import { Check, Pencil, Plus, SearchX, Trash2, X } from 'lucide-react';
 import { SearchBar } from '../ui/SearchBar.jsx';
 import { Button } from '../ui/Button.jsx';
@@ -34,7 +34,7 @@ function getFormGridClass(fields) {
     return 'md:grid-cols-3';
 }
 
-function InlineEditableRow({ item, fields, canEdit, onSave, onDelete }) {
+function InlineEditableRow({ item, fields, canEdit, isAdmin, onSave, onDelete }) {
     const [editing, setEditing] = useState(false);
     const [saving, setSaving] = useState(false);
     const [editState, setEditState] = useState(() => createEmptyState(fields));
@@ -127,9 +127,11 @@ function InlineEditableRow({ item, fields, canEdit, onSave, onDelete }) {
                         <Button size="sm" variant="outline" onClick={beginEdit} icon={Pencil}>
                             Editar
                         </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-500/10 hover:text-red-700" onClick={() => onDelete(item)} icon={Trash2}>
-                            Eliminar
-                        </Button>
+                        {isAdmin && (
+                            <Button size="sm" variant="ghost" className="text-red-600 hover:bg-red-500/10 hover:text-red-700" onClick={() => onDelete(item)} icon={Trash2}>
+                                Eliminar
+                            </Button>
+                        )}
                     </div>
                 </td>
             ) : null}
@@ -141,12 +143,21 @@ function InlineEditableRow({ item, fields, canEdit, onSave, onDelete }) {
  * Sección CRUD reutilizable para todos los catálogos nuevos.
  * Lee datos normalizados desde contexts y traduce solo las mutaciones necesarias.
  */
-export default function CategoriesCatalogSection({ catalog, isAdmin }) {
+export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, CreateModal = null }) {
     const [isCreating, setIsCreating] = useState(false);
+    const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [query, setQuery] = useState('');
     const deferredQuery = useDeferredValue(query.trim().toLowerCase());
     const [formState, setFormState] = useState(() => createEmptyState(catalog.fields));
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
+
+    // Sincronizar con la API al entrar al tab
+    useEffect(() => {
+        if (catalog.onRefresh) {
+            catalog.onRefresh();
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [catalog.id]); 
 
     const filteredItems = useMemo(() => {
         if (!deferredQuery) return catalog.items;
@@ -236,8 +247,8 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                         <div>
                             <div className="flex items-center gap-3">
                                 <h3 className="text-2xl font-semibold text-(--text-primary)">{catalog.label}</h3>
-                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${isAdmin ? 'bg-emerald-500/10 text-emerald-700' : 'bg-slate-500/10 text-slate-700'}`}>
-                                    {isAdmin ? 'Edición habilitada' : 'Solo lectura'}
+                                <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${canEdit ? 'bg-emerald-500/10 text-emerald-700' : 'bg-slate-500/10 text-slate-700'}`}>
+                                    {canEdit ? 'Edición habilitada' : 'Solo lectura'}
                                 </span>
                             </div>
                             <p className="mt-1 text-sm text-(--text-secondary)">{catalog.description}</p>
@@ -253,11 +264,17 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                     </div>
                 </header>
 
-                {isAdmin && (
+                {canEdit && (
                     <div data-testid={`categories-create-area-${catalog.testId}`} className="border-b border-(--border-subtle) overflow-hidden transition-all duration-300">
                         {!isCreating ? (
                             <button
-                                onClick={() => setIsCreating(true)}
+                                onClick={() => {
+                                    if (CreateModal) {
+                                        setIsCreateModalOpen(true);
+                                    } else {
+                                        setIsCreating(true);
+                                    }
+                                }}
                                 className="flex w-full items-center justify-between px-6 py-4 text-blue-600 transition-all hover:bg-blue-50/30 group"
                             >
                                 <div className="flex items-center gap-3 font-semibold">
@@ -267,7 +284,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                                     <span>Cargar un nuevo {catalog.singularLabel.toLowerCase()}</span>
                                 </div>
                                 <span className="rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-500 opacity-0 transition-opacity group-hover:opacity-100">
-                                    Abrir formulario
+                                    {CreateModal ? 'Abrir modal' : 'Abrir formulario'}
                                 </span>
                             </button>
                         ) : (
@@ -374,17 +391,17 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                                                 {field.label}
                                             </th>
                                         ))}
-                                        {isAdmin ? (
+                                        {canEdit && (
                                             <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-[0.18em] text-(--text-secondary)">
                                                 Acciones
                                             </th>
-                                        ) : null}
+                                        )}
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-(--border-subtle)">
                                     {catalog.loading ? (
                                         <tr>
-                                            <td colSpan={catalog.fields.length + (isAdmin ? 1 : 0)} className="px-4 py-8 text-center text-sm text-(--text-secondary)">
+                                            <td colSpan={catalog.fields.length + (canEdit ? 1 : 0)} className="px-4 py-8 text-center text-sm text-(--text-secondary)">
                                                 Cargando {catalog.emptyPluralLabel}...
                                             </td>
                                         </tr>
@@ -394,7 +411,8 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                                                 key={item.id}
                                                 item={item}
                                                 fields={catalog.fields}
-                                                canEdit={isAdmin}
+                                                canEdit={canEdit}
+                                                isAdmin={isAdmin}
                                                 onSave={handleSave}
                                                 onDelete={handleDeleteRequest}
                                             />
@@ -406,6 +424,16 @@ export default function CategoriesCatalogSection({ catalog, isAdmin }) {
                     )}
                 </div>
             </section>
+
+            {CreateModal && (
+                <CreateModal
+                    open={isCreateModalOpen}
+                    onClose={() => setIsCreateModalOpen(false)}
+                    onSave={async (data) => {
+                        await catalog.onCreate(data);
+                    }}
+                />
+            )}
 
             <ConfirmDialog {...dialogProps} />
         </>

@@ -1,15 +1,32 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
 import { updateClient } from '../../services/clientService';
 import { useClients } from '../../context/ClientsContext';
 import { showAppToast } from '../ui/show-app-toast';
+import { CLIENT_GENDER_OPTIONS, DEFAULT_CLIENT_GENDER } from '../../constants/clientGender.js';
+
+/**
+ * Completa el formulario con defaults que cumplen el contrato actual de clientes.
+ */
+function buildInitialClientFormData(clientData = {}) {
+    return {
+        ...clientData,
+        type: clientData.type || 'person',
+        gender: clientData.gender || DEFAULT_CLIENT_GENDER,
+    };
+}
 
 export const EditClientModal = ({ open, onClose, clientData, onUpdate }) => {
     const formId = useId();
     const { refreshClients } = useClients();
-    const [formData, setFormData] = useState(() => clientData || {});
+    const [formData, setFormData] = useState(() => buildInitialClientFormData(clientData));
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setFormData(buildInitialClientFormData(clientData));
+    }, [clientData]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -20,17 +37,8 @@ export const EditClientModal = ({ open, onClose, clientData, onUpdate }) => {
         e.preventDefault();
         setLoading(true);
 
-        const payload = {
-            ...formData,
-            identification_number: formData.identification_number?.trim() || null,
-            email: formData.email?.trim() || null,
-            phone: formData.phone?.trim() || null,
-            address: formData.address?.trim() || null,
-            notes: formData.notes?.trim() || null,
-        };
-
         try {
-            const result = await updateClient(clientData.id, payload);
+            const result = await updateClient(clientData.id, formData);
             if (result.ok) {
                 showAppToast({
                     title: 'Éxito',
@@ -107,6 +115,27 @@ export const EditClientModal = ({ open, onClose, clientData, onUpdate }) => {
                             className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
                         />
                     </div>
+                    <div className="space-y-2">
+                        <label htmlFor={`${formId}-gender`} className="text-sm font-medium text-(--text-secondary)">Género *</label>
+                        <Select
+                            value={formData.gender || DEFAULT_CLIENT_GENDER}
+                            onValueChange={(value) => setFormData(prev => ({ ...prev, gender: value }))}
+                        >
+                            <SelectTrigger id={`${formId}-gender`} aria-label="Género">
+                                <SelectValue placeholder="Seleccionar género..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CLIENT_GENDER_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <label htmlFor={`${formId}-type`} className="text-sm font-medium text-(--text-secondary)">Tipo *</label>
                         <select

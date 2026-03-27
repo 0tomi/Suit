@@ -423,10 +423,8 @@ async function syncAllAgendasMonth(target, {
         }
 
         const persistTask = (async () => {
-            for (const targetAgendaId of touchedAgendaIds) {
-                const targetRows = rowsByAgendaId.get(targetAgendaId) || [];
-                await window.electronAPI.db.reconcileEventsForAgendaMonth(targetAgendaId, year, month, targetRows);
-            }
+            const rowsByAgendaIdObj = Object.fromEntries(rowsByAgendaId);
+            await window.electronAPI.db.reconcileEventsForAgendasMonth(year, month, rowsByAgendaIdObj);
             await window.electronAPI.sync.setMeta(resource, new Date().toISOString(), serverTimestamp ?? null);
         })();
 

@@ -93,7 +93,7 @@ const AgendaEventFormBody = ({
 
             <div>
                 {formData.notifyLoading ? (
-                    <div className="rounded-lg border border-gray-200 p-3 flex items-center gap-2 text-sm text-gray-500">
+                    <div className="rounded-lg border border-(--border-default) p-3 flex items-center gap-2 text-sm text-(--text-secondary)">
                         <Loader2 size={14} className="animate-spin" />
                         Cargando configuración de notificación...
                     </div>
@@ -116,7 +116,7 @@ const AgendaEventFormBody = ({
                     />
                 )}
                 {!formData.notifyLoading && formData.notifyEnabled && formData.notifyDate && formData.notifyTime && (
-                    <p className="mt-2 text-xs text-gray-500">
+                    <p className="mt-2 text-xs text-(--text-tertiary)">
                         Programada para el {formData.notifyDate} a las {formData.notifyTime}.
                     </p>
                 )}

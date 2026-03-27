@@ -7,6 +7,7 @@ import { ALL_AGENDAS_VIEW, normalizeDefaultAgendaView } from '../utils/agenda/de
 import { createLogger } from '../services/logService.js';
 import { useAuth } from './AuthContext.jsx';
 import { DEFAULT_PINNED_SECTIONS } from '../constants/sectionsRegistry.js';
+import { DEFAULT_TEMPLATE_CAPITALIZATION } from '../utils/templateCapitalization.js';
 
 const SettingsContext = createContext(null);
 
@@ -31,8 +32,19 @@ const defaultSettings = {
         overdue: '#ef4444',         // Vencido: rojo
     },
     urgentBlinkOnEntry: true,   // Parpadeo rojo en vencimientos urgentes al entrar a la sección
-showTutorials: true,        // Mostrar icono de tutorial en cada sección
+    showTutorials: true,        // Mostrar icono de tutorial en cada sección
     pinnedSections: DEFAULT_PINNED_SECTIONS, // Secciones ancladas al sidebar
+    // Biblioteca de archivos públicos
+    libraryNewBadgeEnabled: true,
+    libraryNewBadgeColor: '#f97316',
+    libraryJumpAnimationEnabled: true,
+    tablePageAnimationsEnabled: true,
+    // Configuración de capitalización del motor de plantillas
+    templateCapitalization: DEFAULT_TEMPLATE_CAPITALIZATION,
+    // Tratamiento formal de cliente: incluir Sr./Sra. en nombre completo y apellido
+    templateClientTreatment: true,
+    // Restaurar las pestañas abiertas al iniciar la aplicación
+    restoreTabs: true,
 };
 
 function ensurePinnedSections(nextPinnedSections) {
@@ -186,6 +198,47 @@ export const SettingsProvider = ({ children }) => {
         });
     }, [updateSettings, settings.pinnedSections]);
 
+    const setLibraryNewBadgeEnabled = useCallback((enabled) => {
+        updateSettings({ libraryNewBadgeEnabled: Boolean(enabled) });
+    }, [updateSettings]);
+
+    const setLibraryNewBadgeColor = useCallback((color) => {
+        updateSettings({ libraryNewBadgeColor: color });
+    }, [updateSettings]);
+
+    const setLibraryJumpAnimationEnabled = useCallback((enabled) => {
+        updateSettings({ libraryJumpAnimationEnabled: Boolean(enabled) });
+    }, [updateSettings]);
+
+    const setTablePageAnimationsEnabled = useCallback((enabled) => {
+        updateSettings({ tablePageAnimationsEnabled: Boolean(enabled) });
+    }, [updateSettings]);
+
+    const setTemplateClientTreatment = useCallback((enabled) => {
+        updateSettings({ templateClientTreatment: Boolean(enabled) });
+    }, [updateSettings]);
+
+    const setRestoreTabs = useCallback((enabled) => {
+        updateSettings({ restoreTabs: Boolean(enabled) });
+    }, [updateSettings]);
+
+    /**
+     * Actualiza la configuración de capitalización del motor de plantillas.
+     * Acepta un parche parcial: { mode } o { fields: { [type]: boolean } }.
+     */
+    const setTemplateCapitalization = useCallback((patch) => {
+        updateSettings({
+            templateCapitalization: {
+                ...settings.templateCapitalization,
+                ...patch,
+                // Merge parcial de fields para no pisar los otros toggles
+                fields: patch.fields
+                    ? { ...settings.templateCapitalization.fields, ...patch.fields }
+                    : settings.templateCapitalization.fields,
+            },
+        });
+    }, [updateSettings, settings.templateCapitalization]);
+
     const value = useMemo(() => ({
         defaultAgendaView: settings.defaultAgendaView,
         setDefaultAgendaView,
@@ -209,6 +262,20 @@ export const SettingsProvider = ({ children }) => {
         setShowTutorials,
         pinnedSections: settings.pinnedSections,
         togglePinnedSection,
+        libraryNewBadgeEnabled: settings.libraryNewBadgeEnabled,
+        setLibraryNewBadgeEnabled,
+        libraryNewBadgeColor: settings.libraryNewBadgeColor,
+        setLibraryNewBadgeColor,
+        libraryJumpAnimationEnabled: settings.libraryJumpAnimationEnabled,
+        setLibraryJumpAnimationEnabled,
+        tablePageAnimationsEnabled: settings.tablePageAnimationsEnabled,
+        setTablePageAnimationsEnabled,
+        templateCapitalization: settings.templateCapitalization,
+        setTemplateCapitalization,
+        templateClientTreatment: settings.templateClientTreatment ?? true,
+        setTemplateClientTreatment,
+        restoreTabs: settings.restoreTabs ?? true,
+        setRestoreTabs,
     }), [
         settings.defaultAgendaView,
         settings.agendaColorMode,
@@ -221,6 +288,10 @@ export const SettingsProvider = ({ children }) => {
         settings.urgentBlinkOnEntry,
         settings.showTutorials,
         settings.pinnedSections,
+        settings.libraryNewBadgeEnabled,
+        settings.libraryNewBadgeColor,
+        settings.libraryJumpAnimationEnabled,
+        settings.tablePageAnimationsEnabled,
         setDefaultAgendaView,
         setAgendaColorMode,
         setPersonalEventColor,
@@ -232,6 +303,16 @@ export const SettingsProvider = ({ children }) => {
         setUrgentBlinkOnEntry,
         setShowTutorials,
         togglePinnedSection,
+        setLibraryNewBadgeEnabled,
+        setLibraryNewBadgeColor,
+        setLibraryJumpAnimationEnabled,
+        setTablePageAnimationsEnabled,
+        settings.templateCapitalization,
+        setTemplateCapitalization,
+        settings.templateClientTreatment,
+        setTemplateClientTreatment,
+        settings.restoreTabs,
+        setRestoreTabs,
     ]);
 
     return (

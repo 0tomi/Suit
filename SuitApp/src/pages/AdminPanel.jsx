@@ -1,15 +1,19 @@
 import { useState } from 'react';
-import { Users, Shield, Lock, Settings } from 'lucide-react';
+import { Users, Shield, Lock, Settings, BookOpen } from 'lucide-react';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import SideMenuPageLayout from '../components/ui/SideMenuPageLayout.jsx';
 import AdminUsersTab from '../components/admin/AdminUsersTab.jsx';
 import AdminSettingsTab from '../components/admin/AdminSettingsTab.jsx';
+import AdminBitacoraTab from '../components/admin/AdminBitacoraTab.jsx';
+import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
+import { adminPanelSteps } from '../constants/tutorialSteps.js';
 
 const TABS = [
-    { id: 'users', label: 'Usuarios', icon: Users },
-    { id: 'settings', label: 'Configuración', icon: Settings },
+    { id: 'users', label: 'Usuarios', icon: Users, testId: 'admin-tab-users' },
+    { id: 'bitacora', label: 'Bitácora', icon: BookOpen, testId: 'admin-tab-bitacora' },
+    { id: 'settings', label: 'Configuración', icon: Settings, testId: 'admin-tab-settings' },
 ];
 
 const AdminPanel = () => {
@@ -20,6 +24,7 @@ const AdminPanel = () => {
     const dialogCallbacks = { openDialog, closeDialog, setDialogLoading };
     const contentByTab = {
         users: <AdminUsersTab {...dialogCallbacks} />,
+        bitacora: <AdminBitacoraTab {...dialogCallbacks} />,
         settings: <AdminSettingsTab />,
     };
 
@@ -43,13 +48,20 @@ const AdminPanel = () => {
         <SideMenuPageLayout
             title="Panel de Administración"
             titleTestId="page-admin-title"
-            description="Gestiona usuarios y tareas reservadas para administradores."
+            description="Gestiona usuarios, bitácora operativa y tareas reservadas para administradores."
             icon={Shield}
+            titleAction={(
+                <SectionTutorialTrigger
+                    steps={adminPanelSteps}
+                    ariaLabel="Ver tutorial del panel de administración"
+                    testId="adminpanel-tutorial-trigger"
+                />
+            )}
             sections={TABS}
             activeSection={activeTab}
             onSectionChange={setActiveTab}
             sectionIdPrefix="admin-tab"
-            maxWidthClass="max-w-7xl"
+            maxWidthClass="max-w-[1600px]"
         >
             {contentByTab[activeTab] || null}
             <ConfirmDialog {...dialogProps} />

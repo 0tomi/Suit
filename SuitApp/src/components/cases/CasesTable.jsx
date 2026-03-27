@@ -70,7 +70,7 @@ const COLUMNS = [
     { header: 'Acciones', align: 'right' },
 ];
 
-const CasesTable = ({ cases, onNavigate, onClose, onGenerateReport, isLoading = false }) => {
+const CasesTable = ({ cases, onNavigate, onClose, onGenerateReport, isLoading = false, trigger }) => {
     const { case_types: caseTypes = [] } = useCaseTypes();
     const { personalEventColor } = useSettings();
 
@@ -87,6 +87,7 @@ const CasesTable = ({ cases, onNavigate, onClose, onGenerateReport, isLoading = 
             isEmpty={showEmpty}
             emptyMessage="No se encontraron casos que coincidan con la búsqueda."
             columns={COLUMNS}
+            trigger={trigger}
         >
             {isLoading
                 ? <SkeletonRows count={5} />

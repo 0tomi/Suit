@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Notification, dialog, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Menu, MenuItem, Notification, dialog, ipcMain, session } = require('electron');
 const path = require('path');
 const { initializeLogService, getLogger, writeEntry, writeFatalStartupReport } = require('./logService.cjs');
 const { bootstrapApp } = require('./bootstrapApp.cjs');
@@ -31,7 +31,9 @@ const {
     reconcileEventsForAgenda,
     replaceEventsForAgendaMonth,
     reconcileEventsForAgendaMonth,
+    reconcileEventsForAgendasMonth,
     getAll,
+    count,
     getById,
     getCaseKpis,
     getCaseNextEvent,
@@ -48,6 +50,9 @@ const {
     updatePendingEventBundle,
     deletePendingEventBundle,
     promotePendingEvent,
+    getEnrichedDependencies,
+    getTemplateRequirements,
+    searchEvents,
 } = require('./database.cjs');
 const { discoverServer } = require('./discovery.cjs');
 const { performHttpRequest } = require('./httpProxy.cjs');
@@ -56,11 +61,48 @@ const { configureSingleInstance } = require('./singleInstance.cjs');
 const { createNotificationSchleuder } = require('./notificationSchleuder.cjs');
 const { openImageDialog } = require('./documentDialogs.cjs');
 const { exportDocumentToPdf } = require('./documentExporter.cjs');
+const { convertToHtml } = require('./documentConverter.cjs');
+const { listSystemFonts } = require('./systemFonts.cjs');
+const {
+    getDocumentVersionHistory,
+    getDocumentVersionContent,
+} = require('./documentVersionsService.cjs');
+const {
+    getDocumentListingPage,
+    invalidateDocumentListingCache,
+} = require('./documentListingService.cjs');
 const {
     pathExists,
     resolveAppIconPath,
     resolveRendererEntryPath,
 } = require('./runtimePaths.cjs');
+const qrService = require('./qrService.cjs');
+const {
+    listClients,
+    getClient: getClientBackend,
+    createClient: createClientBackend,
+    updateClient: updateClientBackend,
+    deleteClient: deleteClientBackend,
+    getClientsLastModified: getClientsLastModifiedBackend,
+    syncClients: syncClientsBackend,
+} = require('./clientsService.cjs');
+const {
+    listPartes: listPartesBackend,
+    getParte: getParteBackend,
+    createParte: createParteBackend,
+    updateParte: updateParteBackend,
+    deleteParte: deleteParteBackend,
+    getPartesLastModified: getPartesLastModifiedBackend,
+    syncPartes: syncPartesBackend,
+    getPartesByCase: getPartesByCaseBackend,
+    linkParteToCase: linkParteToCaseBackend,
+    unlinkParteFromCase: unlinkParteFromCaseBackend,
+} = require('./partesService.cjs');
+const {
+    listBitacora: listBitacoraBackend,
+    clearBitacora: clearBitacoraBackend,
+    cleanupBitacora: cleanupBitacoraBackend,
+} = require('./bitacoraService.cjs');
 
 let mainWindow = null;
 let trayManager = null;
@@ -69,6 +111,12 @@ const mainLogger = getLogger('main');
 const startupLogger = getLogger('startup');
 const startupStartedAt = Date.now();
 const startupMetricsEnabled = true;
+const SPELLCHECK_LANGUAGE_CANDIDATES = [
+    'es-AR',
+    'es-ES',
+    'es',
+    'en-US',
+];
 const hasSingleInstanceLock = configureSingleInstance({
     app,
     enabled: app.isPackaged,
@@ -203,6 +251,122 @@ function loadStartupErrorPage(window, payload) {
     });
 }
 
+function resolveSpellCheckerLanguages(ses) {
+    const availableLanguages = Array.isArray(ses?.availableSpellCheckerLanguages)
+        ? ses.availableSpellCheckerLanguages
+        : [];
+
+    if (!availableLanguages.length) {
+        return [];
+    }
+
+    const preferredLocale = app.getLocale?.();
+    const normalizedPreferred = typeof preferredLocale === 'string'
+        ? preferredLocale.replace('_', '-')
+        : null;
+    const preferredBase = normalizedPreferred?.split('-')[0] ?? null;
+    const candidates = [
+        normalizedPreferred,
+        preferredBase,
+        ...SPELLCHECK_LANGUAGE_CANDIDATES,
+    ].filter(Boolean);
+
+    return [...new Set(candidates)].filter((language) => availableLanguages.includes(language));
+}
+
+function configureSpellChecker(window) {
+    const ses = window?.webContents?.session;
+    if (!ses || process.platform === 'darwin') {
+        return;
+    }
+
+    const languages = resolveSpellCheckerLanguages(ses);
+    if (!languages.length) {
+        mainLogger.warn('No spellchecker languages available for current platform/session');
+        return;
+    }
+
+    ses.setSpellCheckerLanguages(languages);
+    mainLogger.info('Spellchecker languages configured', { languages });
+}
+
+function appendContextMenuItem(menu, options) {
+    menu.append(new MenuItem(options));
+}
+
+function appendSeparator(menu) {
+    if (menu.items.length === 0) return;
+    const lastItem = menu.items.at(-1);
+    if (lastItem?.type === 'separator') return;
+    menu.append(new MenuItem({ type: 'separator' }));
+}
+
+function appendEditAction(menu, { enabled, label, role, visible = true }) {
+    if (!visible) return;
+    appendContextMenuItem(menu, { label, role, enabled });
+}
+
+function attachContextMenu(window) {
+    window.webContents.on('context-menu', (_event, params) => {
+        const menu = new Menu();
+        const hasSelection = Boolean(params.selectionText?.trim());
+        const hasMisspelling = Boolean(params.misspelledWord);
+        const suggestions = Array.isArray(params.dictionarySuggestions)
+            ? params.dictionarySuggestions.filter(Boolean)
+            : [];
+
+        if (hasMisspelling && suggestions.length > 0) {
+            suggestions.forEach((suggestion) => {
+                appendContextMenuItem(menu, {
+                    label: suggestion,
+                    click: () => {
+                        if (!window.isDestroyed()) {
+                            window.webContents.replaceMisspelling(suggestion);
+                        }
+                    },
+                });
+            });
+            appendSeparator(menu);
+        }
+
+        if (hasMisspelling) {
+            appendContextMenuItem(menu, {
+                label: 'Agregar al diccionario',
+                click: () => {
+                    window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord);
+                },
+            });
+            appendSeparator(menu);
+        }
+
+        if (params.isEditable) {
+            appendEditAction(menu, { label: 'Deshacer', role: 'undo', enabled: params.editFlags.canUndo });
+            appendEditAction(menu, { label: 'Rehacer', role: 'redo', enabled: params.editFlags.canRedo });
+            appendSeparator(menu);
+            appendEditAction(menu, { label: 'Cortar', role: 'cut', enabled: params.editFlags.canCut });
+            appendEditAction(menu, { label: 'Copiar', role: 'copy', enabled: params.editFlags.canCopy || hasSelection });
+            appendEditAction(menu, { label: 'Pegar', role: 'paste', enabled: params.editFlags.canPaste });
+            appendEditAction(menu, { label: 'Eliminar', role: 'delete', enabled: params.editFlags.canDelete });
+            appendSeparator(menu);
+            appendEditAction(menu, { label: 'Seleccionar todo', role: 'selectAll', enabled: params.editFlags.canSelectAll });
+        } else if (hasSelection) {
+            appendEditAction(menu, { label: 'Copiar', role: 'copy', enabled: true });
+            appendSeparator(menu);
+            appendEditAction(menu, { label: 'Seleccionar todo', role: 'selectAll', enabled: true });
+        }
+
+        if (menu.items.length === 0) {
+            return;
+        }
+
+        menu.popup({
+            window,
+            x: params.x,
+            y: params.y,
+        });
+    });
+}
+
 function showFatalStartupError({ stage, error, reportPath }) {
     const details = [
         'SuitAPP no pudo completar el arranque.',
@@ -274,10 +438,13 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            spellcheck: true,
             preload: path.join(__dirname, 'preload.cjs'),
         },
     });
     attachWindowDiagnostics(mainWindow);
+    configureSpellChecker(mainWindow);
+    attachContextMenu(mainWindow);
 
     // El cierre normal de la ventana se convierte en hide-to-tray.
     mainWindow.on('close', (event) => {
@@ -475,11 +642,75 @@ function registerIpcHandlers() {
         return await performHttpRequest(payload);
     });
 
+    // --- Clients Backend ---
+    registerSafeHandle('clients:list', async (options) => {
+        return await listClients(options);
+    });
+    registerSafeHandle('clients:get', async (id) => {
+        return await getClientBackend(id);
+    });
+    registerSafeHandle('clients:create', async (payload) => {
+        return await createClientBackend(payload);
+    });
+    registerSafeHandle('clients:update', async (id, payload) => {
+        return await updateClientBackend(id, payload);
+    });
+    registerSafeHandle('clients:delete', async (id) => {
+        return await deleteClientBackend(id);
+    });
+    registerSafeHandle('clients:lastModified', async () => {
+        return await getClientsLastModifiedBackend();
+    });
+    registerSafeHandle('clients:sync', async () => {
+        return await syncClientsBackend();
+    });
+
+    // --- Partes Backend ---
+    registerSafeHandle('partes:list', async (options) => {
+        return await listPartesBackend(options);
+    });
+    registerSafeHandle('partes:get', async (id) => {
+        return await getParteBackend(id);
+    });
+    registerSafeHandle('partes:create', async (payload) => {
+        return await createParteBackend(payload);
+    });
+    registerSafeHandle('partes:update', async (id, payload) => {
+        return await updateParteBackend(id, payload);
+    });
+    registerSafeHandle('partes:delete', async (id) => {
+        return await deleteParteBackend(id);
+    });
+    registerSafeHandle('partes:lastModified', async () => {
+        return await getPartesLastModifiedBackend();
+    });
+    registerSafeHandle('partes:sync', async () => {
+        return await syncPartesBackend();
+    });
+    registerSafeHandle('partes:listByCase', async (caseId) => {
+        return await getPartesByCaseBackend(caseId);
+    });
+    registerSafeHandle('partes:linkToCase', async (caseId, parteId) => {
+        return await linkParteToCaseBackend(caseId, parteId);
+    });
+    registerSafeHandle('partes:unlinkFromCase', async (caseId, parteId) => {
+        return await unlinkParteFromCaseBackend(caseId, parteId);
+    });
+
     registerSafeHandle('dialog:openImage', async (options = {}) => {
         return await openImageDialog({
             browserWindow: mainWindow,
             ...options,
         });
+    });
+
+    registerSafeHandle('dialog:openFile', async ({ filters } = {}) => {
+        const result = await dialog.showOpenDialog(mainWindow, {
+            properties: ['openFile'],
+            filters: filters || [{ name: 'Documentos', extensions: ['docx', 'pdf'] }],
+        });
+        if (result.canceled || !result.filePaths.length) return { canceled: true };
+        return { canceled: false, filePath: result.filePaths[0] };
     });
 
     registerSafeHandle('dialog:saveFile', async ({ defaultName, bytes } = {}) => {
@@ -502,6 +733,36 @@ function registerIpcHandlers() {
         });
     });
 
+    // Convierte un archivo DOCX o PDF a HTML.
+    // Si se provee keyword, reemplaza sus ocurrencias por #1#, #2#, ..., #n# (para templates).
+    // Retorna: { ok, html, warnings, placeholderCount } | { ok: false, error }
+    registerSafeHandle('documents:convertToHtml', async ({ filePath, keyword } = {}) => {
+        return await convertToHtml(filePath, keyword);
+    });
+    registerSafeHandle('documents:getVersionHistory', async (documentId) => {
+        return await getDocumentVersionHistory(documentId);
+    });
+    registerSafeHandle('documents:getVersionContent', async (documentId, versionId, fallbackVersion = null) => {
+        return await getDocumentVersionContent(documentId, versionId, fallbackVersion);
+    });
+    registerSafeHandle('documents:getListingPage', async (options = {}) => {
+        return await getDocumentListingPage(options);
+    });
+    registerSafeHandle('documents:invalidateListingCache', async () => {
+        return await invalidateDocumentListingCache();
+    });
+
+    // --- Bitácora Admin Backend ---
+    registerSafeHandle('bitacora:list', async (options = {}) => {
+        return await listBitacoraBackend(options);
+    });
+    registerSafeHandle('bitacora:clear', async () => {
+        return await clearBitacoraBackend();
+    });
+    registerSafeHandle('bitacora:cleanup', async (days) => {
+        return await cleanupBitacoraBackend(days);
+    });
+
     // --- Sync Meta ---
     registerSafeHandle('sync:getMeta', (resource) => getSyncMeta(resource));
     registerSafeHandle('sync:setMeta', (resource, lastSync, lastServer) => {
@@ -522,9 +783,19 @@ function registerIpcHandlers() {
 
     // --- Generic DB Operations ---
     registerSafeHandle('db:getAll', (table) => getAll(table));
+    registerSafeHandle('db:count', (table) => count(table));
     registerSafeHandle('db:getById', (table, id) => getById(table, id));
     registerSafeHandle('db:getCaseKpis', (caseId) => getCaseKpis(caseId));
     registerSafeHandle('db:getCaseNextEvent', (caseId) => getCaseNextEvent(caseId));
+    registerSafeHandle('db:getEnrichedDependencies', (jurisdiccionId, radicacionId) =>
+        getEnrichedDependencies(jurisdiccionId, radicacionId)
+    );
+    registerSafeHandle('db:getTemplateRequirements', (templateId) =>
+        getTemplateRequirements(templateId)
+    );
+    registerSafeHandle('db:searchEvents', (options) =>
+        searchEvents(options)
+    );
     registerSafeHandle('db:upsertMany', (table, rows) => upsertMany(table, rows));
     registerSafeHandle('db:reconcileEventsForAgenda', (agendaId, rows) =>
         reconcileEventsForAgenda(agendaId, rows)
@@ -534,6 +805,9 @@ function registerIpcHandlers() {
     );
     registerSafeHandle('db:reconcileEventsForAgendaMonth', (agendaId, year, month, rows) =>
         reconcileEventsForAgendaMonth(agendaId, year, month, rows)
+    );
+    registerSafeHandle('db:reconcileEventsForAgendasMonth', (year, month, rowsByAgendaId) =>
+        reconcileEventsForAgendasMonth(year, month, rowsByAgendaId)
     );
     registerSafeHandle('db:deleteById', (table, id) => deleteById(table, id));
     registerSafeHandle('db:deleteWhere', (table, conditions) => deleteWhere(table, conditions));
@@ -590,6 +864,30 @@ function registerIpcHandlers() {
         return { saved: true, filePath: result.filePath };
     });
 
+    registerSafeHandle('publicFiles:generateLink', async (fileId) => {
+        const host = getConfig('api_host') || 'localhost';
+        const port = getConfig('api_port') || '8000';
+        const token = getConfig('auth_token');
+        const url = `http://${host}:${port}/api/public-files/${fileId}/generate-link`;
+
+        const response = await performHttpRequest({
+            url,
+            method: 'GET',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            responseType: 'json',
+        });
+
+        if (!response.ok) {
+            throw new Error(response.error || `La API respondió con error ${response.status}`);
+        }
+
+        return response.data; // { signed_url, expires_at }
+    });
+
+    registerSafeHandle('publicFiles:generateUploadLink', (payload) => qrService.generatePublicFileUploadLink(payload));
+    registerSafeHandle('cases:generateLink', (payload) => qrService.generateCaseLink(payload));
+
+
     // --- NotificationSchleuder ---
     registerSafeHandle('notifications:getEventConfig', (eventId) => notificationSchleuder?.getEventConfig(eventId));
     registerSafeHandle('notifications:saveEventConfig', (payload) => notificationSchleuder?.saveEventConfig(payload));
@@ -611,4 +909,9 @@ function registerIpcHandlers() {
     registerSafeHandle('notifications:clearStateForCurrentUser', () => {
         return notificationSchleuder?.clearStateForCurrentUser() ?? false;
     });
+
+    // --- System Fonts ---
+    // Usa font-list para enumerar fuentes del sistema en Linux/Windows/macOS
+    // manteniendo el mismo contrato IPC para el renderer.
+    registerSafeHandle('system:getFonts', async () => await listSystemFonts());
 }

@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createResourceContext } from './createResourceContext';
 import { syncTipoPagos } from '../services/sync/metadataSyncService.js';
+import { TIER_CATALOG } from '../services/sync/SyncScheduler.js';
 
 const { Context: TipoPagosContext, Provider: TipoPagosProvider, useResource: useTipoPagosResource } = createResourceContext({
     resourceName: 'tipo_pagos',
     syncFn: syncTipoPagos,
+    syncPriority: TIER_CATALOG,
 });
 
 function useTipoPagos() {

@@ -47,10 +47,22 @@ function ensurePointerCaptureApi(target) {
   }
 }
 
+function ensureScrollIntoViewApi(target) {
+  if (!target) return;
+
+  if (typeof target.scrollIntoView !== 'function') {
+    Object.defineProperty(target, 'scrollIntoView', {
+      configurable: true,
+      value: () => {},
+    });
+  }
+}
+
 ensureGeometryApi(globalThis.Element?.prototype);
 ensureGeometryApi(globalThis.Text?.prototype);
 ensureGeometryApi(globalThis.Range?.prototype);
 ensurePointerCaptureApi(globalThis.Element?.prototype);
+ensureScrollIntoViewApi(globalThis.Element?.prototype);
 
 afterEach(() => {
   cleanup();
@@ -63,6 +75,8 @@ beforeEach(() => {
     },
     documents: {
       exportPdf: vi.fn().mockResolvedValue({ canceled: true }),
+      getVersionHistory: vi.fn().mockResolvedValue([]),
+      getVersionContent: vi.fn().mockResolvedValue(null),
     },
     logs: {
       debug: vi.fn().mockResolvedValue(true),

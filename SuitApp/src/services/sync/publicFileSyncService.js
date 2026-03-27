@@ -4,8 +4,8 @@
  * Implementa DOS rutas de sincronización según el estado del cache local:
  *
  * Ruta A — Cache vacío (primera vez):
- *   Fetch paginado catalog-por-catalog vía GET /api/public-file-catalogs/{id}/public-files.
- *   Limpia la tabla y reinserta todos los registros.
+ *   Llama a GET /api/public-files/sync?last_sync=1970-01-01 para obtener TODOS los archivos.
+ *   Limpia la tabla y reinserta todos los registros activos.
  *
  * Ruta B — Cache poblado (sesiones subsiguientes):
  *   Consulta GET /api/public-files/sync?last_sync={last_server} para obtener solo
@@ -16,12 +16,24 @@
  * En ambos casos, antes de proceder se verifica el endpoint last-modified para
  * saltear el fetch si el servidor no tiene novedades.
  */
-import { syncResource, isServerUpToDate, getLocalLaravelTime } from './syncCore.js';
-import { getCatalogs } from '../publicFileCatalogService.js';
-import { getFilesForCatalog, getLastModified, syncDown } from '../publicFileService.js';
+import { syncResource } from './syncCore.js';
+import { syncDown } from '../publicFileService.js';
 import { createLogger } from '../logService.js';
 
 const logger = createLogger('sync:public-files');
+
+let latestSyncedIds = new Set();
+
+/**
+ * Retorna los IDs de los archivos que fueron procesados en la última sincronización.
+ * @returns {Set<number>} 
+ */
+export const getLatestSyncedIds = () => latestSyncedIds;
+
+/**
+ * Limpia la lista de IDs sincronizados recientemente.
+ */
+export const clearLatestSyncedIds = () => latestSyncedIds.clear();
 
 /**
  * Construye la fila de cache para un archivo público (sin bytes binarios).
@@ -41,61 +53,44 @@ export function buildPublicFileCacheRow(file) {
         created_at: file.created_at ?? null,
         updated_at: file.updated_at ?? null,
         deleted_at: file.deleted_at ?? null,
-        data_json: JSON.stringify(file),
         synced_at: new Date().toISOString(),
     };
 }
 
 /**
- * Ruta A: fetch completo paginado por catálogo.
+ * Ruta A: fetch completo vía endpoint de sync con fecha epoch.
  * Se usa cuando el cache está vacío (primera sincronización).
+ * Usamos la fecha epoch para obtener TODOS los archivos existentes, independientemente
+ * de si hay catálogos o no, ya que la API puede tener archivos sin catálogo asignado.
  */
 async function fullFetchPublicFiles() {
-    logger.info('full fetch start — fetching all catalogs first');
-    const catalogs = await getCatalogs();
+    logger.warn('full fetch start — calling syncDown with epoch date');
+    const allFiles = await syncDown('1970-01-01T00:00:00Z');
+    
+    // Track current sync results
+    latestSyncedIds = new Set(allFiles.map(f => f.id));
+    
+    logger.warn('syncDown result', { isArray: Array.isArray(allFiles), length: Array.isArray(allFiles) ? allFiles.length : typeof allFiles });
 
-    if (!Array.isArray(catalogs) || catalogs.length === 0) {
-        logger.warn('no catalogs returned; skipping full fetch');
-        return;
+    if (!Array.isArray(allFiles) || allFiles.length === 0) {
+        logger.warn('full fetch: no files returned from API');
+        return [];
     }
 
-    /**
-     * Fetch paginado de todos los archivos de un catálogo.
-     * Las páginas dentro de un catálogo son secuenciales (no se saben cuántas hay hasta
-     * leer la primera), pero los catálogos entre sí son independientes y se paralelizan.
-     */
-    async function fetchAllPagesForCatalog(catalog) {
-        const files = [];
-        let page = 1;
-        let hasMore = true;
-
-        while (hasMore) {
-            logger.info(`fetching catalog ${catalog.id} page ${page}`);
-            const result = await getFilesForCatalog(catalog.id, page);
-            const items = Array.isArray(result) ? result : (result?.data ?? []);
-            files.push(...items);
-
-            const meta = result?.meta;
-            hasMore = !!(meta && meta.current_page < meta.last_page);
-            if (hasMore) page++;
-        }
-        return files;
-    }
-
-    // async-parallel: fetch de catálogos en paralelo (son independientes entre sí)
-    const perCatalogFiles = await Promise.all(catalogs.map(fetchAllPagesForCatalog));
-    const allFiles = perCatalogFiles.flat();
-
-    logger.info('full fetch complete', { total: allFiles.length });
+    logger.warn('full fetch complete', { total: allFiles.length });
 
     const rows = allFiles
         .filter((f) => !f.deleted_at) // excluir borrados en fetch inicial
         .map(buildPublicFileCacheRow);
 
+    logger.warn('writing to SQLite', { rows: rows.length });
     await window.electronAPI.db.clearTable('public_files');
     if (rows.length > 0) {
         await window.electronAPI.db.upsertMany('public_files', rows);
+        logger.warn('SQLite write complete');
     }
+
+    return allFiles;
 }
 
 /**
@@ -108,9 +103,12 @@ async function incrementalSyncPublicFiles(lastSync) {
     logger.info('incremental sync start', { lastSync });
     const changes = await syncDown(lastSync);
 
+    // Track current sync results
+    latestSyncedIds = new Set(changes.map(f => f.id));
+
     if (!Array.isArray(changes) || changes.length === 0) {
         logger.info('no changes from sync endpoint');
-        return;
+        return [];
     }
 
     const toDelete = changes.filter((f) => f.deleted_at != null);
@@ -129,6 +127,8 @@ async function incrementalSyncPublicFiles(lastSync) {
         const rows = toUpsert.map(buildPublicFileCacheRow);
         await window.electronAPI.db.upsertMany('public_files', rows);
     }
+
+    return changes;
 }
 
 /**
@@ -140,10 +140,20 @@ async function fetchAndCachePublicFiles() {
     const meta = await window.electronAPI.sync.getMeta('public_files');
     const lastServer = meta?.last_server ?? null;
 
-    if (!lastServer) {
-        await fullFetchPublicFiles();
+    // Si la tabla está vacía, siempre full fetch aunque tengamos meta.
+    // Caso típico: corrida anterior grabó el meta pero falló al poblar el cache.
+    const existingRows = await window.electronAPI.db.getAll('public_files');
+    const tableEmpty = !existingRows || existingRows.length === 0;
+
+    logger.warn('fetchAndCachePublicFiles', { lastServer, tableEmpty });
+
+    if (!lastServer || tableEmpty) {
+        if (tableEmpty && lastServer) {
+            logger.warn('cache vacío con meta existente — forzando full fetch');
+        }
+        return await fullFetchPublicFiles();
     } else {
-        await incrementalSyncPublicFiles(lastServer);
+        return await incrementalSyncPublicFiles(lastServer);
     }
 }
 

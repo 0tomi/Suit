@@ -1,8 +1,8 @@
-import React from 'react';
-import { Eye, FileText } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Eye, FileText, Info } from 'lucide-react';
 import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
-import TiptapEditor from './TiptapEditor.jsx';
+import { buildPreviewHtml } from '../templates/templateEditorUtils.js';
 
 export default function TemplatePreviewModal({
     open,
@@ -13,6 +13,13 @@ export default function TemplatePreviewModal({
     onUseTemplate,
 }) {
     const hasContent = typeof template?.content === 'string' && template.content.trim().length > 0;
+
+    // Procesa el contenido una sola vez por cambio de template:
+    // convierte los placeholders #n# a burbujas grises inline.
+    const previewHtml = useMemo(
+        () => (hasContent ? buildPreviewHtml(template.content) : ''),
+        [hasContent, template]
+    );
 
     return (
         <Modal
@@ -39,20 +46,30 @@ export default function TemplatePreviewModal({
                 </>
             )}
         >
-            <div data-testid="template-preview-modal" className="space-y-4">
+            <div data-testid="template-preview-modal">
                 {loading ? (
                     <div className="flex min-h-64 flex-col items-center justify-center gap-3 text-(--text-secondary)">
                         <Eye className="h-8 w-8 animate-pulse text-blue-600" />
                         <span className="text-sm">Cargando vista previa...</span>
                     </div>
                 ) : hasContent ? (
-                    <div className="rounded-xl bg-(--bg-card-hover) p-4">
-                        <TiptapEditor
-                            content={template.content}
-                            onChange={() => {}}
-                            readOnly
-                            placeholder=""
-                        />
+                    <div className="space-y-3">
+                        {/* Aviso de previsualización simplificada */}
+                        <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-3 py-2.5">
+                            <Info size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                                Vista previa simplificada — el formato exacto se aplica al abrir la plantilla en el editor.
+                                Las burbujas grises indican los campos que se completarán con datos del caso.
+                            </p>
+                        </div>
+
+                        {/* Contenido en texto plano con burbujas de requisito */}
+                        <div className="overflow-auto rounded-xl bg-(--bg-card-hover) p-4">
+                            <div
+                                className="text-sm text-(--text-primary) leading-relaxed"
+                                dangerouslySetInnerHTML={{ __html: previewHtml }}
+                            />
+                        </div>
                     </div>
                 ) : (
                     <div className="flex min-h-64 items-center justify-center rounded-xl border border-dashed border-(--border-default) bg-(--bg-card-hover) px-6 text-center text-sm text-(--text-secondary)">

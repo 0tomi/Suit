@@ -63,19 +63,33 @@ export async function syncDown(lastSync) {
         params: { last_sync: lastSync },
         dedupe: false,
     });
-    return result.ok ? (result.data ?? []) : [];
+    if (!result.ok) return [];
+    // La API devuelve { data: [...] } — extraer el array interno
+    const payload = result.data;
+    return Array.isArray(payload) ? payload : (payload?.data ?? []);
 }
 
 // --- Permisos (siempre on-demand, no se cachean) ---
 
 /**
+ * Consulta los permisos del usuario autenticado sobre un archivo específico.
+ * Endpoint accesible por cualquier usuario — devuelve sus propios can_update/can_delete.
+ * Retorna { ok, data: { can_update, can_delete }, status }.
+ * @param {number} fileId
+ */
+export async function getMyPermissions(fileId) {
+    return await apiGet(`/public-files/${fileId}/my-permissions`);
+}
+
+/**
  * Lista los permisos explícitos de un archivo.
  * Solo accesible por el dueño o un administrador.
+ * Retorna el resultado completo { ok, data, status } para que el consumidor
+ * pueda distinguir entre 200 (owner/admin) y 403 (sin acceso).
  * @param {number} fileId
  */
 export async function getPermissions(fileId) {
-    const result = await apiGet(`/public-files/${fileId}/permissions`);
-    return result.ok ? result.data : [];
+    return await apiGet(`/public-files/${fileId}/permissions`);
 }
 
 /**
@@ -100,4 +114,20 @@ export async function revokePermission(fileId, userId) {
     return await apiRequest(`/public-files/${fileId}/permissions/${userId}`, {
         method: 'DELETE',
     });
+}
+
+/**
+ * Genera un enlace temporal para carga de archivos desde un dispositivo externo.
+ * Usa el puente de Electron para hablar con la API.
+ * @param {{ catalogId?: number, permissions?: Array }} options
+ */
+export async function generateUploadLink(options) {
+    return await window.electronAPI.publicFiles.generateUploadLink(options);
+}
+/**
+ * Genera un enlace temporal firmado para descarga externa.
+ * @param {number} fileId
+ */
+export async function generateLink(fileId) {
+    return await window.electronAPI.publicFiles.generateLink(fileId);
 }

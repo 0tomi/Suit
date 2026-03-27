@@ -1,5 +1,6 @@
 const {
     GLOBAL_CONFIG_KEYS,
+    TABLE_COLUMN_WHITELIST,
     assertAllowedColumns,
     assertAllowedTable,
 } = require('./shared.cjs');
@@ -53,13 +54,25 @@ function setSyncMeta(dbInstance, resource, lastSync, lastServer) {
 }
 
 function upsertMany(dbInstance, table, rows) {
-    const safeTable = assertAllowedTable(table);
+    const safeTable = String(table);
+    assertAllowedTable(safeTable);
+
     if (!rows || rows.length === 0) return;
 
-    const columns = Object.keys(rows[0]);
-    if (columns.length === 0) return;
+    const whitelist = TABLE_COLUMN_WHITELIST[safeTable];
+    if (!whitelist) {
+        throw new Error(`No whitelist defined for table "${safeTable}"`);
+    }
 
-    assertAllowedColumns(safeTable, columns);
+    // Filtramos las columnas basándonos en la whitelist.
+    // Usamos las llaves de la primera fila pero filtradas.
+    const columns = Object.keys(rows[0]).filter((col) => whitelist.has(col));
+
+    if (columns.length === 0) {
+        throw new Error(`No valid columns found for table "${safeTable}" in the provided data`);
+    }
+
+    // assertAllowedColumns(safeTable, columns); // No longer needed as columns are filtered by whitelist
     if (!dbInstance) return;
 
     const placeholders = columns.map(() => '?').join(', ');
@@ -81,6 +94,16 @@ function getAll(dbInstance, table) {
     const safeTable = assertAllowedTable(table);
     if (!dbInstance) return [];
     return dbInstance.prepare(`SELECT * FROM ${safeTable}`).all();
+}
+
+/**
+ * Devuelve el número de filas de una tabla sin serializar ningún dato.
+ * Mucho más eficiente que getAll() cuando solo se necesita saber si la tabla está vacía.
+ */
+function count(dbInstance, table) {
+    const safeTable = assertAllowedTable(table);
+    if (!dbInstance) return 0;
+    return dbInstance.prepare(`SELECT COUNT(*) AS cnt FROM ${safeTable}`).get()?.cnt ?? 0;
 }
 
 function getById(dbInstance, table, id) {
@@ -177,6 +200,8 @@ function clearAllResourceTables(dbInstance) {
         'events',
         'cases',
         'documents',
+        'document_versions',
+        'document_query_cache',
         'clients',
         'agendas',
         'deadlines',
@@ -203,10 +228,14 @@ function clearAllResourceTables(dbInstance) {
         'case_sync_meta',
         'multimedia',
         'files',
+        'case_tipo_expediente',
         // Biblioteca de archivos públicos
         'public_file_catalogs',
         'public_files',
         'public_file_permissions',
+        // Sistema de requisitos para plantillas
+        'requisitos',
+        'plantilla_requisitos',
     ];
 
     const clearTransaction = dbInstance.transaction(() => {
@@ -242,13 +271,11 @@ function getCaseKpis(dbInstance, caseId) {
     }
 
     const eventSummary = dbInstance.prepare(`
-        SELECT
-            COALESCE(SUM(CASE WHEN event_types.name = 'Vencimiento' THEN 1 ELSE 0 END), 0) AS deadlinesCount,
-            COALESCE(SUM(CASE WHEN event_types.name = 'Vencimiento' THEN 0 ELSE 1 END), 0) AS eventsCount
-        FROM events
-        LEFT JOIN event_types ON event_types.id = events.event_type_id
-        WHERE events.suit_case_id = ?
-    `).get(normalizedCaseId) || {};
+        SELECT 
+            (SELECT COUNT(*) FROM deadlines WHERE suit_case_id = ?) as deadlinesCount,
+            (SELECT COUNT(*) FROM events WHERE suit_case_id = ? 
+             AND id NOT IN (SELECT event_id FROM deadlines WHERE event_id IS NOT NULL AND suit_case_id = ?)) as eventsCount
+    `).get(normalizedCaseId, normalizedCaseId, normalizedCaseId) || {};
 
     const documentSummary = dbInstance.prepare(`
         SELECT COUNT(*) AS documentsCount
@@ -297,6 +324,86 @@ function getCaseNextEvent(dbInstance, caseId) {
     `).get(normalizedCaseId, nowNaive) ?? null;
 }
 
+/**
+ * Obtiene todos los vencimientos con información de la agenda asociada.
+ */
+function getAllDeadlinesEnriched(dbInstance) {
+    if (!dbInstance) return [];
+    return dbInstance.prepare(`
+        SELECT 
+            d.*,
+            a.name AS agenda_name,
+            a.color AS agenda_color,
+            a.suit_case_id AS agenda_suit_case_id,
+            u.name AS owner_name,
+            u.id AS owner_id,
+            c.title AS case_title
+        FROM deadlines d
+        -- Usamos json_extract porque el evento puede no estar en la cache local si el mes no se visitó,
+        -- pero la info de la agenda SI está embebida en el data_json del vencimiento.
+        LEFT JOIN agendas a ON json_extract(d.data_json, '$.event.agenda_id') = a.id
+        LEFT JOIN users u ON a.user_id = u.id
+        LEFT JOIN cases c ON d.suit_case_id = c.id
+    `).all();
+}
+
+/**
+ * Obtiene los requisitos de una plantilla como un JOIN entre plantilla_requisitos y requisitos.
+ * Filtra filas con soft-delete en ambas tablas y ordena por id de relación (orden de definición).
+ * @returns {Array<{id, id_campo, requisito_id, type, title}>}
+ */
+function getTemplateRequirements(dbInstance, templateId) {
+    if (!dbInstance) return [];
+    return dbInstance.prepare(`
+        SELECT pr.id, pr.id_campo, pr.requisito_id,
+               COALESCE(pr.NEntidad, 1) AS NEntidad,
+               pr.note,
+               r.type, r.title
+        FROM plantilla_requisitos pr
+        JOIN requisitos r ON r.id = pr.requisito_id
+        WHERE pr.template_id = ?
+          AND pr.deleted_at IS NULL
+          AND r.deleted_at IS NULL
+        ORDER BY pr.id ASC
+    `).all(templateId) ?? [];
+}
+
+/**
+ * Obtiene las dependencias judiciales enriquecidas con JOINs, filtradas por jurisdicción y radicación.
+ */
+function getEnrichedDependencies(dbInstance, jurisdiccionId, radicacionId) {
+    if (!dbInstance) return [];
+
+    let query = `
+        SELECT 
+            d.*,
+            j.nombre AS jurisdiccion_nombre,
+            c.fuero AS competencia_nombre,
+            r.name AS radicacion_nombre
+        FROM dependencias_judiciales d
+        LEFT JOIN jurisdicciones j ON d.jurisdiccion_id = j.id
+        LEFT JOIN competencias c ON d.competencia_id = c.id
+        LEFT JOIN radicaciones r ON d.radicacion_id = r.id
+        WHERE 1=1
+    `;
+
+    const params = [];
+
+    if (jurisdiccionId) {
+        query += ' AND d.jurisdiccion_id = ?';
+        params.push(jurisdiccionId);
+    }
+
+    if (radicacionId) {
+        query += ' AND d.radicacion_id = ?';
+        params.push(radicacionId);
+    }
+
+    query += ' ORDER BY d.nombre_juzgado ASC';
+
+    return dbInstance.prepare(query).all(...params);
+}
+
 module.exports = {
     getConfig,
     setConfig,
@@ -310,6 +417,7 @@ module.exports = {
     clearCaseSyncMeta,
     upsertMany,
     getAll,
+    count,
     getById,
     deleteById,
     deleteWhere,
@@ -317,4 +425,7 @@ module.exports = {
     clearAllResourceTables,
     getCaseKpis,
     getCaseNextEvent,
+    getAllDeadlinesEnriched,
+    getEnrichedDependencies,
+    getTemplateRequirements,
 };

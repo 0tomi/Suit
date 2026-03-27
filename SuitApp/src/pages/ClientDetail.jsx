@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useClients } from '../context/ClientsContext';
 import { useEntityDetail } from '../hooks/useEntityDetail.js';
@@ -14,6 +14,19 @@ const ClientDetail = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditOpen, setIsEditOpen] = useState(false);
+    
+    // Soporte para atajos de salto de pestañas
+    useEffect(() => {
+        const handler = (e) => {
+            const tabs = ['profile', 'documents'];
+            if (tabs[e.detail.index]) {
+                setActiveTab(tabs[e.detail.index]);
+            }
+        };
+        window.dispatchEvent(new CustomEvent('app:foo', { detail: { } })); // dummy to test? no.
+        window.addEventListener('app:tab-change', handler);
+        return () => window.removeEventListener('app:tab-change', handler);
+    }, []);
 
     const { clients, updateItem } = useClients();
 
@@ -60,7 +73,7 @@ const ClientDetail = () => {
             <ClientDetailHeader
                 clientData={clientData}
                 fullName={fullName}
-                onBack={() => navigate('/clients')}
+                onBack={() => navigate('/people')}
                 onEdit={() => setIsEditOpen(true)}
             />
 
