@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>SuitLogo.png</file>
+        <file>SuitLogo.ico</file>
+    </qresource>
+</RCC>
