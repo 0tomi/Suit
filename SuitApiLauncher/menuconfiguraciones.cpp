@@ -141,6 +141,14 @@ MenuConfiguraciones::MenuConfiguraciones(
         ui->edtRutaStorageBackup->setEnabled(checked);
         ui->btnCambiarRutaStorageBackup->setEnabled(checked);
     });
+    connect(ui->chkTimeoutApi, &QCheckBox::toggled,
+            this, [this](bool checked) {
+        ui->spnTimeoutApiMinutos->setEnabled(checked);
+    });
+    connect(ui->chkTimeoutPostgres, &QCheckBox::toggled,
+            this, [this](bool checked) {
+        ui->spnTimeoutPostgresMinutos->setEnabled(checked);
+    });
 
     // Tracking de cambios en tab PHP (después de cargar para no disparar en falso)
     for (QCheckBox *chk : std::as_const(extensionCheckboxes)) {
@@ -278,6 +286,17 @@ void MenuConfiguraciones::cargarValores()
         ui->grpRutasAlmacenamiento->setEnabled(false);
     }
 
+    // --- Tab Timeouts (dentro de Aplicacion) ---------------------------------
+    const bool toApi = config->timeoutApiActivado();
+    ui->chkTimeoutApi->setChecked(toApi);
+    ui->spnTimeoutApiMinutos->setValue(config->timeoutApiMinutos());
+    ui->spnTimeoutApiMinutos->setEnabled(toApi);
+
+    const bool toPg = config->timeoutPostgresActivado();
+    ui->chkTimeoutPostgres->setChecked(toPg);
+    ui->spnTimeoutPostgresMinutos->setValue(config->timeoutPostgresMinutos());
+    ui->spnTimeoutPostgresMinutos->setEnabled(toPg);
+
     // --- Tab Aplicacion ------------------------------------------------------
     const QString modo = config->modoInicio();
     if (modo == "minimizado")
@@ -373,6 +392,12 @@ void MenuConfiguraciones::guardarCambios()
         phpIni.setValor("upload_max_filesize", ui->edtUploadMaxSize->text());
         phpIni.guardar(rutaPhpIni);
     }
+
+    // --- Tab Timeouts --------------------------------------------------------
+    config->setTimeoutApiActivado(ui->chkTimeoutApi->isChecked());
+    config->setTimeoutApiMinutos(ui->spnTimeoutApiMinutos->value());
+    config->setTimeoutPostgresActivado(ui->chkTimeoutPostgres->isChecked());
+    config->setTimeoutPostgresMinutos(ui->spnTimeoutPostgresMinutos->value());
 
     // --- Tab Aplicacion ------------------------------------------------------
     static const QString kModos[] = {"normal", "minimizado", "maximizado"};

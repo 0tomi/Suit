@@ -62,6 +62,13 @@ private slots:
     void ejecutarStorageBackupProgramado();
     void storageBackupFinalizado(int exitCode, QProcess::ExitStatus exitStatus);
 
+    void apagarApi();
+    void arrancarBd();
+    void apagarBd();
+    void correrSemillas();
+    void leerLogsSemillas();
+    void semillasFinalizadas(int exitCode, QProcess::ExitStatus exitStatus);
+
 private:
     void closeEvent(QCloseEvent *event) override;
     void configurarSystemTray();
@@ -83,22 +90,30 @@ private:
     QProcess *cleanupProcess = nullptr;
     QProcess *backupProcess = nullptr;
     QProcess *storageBackupProcess = nullptr;
+    QProcess *seedProcess = nullptr;
 
     QString basePath;
     QString logDirPath;
     QString backupArchivoActual;
 
     bool apiIniciada = false;
+    bool bdActiva = false;
     bool permitirCierreReal = false;
 
     ConfigManager *config = nullptr;
     QTimer backupTime, cleanUpTime, persistenciaTimer, storageBackupTimer;
+
+    enum class EstadoBoton { Detenido, EnProceso, Corriendo };
+    void actualizarBotonServidor(EstadoBoton estado);
 
     bool detenerProceso(QProcess *process, const QString &prefix, int terminateWaitMs, int killWaitMs);
     bool detenerPostgres(int waitMs = 15000);
     void arrancarApiIndependiente();
     void arrancarDiscoveryIndependiente();
     void arrancarBaseDeDatosIndependiente(bool iniciarApisCuandoEsteLista);
+
+    int timeoutApiMs() const;
+    int timeoutPostgresMs() const;
 
     QString rutaFrankenPhp() const;
     QString rutaPgCtl() const;

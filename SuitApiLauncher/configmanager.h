@@ -33,6 +33,18 @@ public:
     bool inicioConSistema() const;
     void setInicioConSistema(bool enabled);
 
+    bool timeoutApiActivado() const;
+    void setTimeoutApiActivado(bool activado);
+
+    int timeoutApiMinutos() const;
+    void setTimeoutApiMinutos(int minutos);
+
+    bool timeoutPostgresActivado() const;
+    void setTimeoutPostgresActivado(bool activado);
+
+    int timeoutPostgresMinutos() const;
+    void setTimeoutPostgresMinutos(int minutos);
+
     bool storageBackupActivado() const;
     void setStorageBackupActivado(bool activado);
 

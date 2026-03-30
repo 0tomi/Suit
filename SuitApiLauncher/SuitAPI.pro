@@ -18,7 +18,8 @@ SOURCES += \
     mainwindow.cpp \
     menuconfiguraciones.cpp \
     phpconfigparser.cpp \
-    phpiniparser.cpp
+    phpiniparser.cpp \
+    switchrow.cpp
 
 HEADERS += \
     caddyfileparser.h \
@@ -29,7 +30,8 @@ HEADERS += \
     mainwindow.h \
     menuconfiguraciones.h \
     phpconfigparser.h \
-    phpiniparser.h
+    phpiniparser.h \
+    switchrow.h
 
 FORMS += \
     mainwindow.ui \

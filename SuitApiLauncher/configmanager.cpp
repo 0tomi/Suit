@@ -87,6 +87,46 @@ void ConfigManager::setInicioConSistema(bool enabled)
     settings.setValue("Aplicacion/InicioConSistema", enabled);
 }
 
+bool ConfigManager::timeoutApiActivado() const
+{
+    return settings.value("Timeouts/ApiActivado", false).toBool();
+}
+
+void ConfigManager::setTimeoutApiActivado(bool activado)
+{
+    settings.setValue("Timeouts/ApiActivado", activado);
+}
+
+int ConfigManager::timeoutApiMinutos() const
+{
+    return settings.value("Timeouts/ApiMinutos", 1).toInt();
+}
+
+void ConfigManager::setTimeoutApiMinutos(int minutos)
+{
+    settings.setValue("Timeouts/ApiMinutos", minutos);
+}
+
+bool ConfigManager::timeoutPostgresActivado() const
+{
+    return settings.value("Timeouts/PostgresActivado", false).toBool();
+}
+
+void ConfigManager::setTimeoutPostgresActivado(bool activado)
+{
+    settings.setValue("Timeouts/PostgresActivado", activado);
+}
+
+int ConfigManager::timeoutPostgresMinutos() const
+{
+    return settings.value("Timeouts/PostgresMinutos", 1).toInt();
+}
+
+void ConfigManager::setTimeoutPostgresMinutos(int minutos)
+{
+    settings.setValue("Timeouts/PostgresMinutos", minutos);
+}
+
 bool ConfigManager::storageBackupActivado() const
 {
     return settings.value("StorageBackup/Activado", false).toBool();

@@ -50,6 +50,7 @@ MainWindow::MainWindow(QWidget *parent)
     cleanupProcess = new QProcess(this);
     backupProcess = new QProcess(this);
     storageBackupProcess = new QProcess(this);
+    seedProcess = new QProcess(this);
 
     postgresProcess->setWorkingDirectory(basePath);
     apiProcess->setWorkingDirectory(laravelPath);
@@ -57,23 +58,47 @@ MainWindow::MainWindow(QWidget *parent)
     migrationProcess->setWorkingDirectory(laravelPath);
     cleanupProcess->setWorkingDirectory(laravelPath);
     backupProcess->setWorkingDirectory(basePath);
+    seedProcess->setWorkingDirectory(laravelPath);
 
     // Fusionar stderr con stdout para PostgreSQL
     postgresProcess->setProcessChannelMode(QProcess::MergedChannels);
 
     // 1. Conexion de botones
-    connect(ui->stop, &QPushButton::clicked, this, &MainWindow::pararServidor);
+    connect(ui->toggleServidor, &QPushButton::clicked, this, [this]() {
+        if (apiProcess->state() != QProcess::NotRunning
+            || postgresProcess->state() != QProcess::NotRunning)
+            pararServidor();
+        else
+            arrancarServidor();
+    });
     connect(ui->restart, &QPushButton::clicked, this, &MainWindow::reiniciarServidor);
     connect(ui->close, &QPushButton::clicked, this, &MainWindow::cerrarServidor);
-    connect(ui->start, &QPushButton::clicked, this, &MainWindow::arrancarServidor);
     connect(ui->actionBotonesDev, &QAction::triggered, this, [this]() {
-        DialogFunciones dialog(this);
-        connect(&dialog, &DialogFunciones::correrMigracionesSolicitado, this, &MainWindow::correrMigraciones);
-        connect(&dialog, &DialogFunciones::iniciarUdpSolicitado, this, &MainWindow::iniciarServidorUdp);
+        EnvParser env;
+        int diasLimpieza = 30;
+        if (env.cargar(basePath + "/frankenphp/SuitAPI/.env")) {
+            bool ok;
+            int d = env.valor("FILE_CLEANUP_DAYS", "30").toInt(&ok);
+            if (ok && d > 0) diasLimpieza = d;
+        }
+
+        const QString laravelPath = basePath + "/frankenphp/SuitAPI";
+        DialogFunciones dialog(
+            [this]() { return discoveryProcess->state() != QProcess::NotRunning; },
+            [this]() { return apiProcess->state() != QProcess::NotRunning; },
+            [this]() { return bdActiva; },
+            diasLimpieza,
+            this
+        );
+        connect(&dialog, &DialogFunciones::encenderUdpSolicitado, this, &MainWindow::iniciarServidorUdp);
         connect(&dialog, &DialogFunciones::apagarUdpSolicitado, this, &MainWindow::apagarServidorUdp);
-        connect(&dialog, &DialogFunciones::reiniciarApiSolicitado, this, &MainWindow::reiniciarApi);
-        connect(&dialog, &DialogFunciones::reiniciarBdSolicitado, this, &MainWindow::reiniciarBaseDeDatos);
-        connect(&dialog, &DialogFunciones::limpiarDatosSolicitado, this, &MainWindow::limpiarDatosViejos);
+        connect(&dialog, &DialogFunciones::encenderApiSolicitado, this, &MainWindow::arrancarApiIndependiente);
+        connect(&dialog, &DialogFunciones::apagarApiSolicitado, this, &MainWindow::apagarApi);
+        connect(&dialog, &DialogFunciones::encenderBdSolicitado, this, &MainWindow::arrancarBd);
+        connect(&dialog, &DialogFunciones::apagarBdSolicitado, this, &MainWindow::apagarBd);
+        connect(&dialog, &DialogFunciones::limpiarSoftDeletesSolicitado, this, &MainWindow::limpiarDatosViejos);
+        connect(&dialog, &DialogFunciones::correrMigracionesSolicitado, this, &MainWindow::correrMigraciones);
+        connect(&dialog, &DialogFunciones::correrSemillasSolicitado, this, &MainWindow::correrSemillas);
         dialog.exec();
     });
 
@@ -100,6 +125,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(storageBackupProcess, &QProcess::finished,
             this, &MainWindow::storageBackupFinalizado);
+
+    connect(seedProcess, &QProcess::readyReadStandardOutput, this, &MainWindow::leerLogsSemillas);
+    connect(seedProcess, &QProcess::readyReadStandardError, this, &MainWindow::leerLogsSemillas);
+    connect(seedProcess, &QProcess::finished, this, &MainWindow::semillasFinalizadas);
     connect(&storageBackupTimer, &QTimer::timeout,
             this, &MainWindow::ejecutarStorageBackupProgramado);
 
@@ -107,6 +136,7 @@ MainWindow::MainWindow(QWidget *parent)
     connect(postgresProcess, &QProcess::finished, this, [this](int exitCode, QProcess::ExitStatus exitStatus) {
         if (exitStatus == QProcess::CrashExit) {
             ui->console->appendPlainText("[DB ERR] pg_ctl crasheó inesperadamente.");
+            actualizarBotonServidor(EstadoBoton::Detenido);
             return;
         }
 
@@ -116,10 +146,12 @@ MainWindow::MainWindow(QWidget *parent)
                         "Revisá el log en: %2/postgres.log")
                     .arg(exitCode)
                     .arg(logDirPath));
+            actualizarBotonServidor(EstadoBoton::Detenido);
             return;
         }
 
         ui->console->appendPlainText("[DB] PostgreSQL iniciado correctamente.");
+        bdActiva = true;
 
         if (!apiIniciada) {
             apiIniciada = true;
@@ -415,7 +447,7 @@ void MainWindow::restaurarBackup(const QString &rutaArchivo)
 
     // Detener servicios que consumen conexiones a la BD
     detenerProceso(discoveryProcess, "UDP", 3000, 2000);
-    detenerProceso(apiProcess, "API", 10000, 2000);
+    detenerProceso(apiProcess, "API", timeoutApiMs(), 2000);
 
     // Leer credenciales del .env
     QString pgUser = "SuitApiBD";
@@ -528,6 +560,7 @@ void MainWindow::arrancarServidor()
         return;
     }
 
+    actualizarBotonServidor(EstadoBoton::EnProceso);
     ui->console->appendPlainText("--- INICIANDO BASE DE DATOS ---");
 
     apiIniciada = false;
@@ -542,6 +575,7 @@ void MainWindow::arrancarServidor()
 
 void MainWindow::pararServidor()
 {
+    actualizarBotonServidor(EstadoBoton::EnProceso);
     ui->console->appendPlainText("--- DETENIENDO SERVIDORES ---");
 
     if (discoveryProcess && discoveryProcess->state() == QProcess::Running) {
@@ -564,9 +598,10 @@ void MainWindow::pararServidor()
         }
     }
 
-    detenerPostgres();
+    detenerPostgres(timeoutPostgresMs());
 
     ui->console->appendPlainText("--- SERVIDORES DETENIDOS ---");
+    actualizarBotonServidor(EstadoBoton::Detenido);
 }
 
 void MainWindow::reiniciarServidor()
@@ -597,6 +632,7 @@ void MainWindow::arrancarAPIs()
 {
     if (!QFile::exists(rutaFrankenPhp())) {
         ui->console->appendPlainText("[API ERR] No se encontró frankenphp.exe en: " + rutaFrankenPhp());
+        actualizarBotonServidor(EstadoBoton::Detenido);
         return;
     }
 
@@ -604,6 +640,7 @@ void MainWindow::arrancarAPIs()
 
     apiProcess->start(rutaFrankenPhp(), QStringList() << "run");
     discoveryProcess->start(rutaFrankenPhp(), QStringList() << "php-cli" << "artisan" << "suitapi:discovery");
+    actualizarBotonServidor(EstadoBoton::Corriendo);
 }
 
 void MainWindow::leerLogsApi()
@@ -658,14 +695,14 @@ void MainWindow::reiniciarApi()
     if (postgresProcess->state() == QProcess::NotRunning)
         ui->console->appendPlainText("[API] Advertencia: PostgreSQL no parece estar corriendo.");
 
-    detenerProceso(apiProcess, "API", 10000, 2000);
+    detenerProceso(apiProcess, "API", timeoutApiMs(), 2000);
     arrancarApiIndependiente();
 }
 
 void MainWindow::reiniciarBaseDeDatos()
 {
     ui->console->appendPlainText("--- REINICIANDO BASE DE DATOS ---");
-    detenerPostgres();
+    detenerPostgres(timeoutPostgresMs());
     arrancarBaseDeDatosIndependiente(false);
 }
 
@@ -688,6 +725,69 @@ void MainWindow::migracionesFinalizadas(int exitCode, QProcess::ExitStatus exitS
 void MainWindow::errorMigraciones(QProcess::ProcessError error)
 {
     ui->console->appendPlainText(QString("[MIGRATIONS ERR] %1").arg(procesoErrorATexto(error)));
+}
+
+// --- Nuevos slots de control de servicios ------------------------------------
+
+void MainWindow::apagarApi()
+{
+    if (!detenerProceso(apiProcess, "API", 10000, 2000))
+        ui->console->appendPlainText("[API] La API no estaba corriendo.");
+}
+
+void MainWindow::arrancarBd()
+{
+    arrancarBaseDeDatosIndependiente(false);
+}
+
+void MainWindow::apagarBd()
+{
+    detenerPostgres(timeoutPostgresMs());
+}
+
+// --- Semillas ----------------------------------------------------------------
+
+void MainWindow::correrSemillas()
+{
+    if (seedProcess->state() != QProcess::NotRunning) {
+        ui->console->appendPlainText("[SEEDS] Ya hay un proceso de semillas en ejecucion.");
+        return;
+    }
+
+    ui->console->appendPlainText("--- CORRIENDO SEMILLAS DE PRODUCCION ---");
+    seedProcess->start(rutaFrankenPhp(),
+        QStringList() << "php-cli" << "artisan" << "db:seed"
+                      << "--class=ProductionSeeder" << "--force");
+}
+
+void MainWindow::leerLogsSemillas()
+{
+    QByteArray logs = seedProcess->readAllStandardOutput();
+    QByteArray errores = seedProcess->readAllStandardError();
+
+    if (!logs.isEmpty()) ui->console->appendPlainText("[SEEDS] " + QString::fromLocal8Bit(logs).trimmed());
+    if (!errores.isEmpty()) ui->console->appendPlainText("[SEEDS ERR] " + QString::fromLocal8Bit(errores).trimmed());
+}
+
+void MainWindow::semillasFinalizadas(int exitCode, QProcess::ExitStatus exitStatus)
+{
+    ui->console->appendPlainText(QString("[SEEDS] Finalizadas. exitCode=%1 status=%2")
+                                     .arg(exitCode)
+                                     .arg(exitStatus == QProcess::NormalExit ? "Normal" : "Crash"));
+}
+
+int MainWindow::timeoutApiMs() const
+{
+    if (config && config->timeoutApiActivado())
+        return config->timeoutApiMinutos() * 60000;
+    return -1; // sin timeout: espera indefinidamente
+}
+
+int MainWindow::timeoutPostgresMs() const
+{
+    if (config && config->timeoutPostgresActivado())
+        return config->timeoutPostgresMinutos() * 60000;
+    return -1; // sin timeout: espera indefinidamente
 }
 
 bool MainWindow::detenerProceso(QProcess *process, const QString &prefix, int terminateWaitMs, int killWaitMs)
@@ -760,6 +860,7 @@ bool MainWindow::detenerPostgres(int waitMs)
         ui->console->appendPlainText("[DB ERR] pg_ctl stop no respondió a tiempo.");
         stopProcess.kill();
         stopProcess.waitForFinished(2000);
+        bdActiva = false;
         return false;
     }
 
@@ -769,10 +870,32 @@ bool MainWindow::detenerPostgres(int waitMs)
     if (!out.isEmpty()) ui->console->appendPlainText("[DB] " + out);
     if (!err.isEmpty()) ui->console->appendPlainText("[DB ERR] " + err);
 
+    bdActiva = false;
     return stopProcess.exitCode() == 0;
 }
 
 // --- Rutas -------------------------------------------------------------------
+
+void MainWindow::actualizarBotonServidor(EstadoBoton estado)
+{
+    switch (estado) {
+    case EstadoBoton::Detenido:
+        ui->toggleServidor->setEnabled(true);
+        ui->toggleServidor->setText("Arrancar servidor");
+        ui->toggleServidor->setStyleSheet("background-color: rgb(38, 162, 105);");
+        break;
+    case EstadoBoton::EnProceso:
+        ui->toggleServidor->setEnabled(false);
+        ui->toggleServidor->setText("En proceso...");
+        ui->toggleServidor->setStyleSheet("background-color: #888888; color: #cccccc;");
+        break;
+    case EstadoBoton::Corriendo:
+        ui->toggleServidor->setEnabled(true);
+        ui->toggleServidor->setText("Parar servidor");
+        ui->toggleServidor->setStyleSheet("background-color: rgb(165, 29, 45);");
+        break;
+    }
+}
 
 QString MainWindow::procesoErrorATexto(QProcess::ProcessError error) const
 {

@@ -35,34 +35,15 @@
       </property>
       <layout class="QHBoxLayout" name="horizontalLayout">
        <item>
-        <widget class="QPushButton" name="start">
+        <widget class="QPushButton" name="toggleServidor">
          <property name="cursor">
           <cursorShape>PointingHandCursor</cursorShape>
-         </property>
-         <property name="autoFillBackground">
-          <bool>false</bool>
          </property>
          <property name="styleSheet">
           <string notr="true">background-color: rgb(38, 162, 105);</string>
          </property>
          <property name="text">
           <string>Arrancar servidor</string>
-         </property>
-         <property name="flat">
-          <bool>false</bool>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QPushButton" name="stop">
-         <property name="cursor">
-          <cursorShape>PointingHandCursor</cursorShape>
-         </property>
-         <property name="styleSheet">
-          <string notr="true">background-color: rgb(165, 29, 45);</string>
-         </property>
-         <property name="text">
-          <string>Parar servidor</string>
          </property>
         </widget>
        </item>

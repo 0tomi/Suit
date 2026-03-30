@@ -2,21 +2,31 @@
 #define DIALOGFUNCIONES_H
 
 #include <QDialog>
+#include <functional>
 
 class DialogFunciones : public QDialog
 {
     Q_OBJECT
 
 public:
-    explicit DialogFunciones(QWidget *parent = nullptr);
+    explicit DialogFunciones(
+        std::function<bool()> udpActivo,
+        std::function<bool()> apiActivo,
+        std::function<bool()> bdActivo,
+        int diasLimpieza,
+        QWidget *parent = nullptr
+    );
 
 signals:
-    void correrMigracionesSolicitado();
-    void iniciarUdpSolicitado();
+    void encenderUdpSolicitado();
     void apagarUdpSolicitado();
-    void reiniciarApiSolicitado();
-    void reiniciarBdSolicitado();
-    void limpiarDatosSolicitado();
+    void encenderApiSolicitado();
+    void apagarApiSolicitado();
+    void encenderBdSolicitado();
+    void apagarBdSolicitado();
+    void limpiarSoftDeletesSolicitado();
+    void correrMigracionesSolicitado();
+    void correrSemillasSolicitado();
 };
 
 #endif // DIALOGFUNCIONES_H
