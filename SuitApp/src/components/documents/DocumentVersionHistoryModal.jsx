@@ -10,6 +10,31 @@ import { createLogger } from '../../services/logService.js';
 
 const logger = createLogger('component:document-version-history-modal');
 
+function translateHistoryError(error) {
+    const message = (error?.message || '').toLowerCase();
+
+    if (message.includes('timed out') || message.includes('econnrefused')) {
+        return 'No se pudo conectar con el servidor. Revisa tu conexión de red e intenta de nuevo.';
+    }
+    if (message.includes('failed to fetch')) {
+        return 'Error de red. No se pudo conectar para buscar el historial.';
+    }
+    if (message.includes('401') || message.includes('403')) {
+        return 'No tienes permiso para ver este historial. Vuelve a iniciar sesión si el problema persiste.';
+    }
+    if (message.includes('404') || message.includes('not found')) {
+        return 'No se encontró el historial para este documento. Puede que haya sido eliminado.';
+    }
+    if (message.includes('500') || message.includes('server error')) {
+        return 'Ocurrió un error en el servidor. Inténtalo de nuevo más tarde.';
+    }
+    if (message.includes('inválido')) {
+        return 'El identificador del documento es inválido. Cierra esta ventana y vuelve a intentarlo.';
+    }
+
+    return 'No se pudo cargar el historial de versiones. Inténtalo de nuevo.';
+}
+
 export default function DocumentVersionHistoryModal({
     open,
     onClose,
@@ -30,7 +55,7 @@ export default function DocumentVersionHistoryModal({
             setVersions(nextVersions);
         } catch (error) {
             void logger.error('No se pudo cargar historial de versiones', error);
-            setHistoryError(error?.message || 'No se pudo cargar el historial de versiones.');
+            setHistoryError(translateHistoryError(error));
         } finally {
             setHistoryLoading(false);
         }
@@ -78,7 +103,7 @@ export default function DocumentVersionHistoryModal({
             footerAlignment="justify-end"
         >
             <div className="space-y-4">
-                <div className="rounded-2xl border border-(--border-subtle) bg-linear-to-r from-slate-50 via-white to-sky-50/60 p-4">
+                <div className="rounded-2xl border border-(--border-subtle) bg-(--bg-card-hover) p-4 shadow-sm">
                     <p className="text-sm text-(--text-secondary)">
                         El listado usa caché local cuando sigue vigente y se refresca automáticamente si Electron detecta una versión nueva en el servidor.
                     </p>

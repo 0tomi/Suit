@@ -1,24 +1,50 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback, useDeferredValue, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useHotkeyAction } from '../../hotkeys/useHotkeysSystem';
 import { HOTKEY_ACTIONS } from '../../hotkeys/hotkeys';
 import { Plus, Trash2 } from 'lucide-react';
-import { useClients } from '../../context/ClientsContext';
 import { deleteClient } from '../../services/clientService.js';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog.js';
 import { Button } from '../ui/Button';
-import { Table } from '../ui/Table';
-import { PrimaryActionButton } from '../ui/PrimaryActionButton';
 import { NewClientModal } from '../clients/NewClientModal';
-import ClientsFilterBar from '../clients/ClientsFilterBar';
+import { GenericFilterBar } from '../ui/GenericFilterBar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
 import PeopleSectionLayout from './PeopleSectionLayout';
 import { showAppToast } from '../ui/show-app-toast.jsx';
+import { Badge } from '../ui/Badge.jsx';
 import { createLogger } from '../../services/logService.js';
+import { getClientsListingPage, invalidateClientsListingCache } from '../../services/clientsListingBackendService.js';
 
-// ... (El resto de las funciones de persistencia, defaults y ordenamiento)
 const FILTER_STORAGE_KEY = 'clients-filter-state';
 const logger = createLogger('clients-page');
+const DEFAULT_FILTERS = {
+    searchTerm: '',
+    typeFilter: 'all',
+    statusFilter: 'all',
+    financialStatusFilter: 'all',
+    sortBy: 'created_at',
+    sortOrder: 'desc',
+};
+
+const CLIENT_TYPE_OPTIONS = [
+    { value: 'all', label: 'Todos los tipos' },
+    { value: 'person', label: 'Persona física' },
+    { value: 'company', label: 'Empresa' },
+];
+
+const CLIENT_STATUS_OPTIONS = [
+    { value: 'all', label: 'Todos los estados' },
+    { value: 'activo', label: 'Activo' },
+    { value: 'inactivo', label: 'Inactivo' },
+];
+
+const CLIENT_FINANCIAL_STATUS_OPTIONS = [
+    { value: 'all', label: 'Todos los estados financieros' },
+    { value: 'no deudor', label: 'No deudor' },
+    { value: 'deudor', label: 'Deudor' },
+    { value: 'moroso', label: 'Moroso' },
+];
 
 function loadFilterState() {
     try {
@@ -39,49 +65,52 @@ function saveFilterState(state) {
     }
 }
 
-const DEFAULT_FILTERS = {
-    searchTerm: '',
-    sortBy: 'created_at',
-    sortOrder: 'desc',
-};
+function normalizeClientsListingResponse(response) {
+    const payload = response && typeof response === 'object' ? response : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
 
-function sortClients(list, sortBy, sortOrder) {
-    return [...list].sort((a, b) => {
-        if (sortBy === 'alpha') {
-            const aName = `${a.last_name || ''} ${a.first_name || ''}`.toLowerCase();
-            const bName = `${b.last_name || ''} ${b.first_name || ''}`.toLowerCase();
-            const cmp = aName.localeCompare(bName, 'es');
-            return sortOrder === 'asc' ? cmp : -cmp;
-        }
-        // created_at
-        const aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
-    });
+    return {
+        items,
+        page: Number(payload.page ?? 1) || 1,
+        total: Number(payload.total ?? items.length) || 0,
+        totalPages: Math.max(1, Number(payload.totalPages ?? 1) || 1),
+        perPage: Math.max(1, Number(payload.perPage ?? 30) || 30),
+        source: payload.source || 'cache',
+        appliedLocalFilters: Boolean(payload.appliedLocalFilters),
+    };
 }
 
 
 const ClientsTab = () => {
     const navigate = useNavigate();
-    const { clients, refreshClients: refreshAll } = useClients();
+    const listingRequestIdRef = useRef(0);
 
     const savedFilters = loadFilterState() || {};
     const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? DEFAULT_FILTERS.searchTerm);
+    const [typeFilter, setTypeFilter] = useState(savedFilters.typeFilter ?? DEFAULT_FILTERS.typeFilter);
+    const [statusFilter, setStatusFilter] = useState(savedFilters.statusFilter ?? DEFAULT_FILTERS.statusFilter);
+    const [financialStatusFilter, setFinancialStatusFilter] = useState(savedFilters.financialStatusFilter ?? DEFAULT_FILTERS.financialStatusFilter);
     const [sortBy, setSortBy] = useState(savedFilters.sortBy ?? DEFAULT_FILTERS.sortBy);
     const [sortOrder, setSortOrder] = useState(savedFilters.sortOrder ?? DEFAULT_FILTERS.sortOrder);
 
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
     const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 10;
+    const [listingState, setListingState] = useState({
+        items: [],
+        page: 1,
+        total: 0,
+        totalPages: 1,
+        perPage: 30,
+        source: 'cache',
+        appliedLocalFilters: false,
+    });
+    const [listingLoading, setListingLoading] = useState(true);
+    const deferredSearchTerm = useDeferredValue(searchTerm);
 
     useEffect(() => {
-        saveFilterState({ searchTerm, sortBy, sortOrder });
-    }, [searchTerm, sortBy, sortOrder]);
-
-    useEffect(() => {
-        void refreshAll();
-    }, [refreshAll]);
+        saveFilterState({ searchTerm, typeFilter, statusFilter, financialStatusFilter, sortBy, sortOrder });
+    }, [searchTerm, typeFilter, statusFilter, financialStatusFilter, sortBy, sortOrder]);
 
     const location = useLocation();
     useEffect(() => {
@@ -92,23 +121,67 @@ const ClientsTab = () => {
     }, [location.state, navigate, location.pathname]);
 
     useHotkeyAction(HOTKEY_ACTIONS.NEW_CLIENT, () => setIsNewClientModalOpen(true));
-    useHotkeyAction(HOTKEY_ACTIONS.REFRESH_MODULE, () => refreshAll());
+    const refreshClientsListing = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
+        const requestId = ++listingRequestIdRef.current;
+        setListingLoading(true);
 
-    const filteredClients = useMemo(() => {
-        const search = searchTerm.toLowerCase();
-        const filtered = clients.filter(c => {
-            const fullName = `${c.first_name || ''} ${c.last_name || ''}`.toLowerCase();
-            return fullName.includes(search) ||
-                (c.identification_number || '').includes(searchTerm) ||
-                (c.email || '').toLowerCase().includes(search);
-        });
-        return sortClients(filtered, sortBy, sortOrder);
-    }, [clients, searchTerm, sortBy, sortOrder]);
+        try {
+            if (invalidate) {
+                await invalidateClientsListingCache();
+            }
 
-    const paginatedClients = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return filteredClients.slice(startIndex, startIndex + itemsPerPage);
-    }, [filteredClients, currentPage]);
+            const response = await getClientsListingPage({
+                page,
+                filters: {
+                    search: deferredSearchTerm.trim(),
+                    type: typeFilter === 'all' ? '' : typeFilter,
+                    status: statusFilter === 'all' ? '' : statusFilter,
+                    financialStatus: financialStatusFilter === 'all' ? '' : financialStatusFilter,
+                    sortBy,
+                    sortDirection: sortOrder,
+                },
+            });
+
+            if (listingRequestIdRef.current !== requestId) return;
+
+            const normalized = normalizeClientsListingResponse(response);
+            setListingState(normalized);
+            if (normalized.page !== page) {
+                setCurrentPage(normalized.page);
+            }
+        } catch (error) {
+            if (listingRequestIdRef.current !== requestId) return;
+            void logger.error('No se pudo cargar el listado de clientes', {
+                error: error?.message || String(error),
+                page,
+                searchTerm: deferredSearchTerm,
+                typeFilter,
+                statusFilter,
+                financialStatusFilter,
+                sortBy,
+                sortOrder,
+            });
+            showAppToast({
+                title: 'Error',
+                description: 'No se pudo cargar el listado de clientes.',
+                variant: 'danger',
+            });
+        } finally {
+            if (listingRequestIdRef.current === requestId) {
+                setListingLoading(false);
+            }
+        }
+    }, [currentPage, deferredSearchTerm, financialStatusFilter, sortBy, sortOrder, statusFilter, typeFilter]);
+
+    useEffect(() => {
+        void refreshClientsListing({ page: currentPage });
+    }, [currentPage, refreshClientsListing]);
+
+    useHotkeyAction(HOTKEY_ACTIONS.REFRESH_MODULE, () => {
+        void refreshClientsListing({ invalidate: true, page: currentPage });
+    });
+
+    const visibleClients = useMemo(() => listingState.items, [listingState.items]);
 
     const handleDelete = (id, e) => {
         e.stopPropagation();
@@ -127,7 +200,7 @@ const ClientsTab = () => {
                             description: 'Cliente eliminado correctamente.',
                             variant: 'success',
                         });
-                        refreshAll();
+                        await refreshClientsListing({ invalidate: true, page: currentPage });
                     } else {
                         showAppToast({
                             title: 'Error',
@@ -160,31 +233,118 @@ const ClientsTab = () => {
                 label: "Nuevo Cliente",
                 onClick: () => setIsNewClientModalOpen(true)
             }}
+            topContent={
+                listingLoading && (
+                    <div className="inline-flex items-center rounded-full border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-700">
+                        Cargando clientes
+                    </div>
+                )
+            }
             filterBar={
-                <ClientsFilterBar
+                <GenericFilterBar
                     searchTerm={searchTerm}
-                    onSearchChange={(val) => {
-                        setSearchTerm(val);
+                    onSearchChange={(eventValue) => {
+                        setSearchTerm(eventValue);
                         setCurrentPage(1);
                     }}
+                    placeholder="Buscar por nombre, DNI o email..."
                     sortBy={sortBy}
-                    onSortByChange={setSortBy}
+                    onSortByChange={(value) => {
+                        setSortBy(value);
+                        setCurrentPage(1);
+                    }}
+                    sortOptions={[
+                        { value: 'created_at', label: 'Fecha de creación' },
+                        { value: 'alpha', label: 'Orden alfabético' },
+                    ]}
                     sortOrder={sortOrder}
-                    onSortOrderChange={setSortOrder}
-                    resultCount={searchTerm.length > 0 ? filteredClients.length : undefined}
-                />
+                    onSortOrderChange={(value) => {
+                        setSortOrder(value);
+                        setCurrentPage(1);
+                    }}
+                    resultCount={deferredSearchTerm.trim().length > 0 ? listingState.total : undefined}
+                    resultItemName={{ singular: 'cliente', plural: 'clientes' }}
+                >
+                    <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">Tipo</span>
+                        <Select
+                            value={typeFilter}
+                            onValueChange={(value) => {
+                                setTypeFilter(value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[140px] p-0 px-2">
+                                <SelectValue placeholder="Todos los tipos" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CLIENT_TYPE_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">Estado</span>
+                        <Select
+                            value={statusFilter}
+                            onValueChange={(value) => {
+                                setStatusFilter(value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[130px] p-0 px-2">
+                                <SelectValue placeholder="Todos los estados" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CLIENT_STATUS_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    <div className="flex flex-col gap-1 border-l pl-4 border-(--border-default)">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-(--text-tertiary)">Estado financiero</span>
+                        <Select
+                            value={financialStatusFilter}
+                            onValueChange={(value) => {
+                                setFinancialStatusFilter(value);
+                                setCurrentPage(1);
+                            }}
+                        >
+                            <SelectTrigger className="border-none bg-transparent hover:bg-(--bg-card-hover) h-7 min-h-0 w-auto min-w-[180px] p-0 px-2">
+                                <SelectValue placeholder="Todos los estados financieros" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {CLIENT_FINANCIAL_STATUS_OPTIONS.map((option) => (
+                                    <SelectItem key={option.value} value={option.value}>
+                                        {option.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </GenericFilterBar>
             }
             tableProps={{
-                isEmpty: filteredClients.length === 0,
+                isEmpty: !listingLoading && visibleClients.length === 0,
                 emptyMessage: "No se encontraron clientes.",
                 columns: [
                     { header: 'Nombre' },
                     { header: 'DNI / CUIT' },
+                    { header: 'Actividad' },
+                    { header: 'Estado Financiero' },
                     { header: 'Contacto' },
                     { header: 'Acciones', align: 'right' }
                 ]
             }}
-            items={paginatedClients}
+            items={visibleClients}
             renderRow={(client) => {
                 const fullName = `${client.first_name || ''} ${client.last_name || ''}`.trim();
                 return (
@@ -202,6 +362,26 @@ const ClientsTab = () => {
                             </div>
                         </td>
                         <td className="px-6 py-4 text-(--text-secondary) font-mono text-sm">{client.identification_number || '—'}</td>
+                        <td className="px-6 py-4">
+                            {client.status === 'activo' ? (
+                                <Badge variant="success">Activo</Badge>
+                            ) : client.status === 'inactivo' ? (
+                                <Badge variant="default">Inactivo</Badge>
+                            ) : (
+                                <Badge variant="default">{client.status || '—'}</Badge>
+                            )}
+                        </td>
+                        <td className="px-6 py-4">
+                            {client.financial_status === 'no deudor' ? (
+                                <Badge variant="success">No deudor</Badge>
+                            ) : client.financial_status === 'deudor' ? (
+                                <Badge variant="warning">Deudor</Badge>
+                            ) : client.financial_status === 'moroso' ? (
+                                <Badge variant="danger">Moroso</Badge>
+                            ) : (
+                                <span className="text-sm text-(--text-tertiary)">—</span>
+                            )}
+                        </td>
                         <td className="px-6 py-4">
                             <div className="flex flex-col space-y-1">
                                 {client.email && (
@@ -236,15 +416,18 @@ const ClientsTab = () => {
             paginationProps={{
                 currentPage,
                 onPageChange: setCurrentPage,
-                totalItems: filteredClients.length,
-                itemsPerPage
+                totalItems: listingState.total,
+                itemsPerPage: listingState.perPage,
             }}
-            trigger={`${searchTerm}-${sortBy}-${sortOrder}`}
+            trigger={`${searchTerm}-${typeFilter}-${statusFilter}-${financialStatusFilter}-${sortBy}-${sortOrder}-${currentPage}-${listingState.source}`}
         >
             <ConfirmDialog {...dialogProps} />
             <NewClientModal
                 open={isNewClientModalOpen}
                 onClose={() => setIsNewClientModalOpen(false)}
+                onSuccess={() => {
+                    void refreshClientsListing({ invalidate: true, page: currentPage });
+                }}
             />
         </PeopleSectionLayout>
     );

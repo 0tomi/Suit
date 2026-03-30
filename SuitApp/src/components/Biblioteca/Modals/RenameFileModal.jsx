@@ -202,9 +202,19 @@ export const FileInfoModal = ({
 
             onClose();
         } catch (error) {
+            let description = 'No pudimos guardar los cambios. Intenta de nuevo en unos momentos.';
+            
+            if (error.message?.includes('403')) {
+                description = 'No tienes los permisos necesarios para modificar este archivo.';
+            } else if (error.message?.includes('422')) {
+                description = 'El nombre del archivo ya existe o contiene caracteres no permitidos. Por favor, revísalo.';
+            } else if (error.message?.includes('500')) {
+                description = 'El servidor tuvo un problema al procesar los cambios. Por favor, contacta a soporte.';
+            }
+
             showAppToast({
                 title: 'Error al guardar',
-                description: error.message || 'Ocurrió un error inesperado.',
+                description,
                 variant: 'danger',
             });
         } finally {
@@ -220,9 +230,17 @@ export const FileInfoModal = ({
             setSignedData(result);
             setShowingQr(true);
         } catch (error) {
+            let description = 'No se pudo generar el código de descarga. Intenta de nuevo en unos momentos.';
+            
+            if (error.message?.includes('403')) {
+                description = 'No tienes autorización para generar enlaces de descarga para este archivo.';
+            } else if (error.message?.includes('401')) {
+                description = 'Tu sesión ha expirado. Por favor, vuelve a ingresar.';
+            }
+
             showAppToast({ 
                 title: 'Error al generar enlace', 
-                description: error.message, 
+                description, 
                 variant: 'danger' 
             });
         } finally {

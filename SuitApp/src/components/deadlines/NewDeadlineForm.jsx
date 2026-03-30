@@ -84,6 +84,10 @@ export default function NewDeadlineForm({
 }) {
     const { cases } = useCases();
     const [loading, setLoading] = useState(false);
+    const [titleTouched, setTitleTouched] = useState(false);
+    const [dateTouched, setDateTouched] = useState(false);
+    const [timeTouched, setTimeTouched] = useState(false);
+    const [skipDescription, setSkipDescription] = useState(false);
     const [formState, dispatch] = useReducer(
         deadlineFormReducer,
         createInitialDeadlineState(initialData, caseIdPreselected),
@@ -99,6 +103,13 @@ export default function NewDeadlineForm({
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setTitleTouched(true);
+        setDateTouched(true);
+        setTimeTouched(true);
+        if (!formData.title || !formData.due_date || !formData.due_time) {
+            showAppToast({ title: 'Campos obligatorios', description: 'Completá el título, la fecha y la hora antes de guardar.', variant: 'danger' });
+            return;
+        }
         setLoading(true);
 
         try {
@@ -170,41 +181,71 @@ export default function NewDeadlineForm({
         <form id="new-deadline-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
             {/* Título */}
             <div>
-                <label htmlFor="deadline-title" className="block text-sm font-medium mb-1 text-(--text-primary)">Título *</label>
+                <label htmlFor="deadline-title" className="block text-sm font-medium mb-1 text-(--text-primary)">
+                    Título <span className="text-red-500">*</span>
+                </label>
                 <input
                     id="deadline-title"
                     type="text"
                     required
-                    className="w-full p-2.5 border border-(--border-default) rounded-lg bg-(--bg-card) text-(--text-primary)"
+                    className={`w-full p-2.5 border rounded-lg bg-(--bg-card) text-(--text-primary) ${
+                        titleTouched && !formData.title
+                            ? 'border-red-500 focus:ring-2 focus:ring-red-500 outline-none'
+                            : 'border-(--border-default)'
+                    }`}
                     value={formData.title}
                     onChange={(e) => dispatch({ type: 'set-form-field', field: 'title', value: e.target.value })}
+                    onBlur={() => setTitleTouched(true)}
                 />
+                {titleTouched && !formData.title && (
+                    <p className="mt-1 text-xs text-red-500">El título es obligatorio</p>
+                )}
             </div>
 
             {/* Fecha límite + prioridad */}
             <div className="grid grid-cols-2 gap-4">
                 <div className="flex gap-2">
                     <div className="flex-1">
-                        <label htmlFor="deadline-due-date" className="block text-sm font-medium mb-1 text-(--text-primary)">Fecha Límite *</label>
+                        <label htmlFor="deadline-due-date" className="block text-sm font-medium mb-1 text-(--text-primary)">
+                            Fecha Límite <span className="text-red-500">*</span>
+                        </label>
                         <input
                             id="deadline-due-date"
                             type="date"
                             required
-                            className="w-full p-2.5 border border-(--border-default) rounded-lg bg-(--bg-card) text-(--text-primary)"
+                            className={`w-full p-2.5 border rounded-lg bg-(--bg-card) text-(--text-primary) ${
+                                dateTouched && !formData.due_date
+                                    ? 'border-red-500 focus:ring-2 focus:ring-red-500 outline-none'
+                                    : 'border-(--border-default)'
+                            }`}
                             value={formData.due_date}
                             onChange={(e) => dispatch({ type: 'set-form-field', field: 'due_date', value: e.target.value })}
+                            onBlur={() => setDateTouched(true)}
                         />
+                        {dateTouched && !formData.due_date && (
+                            <p className="mt-1 text-xs text-red-500">La fecha es obligatoria</p>
+                        )}
                     </div>
                     <div className="w-1/3">
-                        <label htmlFor="deadline-due-time" className="block text-sm font-medium mb-1 text-(--text-primary)">Hora</label>
+                        <label htmlFor="deadline-due-time" className="block text-sm font-medium mb-1 text-(--text-primary)">
+                            Hora <span className="text-red-500">*</span>
+                        </label>
                         <input
                             id="deadline-due-time"
                             type="time"
                             lang="en-GB"
-                            className="w-full p-2.5 border border-(--border-default) rounded-lg bg-(--bg-card) text-(--text-primary)"
+                            className={`w-full p-2.5 border rounded-lg bg-(--bg-card) text-(--text-primary) ${
+                                timeTouched && !formData.due_time
+                                    ? 'border-red-500 focus:ring-2 focus:ring-red-500 outline-none'
+                                    : 'border-(--border-default)'
+                            }`}
                             value={formData.due_time}
                             onChange={(e) => dispatch({ type: 'set-form-field', field: 'due_time', value: e.target.value })}
+                            onBlur={() => setTimeTouched(true)}
                         />
+                        {timeTouched && !formData.due_time && (
+                            <p className="mt-1 text-xs text-red-500">La hora es obligatoria</p>
+                        )}
                     </div>
                 </div>
                 <div>
@@ -223,11 +264,29 @@ export default function NewDeadlineForm({
 
             {/* Descripción */}
             <div>
-                <label htmlFor="deadline-description" className="block text-sm font-medium mb-1 text-(--text-primary)">Descripción</label>
+                <div className="flex items-center justify-between mb-1">
+                    <label htmlFor="deadline-description" className="block text-sm font-medium text-(--text-primary)">Descripción</label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-(--text-secondary)">
+                        <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={skipDescription}
+                            onChange={(e) => {
+                                const shouldSkip = e.target.checked;
+                                setSkipDescription(shouldSkip);
+                                if (shouldSkip) {
+                                    dispatch({ type: 'set-form-field', field: 'description', value: '' });
+                                }
+                            }}
+                        />
+                        No incluir
+                    </label>
+                </div>
                 <textarea
                     id="deadline-description"
                     rows={2}
-                    className="w-full p-2.5 border border-(--border-default) rounded-lg bg-(--bg-card) text-(--text-primary)"
+                    disabled={skipDescription}
+                    className={`w-full p-2.5 border border-(--border-default) rounded-lg bg-(--bg-card) text-(--text-primary) transition-colors ${skipDescription ? 'opacity-40 cursor-not-allowed' : ''}`}
                     value={formData.description}
                     onChange={(e) => dispatch({ type: 'set-form-field', field: 'description', value: e.target.value })}
                 />

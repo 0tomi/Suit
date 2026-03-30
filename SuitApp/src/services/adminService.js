@@ -42,11 +42,50 @@ export async function deleteCaseType(id) {
 // --- System Settings ---
 
 /**
- * Obtiene todas las configuraciones del sistema desde la API.
+ * Normaliza una fila de configuración para que la UI reciba siempre
+ * un contrato consistente (`key`, `value`, `description`).
+ */
+export function normalizeSystemSettingEntry(rawSetting) {
+    if (!rawSetting || typeof rawSetting !== 'object') return null;
+
+    const key = rawSetting.key ?? rawSetting.setting_key ?? rawSetting.name ?? null;
+    if (!key) return null;
+
+    return {
+        key: String(key),
+        value: String(rawSetting.value ?? rawSetting.setting_value ?? ''),
+        description: String(rawSetting.description ?? rawSetting.label ?? ''),
+    };
+}
+
+/**
+ * Extrae la colección de configuraciones desde distintos envelopes válidos
+ * que puede devolver el sistema.
+ */
+export function extractSettingsCollection(payload) {
+    if (Array.isArray(payload)) return payload;
+    if (!payload || typeof payload !== 'object') return [];
+
+    if (Array.isArray(payload.data)) return payload.data;
+    if (Array.isArray(payload.settings)) return payload.settings;
+    if (Array.isArray(payload.configurations)) return payload.configurations;
+    if (Array.isArray(payload.items)) return payload.items;
+
+    return [];
+}
+
+/**
+ * Obtiene todas las configuraciones globales del sistema.
  */
 export async function getSettings() {
     const result = await apiGet('/settings');
-    return result.ok ? (result.data?.data || result.data || []) : [];
+    if (!result.ok) {
+        throw new Error(result?.data?.message || 'No se pudieron cargar las configuraciones del sistema.');
+    }
+
+    return extractSettingsCollection(result.data)
+        .map(normalizeSystemSettingEntry)
+        .filter(Boolean);
 }
 
 /**

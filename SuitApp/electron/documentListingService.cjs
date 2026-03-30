@@ -18,9 +18,13 @@ const {
     upsertCachedDocumentQuery,
     upsertCachedDocuments,
 } = require('./documentListingRepository.cjs');
+const {
+    canReuseListingSnapshot,
+    isOfflineLikeError,
+} = require('./listingBackendUtils.cjs');
 const { getLogger } = require('./logService.cjs');
 
-const DEFAULT_PER_PAGE = 15;
+const DEFAULT_PER_PAGE = 40;
 const logger = getLogger('documents:listing:service');
 const ALLOWED_SORT_FIELDS = new Set(['updated_at', 'created_at', 'name']);
 const ALLOWED_SORT_DIRECTIONS = new Set(['asc', 'desc']);
@@ -69,20 +73,6 @@ function toComparableTimestamp(payload) {
         ?? payload?.data?.last_modified
         ?? null
     );
-}
-
-function isRemoteFreshEnough(serverTimestamp, localTimestamp) {
-    if (!serverTimestamp) return true;
-    if (!localTimestamp) return false;
-
-    const serverTime = new Date(serverTimestamp).getTime();
-    const localTime = new Date(localTimestamp).getTime();
-
-    if (Number.isNaN(serverTime) || Number.isNaN(localTime)) {
-        return String(serverTimestamp) === String(localTimestamp);
-    }
-
-    return serverTime <= localTime;
 }
 
 function extractDocumentsCollection(payload) {
@@ -341,6 +331,7 @@ function buildListingResponse({
     return {
         items,
         page,
+        total: totalDocuments ?? items.length,
         totalPages: Math.max(1, Number(totalPages) || 1),
         totalDocuments: totalDocuments ?? items.length,
         perPage: Math.max(1, Number(perPage) || DEFAULT_PER_PAGE),
@@ -374,31 +365,6 @@ function queueCachePersistence({ cacheKey, mode, page, params, items, totalPages
     });
 }
 
-async function ensureListingCacheFresh(forceRefresh = false) {
-    try {
-        const response = await getDocumentsLastModifiedFromApi();
-        if (!response.ok) return null;
-
-        const remoteTimestamp = toComparableTimestamp(response.data);
-        const localMeta = getDocumentsListingMeta();
-
-        if (forceRefresh || !isRemoteFreshEnough(remoteTimestamp, localMeta?.last_server)) {
-            clearDocumentQueryCache();
-        }
-
-        if (remoteTimestamp) {
-            setDocumentsListingMeta(new Date().toISOString(), remoteTimestamp);
-        }
-
-        return remoteTimestamp;
-    } catch (error) {
-        logger.warn('could not validate freshness for documents listing cache', {
-            error: error?.message || String(error),
-        });
-        return null;
-    }
-}
-
 function getCachedListingPage(cacheKey, page, filters) {
     const cachedPage = getCachedDocumentQuery(cacheKey, page);
     if (!cachedPage) return null;
@@ -420,6 +386,70 @@ function getCachedListingPage(cacheKey, page, filters) {
         source: 'cache',
         appliedLocalFilters,
     });
+}
+
+// Documents usa cache por query/página; solo vale la pena pedir last-modified
+// cuando esa combinación ya existe localmente y podemos decidir si reutilizarla.
+async function resolveCachedListingPage({
+    cacheKey,
+    page,
+    filters,
+    forceRefresh = false,
+    offlineSource = 'cache',
+    validatedSource = 'cache-validated',
+}) {
+    const listingMeta = getDocumentsListingMeta();
+    let lastServer = listingMeta?.last_server ?? null;
+
+    if (forceRefresh) {
+        return { cachedResponse: null, lastServer };
+    }
+
+    const cachedResponse = getCachedListingPage(cacheKey, page, filters);
+    if (!cachedResponse) {
+        return { cachedResponse: null, lastServer };
+    }
+
+    try {
+        const lastModifiedResponse = await getDocumentsLastModifiedFromApi();
+        if (!lastModifiedResponse.ok) {
+            if (isOfflineLikeError(lastModifiedResponse)) {
+                return {
+                    cachedResponse: { ...cachedResponse, source: offlineSource },
+                    lastServer,
+                };
+            }
+
+            logger.warn('documents listing last-modified failed before reusing snapshot', {
+                status: lastModifiedResponse.status,
+                error: lastModifiedResponse.error || null,
+                data: lastModifiedResponse.data,
+                page,
+                cacheKey,
+            });
+
+            return { cachedResponse: null, lastServer };
+        }
+
+        lastServer = toComparableTimestamp(lastModifiedResponse.data);
+        if (canReuseListingSnapshot({
+            total_items: cachedResponse.totalDocuments ?? cachedResponse.total,
+            items: cachedResponse.items,
+        }, listingMeta, lastServer)) {
+            return {
+                cachedResponse: { ...cachedResponse, source: validatedSource },
+                lastServer,
+            };
+        }
+    } catch (error) {
+        logger.warn('documents listing could not read last-modified before revalidation', {
+            error: error?.message || String(error),
+            page,
+            cacheKey,
+        });
+    }
+
+    return { cachedResponse: null, lastServer };
 }
 
 async function fetchListingPageFromApi(page, filters, remotePageQuery, remoteFilterQuery, serverTimestamp = null) {
@@ -476,44 +506,16 @@ async function searchDocuments(filters, forceRefresh = false) {
         ...remoteQuery,
         search: filters.searchQuery.toLowerCase(),
     });
-    const serverTimestamp = await ensureListingCacheFresh(forceRefresh);
+    const { cachedResponse, lastServer } = await resolveCachedListingPage({
+        cacheKey,
+        page: 1,
+        filters,
+        forceRefresh,
+        offlineSource: 'cache-search',
+    });
 
-    if (!forceRefresh) {
-        const cached = getCachedListingPage(cacheKey, 1, filters);
-        if (cached) {
-            return { ...cached, source: 'cache-search' };
-        }
-    }
-
-    if (!forceRefresh) {
-        const allLocalMatches = sortDocuments(applyLocalFilters(listCachedDocuments(), filters), filters);
-        const localMatches = allLocalMatches.slice(0, 10);
-        if (localMatches.length > 0) {
-            queueCachePersistence({
-                cacheKey,
-                mode: 'search',
-                page: 1,
-                params: {
-                    ...remoteQuery,
-                    search: filters.searchQuery,
-                },
-                items: localMatches,
-                totalPages: 1,
-                totalDocuments: allLocalMatches.length,
-                perPage: localMatches.length,
-                serverTimestamp,
-            });
-
-            return buildListingResponse({
-                items: localMatches,
-                page: 1,
-                totalPages: 1,
-                totalDocuments: allLocalMatches.length,
-                perPage: localMatches.length,
-                source: 'cache-search-local',
-                appliedLocalFilters: false,
-            });
-        }
+    if (cachedResponse) {
+        return cachedResponse;
     }
 
     const response = await searchDocumentsFromApi({
@@ -522,6 +524,38 @@ async function searchDocuments(filters, forceRefresh = false) {
     });
 
     if (!response.ok) {
+        if (isOfflineLikeError(response)) {
+            const allLocalMatches = sortDocuments(applyLocalFilters(listCachedDocuments(), filters), filters);
+            const localMatches = allLocalMatches.slice(0, 10);
+
+            if (localMatches.length > 0) {
+                queueCachePersistence({
+                    cacheKey,
+                    mode: 'search',
+                    page: 1,
+                    params: {
+                        ...remoteQuery,
+                        search: filters.searchQuery,
+                    },
+                    items: localMatches,
+                    totalPages: 1,
+                    totalDocuments: allLocalMatches.length,
+                    perPage: localMatches.length,
+                    serverTimestamp: lastServer,
+                });
+
+                return buildListingResponse({
+                    items: localMatches,
+                    page: 1,
+                    totalPages: 1,
+                    totalDocuments: allLocalMatches.length,
+                    perPage: localMatches.length,
+                    source: 'cache-search-local',
+                    appliedLocalFilters: false,
+                });
+            }
+        }
+
         throw new Error(response.error || 'No se pudo buscar documentos.');
     }
 
@@ -541,7 +575,7 @@ async function searchDocuments(filters, forceRefresh = false) {
         totalPages: 1,
         totalDocuments: rawItems.length,
         perPage: rawItems.length || DEFAULT_PER_PAGE,
-        serverTimestamp,
+        serverTimestamp: lastServer,
     });
 
     return buildListingResponse({
@@ -567,16 +601,18 @@ async function getDocumentListingPage(options = {}) {
     const remoteFilterQuery = buildRemoteFilterQuery(filters, { includeSort: false });
     const remotePageQuery = buildRemotePageQuery(filters);
     const cacheKey = buildCacheKey(Object.keys(remoteFilterQuery).length > 0 ? 'filtered' : 'list', remotePageQuery);
-    const serverTimestamp = await ensureListingCacheFresh(forceRefresh);
+    const { cachedResponse, lastServer } = await resolveCachedListingPage({
+        cacheKey,
+        page,
+        filters,
+        forceRefresh,
+    });
 
-    if (!forceRefresh) {
-        const cached = getCachedListingPage(cacheKey, page, filters);
-        if (cached) {
-            return cached;
-        }
+    if (cachedResponse) {
+        return cachedResponse;
     }
 
-    return await fetchListingPageFromApi(page, filters, remotePageQuery, remoteFilterQuery, serverTimestamp);
+    return await fetchListingPageFromApi(page, filters, remotePageQuery, remoteFilterQuery, lastServer);
 }
 
 async function invalidateDocumentListingCache() {

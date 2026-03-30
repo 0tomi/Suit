@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, useMemo, useEffect } from 'react';
 import { NOTIFICATION_MINUTES_LIMITS } from '../components/Agenda/notificationConfig.js';
 import { clampNotificationMinutes } from '../utils/notificationTimeFormat.js';
@@ -8,6 +7,7 @@ import { createLogger } from '../services/logService.js';
 import { useAuth } from './AuthContext.jsx';
 import { DEFAULT_PINNED_SECTIONS } from '../constants/sectionsRegistry.js';
 import { DEFAULT_TEMPLATE_CAPITALIZATION } from '../utils/templateCapitalization.js';
+import { INTERFACE_SCALE_DEFAULT, normalizeInterfaceScale } from '../utils/interfaceScale.js';
 
 const SettingsContext = createContext(null);
 
@@ -45,6 +45,8 @@ const defaultSettings = {
     templateClientTreatment: true,
     // Restaurar las pestañas abiertas al iniciar la aplicación
     restoreTabs: true,
+    // Escala global de la interfaz en porcentaje
+    interfaceScale: INTERFACE_SCALE_DEFAULT,
 };
 
 function ensurePinnedSections(nextPinnedSections) {
@@ -66,6 +68,7 @@ function parseSettings(raw) {
         defaultAgendaView: normalizeDefaultAgendaView(parsed.defaultAgendaView),
         agendaColorMode: normalizeAgendaColorMode(parsed.agendaColorMode),
         pinnedSections: ensurePinnedSections(parsed.pinnedSections),
+        interfaceScale: normalizeInterfaceScale(parsed.interfaceScale),
     };
 }
 
@@ -78,6 +81,7 @@ function loadSettings(storageKey) {
             if (
                 normalized.agendaColorMode !== parsed.agendaColorMode
                 || normalized.defaultAgendaView !== parsed.defaultAgendaView
+                || normalized.interfaceScale !== parsed.interfaceScale
             ) {
                 saveSettings(storageKey, normalized);
             }
@@ -222,6 +226,10 @@ export const SettingsProvider = ({ children }) => {
         updateSettings({ restoreTabs: Boolean(enabled) });
     }, [updateSettings]);
 
+    const setInterfaceScale = useCallback((value) => {
+        updateSettings({ interfaceScale: normalizeInterfaceScale(value) });
+    }, [updateSettings]);
+
     /**
      * Actualiza la configuración de capitalización del motor de plantillas.
      * Acepta un parche parcial: { mode } o { fields: { [type]: boolean } }.
@@ -276,6 +284,8 @@ export const SettingsProvider = ({ children }) => {
         setTemplateClientTreatment,
         restoreTabs: settings.restoreTabs ?? true,
         setRestoreTabs,
+        interfaceScale: settings.interfaceScale,
+        setInterfaceScale,
     }), [
         settings.defaultAgendaView,
         settings.agendaColorMode,
@@ -313,6 +323,8 @@ export const SettingsProvider = ({ children }) => {
         setTemplateClientTreatment,
         settings.restoreTabs,
         setRestoreTabs,
+        settings.interfaceScale,
+        setInterfaceScale,
     ]);
 
     return (

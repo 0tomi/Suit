@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { syncClients } from '../services/sync/clientSyncService.js';
 import { createResourceContext } from './createResourceContext.jsx';
 import { TIER_CRITICAL } from '../services/sync/SyncScheduler.js';

@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { syncMultimedia } from '../services/sync/multimediaSyncService.js';
 import { createResourceContext } from './createResourceContext.jsx';
 import { TIER_CATALOG } from '../services/sync/SyncScheduler.js';

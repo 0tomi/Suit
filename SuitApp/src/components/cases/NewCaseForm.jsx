@@ -37,7 +37,7 @@ import {
 import { showAppToast } from '../ui/show-app-toast.jsx';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog.js';
 import { ConfirmDialog } from '../ui/ConfirmDialog.jsx';
-import { translateApiErrorMessage } from '../../utils/apiErrorMessage.js';
+import { translateApiErrorMessage, getApiErrorMessage } from '../../utils/apiErrorMessage.js';
 
 import JurisdiccionModal from '../categories/modals/JurisdiccionModal.jsx';
 import DependenciaJudicialModal from '../categories/modals/DependenciaJudicialModal.jsx';
@@ -213,7 +213,33 @@ function normalizeParteForForm(parte) {
     };
 }
 
-function buildInitialFormState(mode, initialCaseData) {
+function resolveInitialJurisdiccionId(initialCaseData, allDependencias = []) {
+    if (!initialCaseData) return '';
+
+    const directJurisdiccionId = initialCaseData.jurisdiccion_id
+        ?? initialCaseData.jurisdiccion?.id
+        ?? initialCaseData.dependencia?.jurisdiccion?.id
+        ?? initialCaseData.dependencia?.jurisdiccion_id;
+
+    if (directJurisdiccionId != null) {
+        return String(directJurisdiccionId);
+    }
+
+    if (initialCaseData.dependencia_id == null || allDependencias.length === 0) {
+        return '';
+    }
+
+    const matchedDependencia = allDependencias.find(
+        (dependencia) => String(dependencia.id) === String(initialCaseData.dependencia_id)
+    );
+
+    const dependenciaJurisdiccionId = matchedDependencia?.jurisdiccion_id
+        ?? matchedDependencia?.jurisdiccion?.id;
+
+    return dependenciaJurisdiccionId != null ? String(dependenciaJurisdiccionId) : '';
+}
+
+function buildInitialFormState(mode, initialCaseData, allDependencias = []) {
     const base = { ...INITIAL_FORM };
 
     if (mode === FORM_MODE.EDIT && initialCaseData) {
@@ -225,7 +251,7 @@ function buildInitialFormState(mode, initialCaseData) {
             description: initialCaseData.details ?? '',
             nro_expediente: initialCaseData.nro_expediente ?? '',
             radicacion_id: initialCaseData.radicacion_id != null ? String(initialCaseData.radicacion_id) : '',
-            jurisdiccion_id: initialCaseData.dependencia?.jurisdiccion?.id != null ? String(initialCaseData.dependencia.jurisdiccion.id) : '',
+            jurisdiccion_id: resolveInitialJurisdiccionId(initialCaseData, allDependencias),
             dependencia_id: initialCaseData.dependencia_id != null ? String(initialCaseData.dependencia_id) : '',
         };
     }
@@ -245,7 +271,7 @@ function buildRelationSignature(items, keySelector) {
         .join('|');
 }
 
-const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = null }) => {
+const NewCaseForm = ({ onSuccess, onClose, mode = FORM_MODE.CREATE, initialCaseData = null }) => {
     const {
         case_types,
         syncing: caseTypesSyncing,
@@ -268,14 +294,15 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
     const {
         data: allDependencias = [], 
         syncing: dependenciasSyncing,
-        refreshDependenciasJudiciales 
+        initialized: dependenciasInitialized,
+        refreshData: refreshDependenciasJudiciales 
     } = useDependenciasJudiciales();
     const { refreshClients } = useClients();
     const { refreshPartes } = usePartes();
     const { openModal } = useModal();
     const { openDialog, closeDialog, dialogProps } = useConfirmDialog();
     const { users = [] } = useUsers();
-    const [newCase, setNewCase] = useState(() => buildInitialFormState(mode, initialCaseData));
+    const [newCase, setNewCase] = useState(() => buildInitialFormState(mode, initialCaseData, allDependencias));
     const [isLoadingEditRelations, setIsLoadingEditRelations] = useState(mode === FORM_MODE.EDIT);
 
     // --- Estado para sección de Participantes ---
@@ -298,10 +325,13 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
     const [isRadicacionModalOpen, setIsRadicacionModalOpen] = useState(false);
     const [isJurisdiccionModalOpen, setIsJurisdiccionModalOpen] = useState(false);
     const [isDependenciaModalOpen, setIsDependenciaModalOpen] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState({});
+    const [skipDescription, setSkipDescription] = useState(false);
 
     const caseTypesLoading = !caseTypesInitialized || (caseTypesSyncing && case_types.length === 0);
     const radicacionesLoading = !radicacionesInitialized || (radicacionesSyncing && radicaciones.length === 0);
     const jurisdiccionesLoading = !jurisdiccionesInitialized || (jurisdiccionesSyncing && jurisdicciones.length === 0);
+    const dependenciasLoading = !dependenciasInitialized || dependenciasSyncing;
 
     const isFederalRadicacion = useMemo(() => {
         const rad = radicaciones.find(r => String(r.id) === String(newCase.radicacion_id));
@@ -326,8 +356,13 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
             String(d.radicacion_id) === String(newCase.radicacion_id)
         );
     }, [allDependencias, newCase.jurisdiccion_id, newCase.radicacion_id]);
+    const hasSelectedDependencia = dependencias.some(
+        (dependencia) => String(dependencia.id) === String(newCase.dependencia_id)
+    );
+    const dependenciaSelectValue = newCase.dependencia_id && hasSelectedDependencia
+        ? String(newCase.dependencia_id)
+        : '';
 
-    const dependenciasLoading = !jurisdiccionesInitialized || dependenciasSyncing;
 
     const selectedCaseTypeName = useMemo(
         () => case_types.find((caseType) => String(caseType.id) === String(newCase.type))?.name || '',
@@ -348,6 +383,9 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
      * para reutilizar el mismo modal de alta y luego sincronizar diffs.
      */
     useEffect(() => {
+        // En modo alta (CREATE), el estado inicial ya se setea en el useState (linea 304).
+        // No queremos que este efecto se ejecute cada vez que allDependencias cambie (ej: al crear un juzgado),
+        // ya que resetearía el formulario que el usuario está completando.
         if (mode !== FORM_MODE.EDIT || !initialCaseData?.id) {
             initialRelationsRef.current = {
                 linkedClients: [],
@@ -355,13 +393,17 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                 linkedTipoExpedientes: [],
                 linkedParticipants: [],
             };
-            setNewCase(buildInitialFormState(mode, initialCaseData));
+            // Solo reseteamos si realmente es una deselección de caso (creo que no aplica en este modal, pero por seguridad)
+            if (mode === FORM_MODE.EDIT && !initialCaseData) {
+                setNewCase(buildInitialFormState(mode, initialCaseData, allDependencias));
+            }
             setIsLoadingEditRelations(false);
             return;
         }
 
         let cancelled = false;
-        setNewCase(buildInitialFormState(mode, initialCaseData));
+        // Precargamos los datos base del caso a editar
+        setNewCase(buildInitialFormState(mode, initialCaseData, allDependencias));
         setIsLoadingEditRelations(true);
 
         const loadEditRelations = async () => {
@@ -407,10 +449,28 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
         return () => {
             cancelled = true;
         };
-    }, [initialCaseData, mode]);
+    }, [initialCaseData?.id, mode]);
+
+    useEffect(() => {
+        if (mode !== FORM_MODE.EDIT || newCase.jurisdiccion_id || !initialCaseData) return;
+
+        const resolvedJurisdiccionId = resolveInitialJurisdiccionId(initialCaseData, allDependencias);
+        if (!resolvedJurisdiccionId) return;
+
+        setNewCase((prev) => {
+            if (prev.jurisdiccion_id) return prev;
+            return {
+                ...prev,
+                jurisdiccion_id: resolvedJurisdiccionId,
+            };
+        });
+    }, [allDependencias, initialCaseData, mode, newCase.jurisdiccion_id]);
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
+        if (name === 'title' || name === 'nro_expediente' || name === 'type' || name === 'radicacion_id' || name === 'startDate') {
+            setFieldErrors(prev => ({ ...prev, [name]: undefined }));
+        }
         setNewCase(prev => {
             let nextState = { ...prev, [name]: value };
 
@@ -421,7 +481,37 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                     : [];
             }
 
-            if (name === 'radicacion_id') {
+            if (name === 'jurisdiccion_id' && String(prev.jurisdiccion_id) !== String(value)) {
+                nextState.dependencia_id = '';
+            }
+
+            if (name === 'dependencia_id' && value) {
+                // Buscamos la dependencia seleccionada para obtener su competencia_id
+                const selectedDep = allDependencias.find(d => String(d.id) === String(value));
+                if (selectedDep?.competencia_id) {
+                    // Buscamos la competencia para obtener el nombre del fuero
+                    const comp = competencias.find(c => String(c.id) === String(selectedDep.competencia_id));
+                    if (comp?.fuero) {
+                        const fueroNormalized = comp.fuero.toLowerCase();
+                        // Buscamos en case_types (Fueros) el que mejor coincida por nombre
+                        const matchedFuero = case_types.find(ct => {
+                            const ctName = (ct.name || '').toLowerCase();
+                            return fueroNormalized.includes(ctName) || ctName.includes(fueroNormalized);
+                        });
+
+                        if (matchedFuero) {
+                            nextState.type = String(matchedFuero.id);
+                            // También filtramos tipos de expedientes para que no queden orfanos de otro fuero
+                            nextState.linkedTipoExpedientes = nextState.linkedTipoExpedientes.filter(
+                                (tipo) => String(tipo.case_type_id || '') === String(matchedFuero.id)
+                            );
+                        }
+                    }
+                }
+            }
+
+            if (name === 'radicacion_id' && String(prev.radicacion_id) !== String(value)) {
+                nextState.dependencia_id = '';
                 const selectedRad = radicaciones.find(r => String(r.id) === String(value));
                 const isFederal = (selectedRad?.tipo || selectedRad?.name || '').toLowerCase() === 'federal';
 
@@ -429,19 +519,15 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                     const fedJur = jurisdicciones.find(j => (j.nombre || '').toLowerCase() === 'federal');
                     if (fedJur) {
                         nextState.jurisdiccion_id = String(fedJur.id);
-                        // Limpiamos dependencia ya que la nueva jurisdicción/radicación es Federal
-                        nextState.dependencia_id = '';
                     }
                 } else if (!value) {
                     // Si se limpia radicación, podemos opcionalmente limpiar jurisdicción
                     nextState.jurisdiccion_id = '';
-                    nextState.dependencia_id = '';
                 } else {
                     // Si cambia a una radicación no federal, pero la jurisdicción era Federal, la limpiamos
                     const currentJur = jurisdicciones.find(j => String(j.id) === String(prev.jurisdiccion_id));
                     if ((currentJur?.nombre || '').toLowerCase() === 'federal') {
                         nextState.jurisdiccion_id = '';
-                        nextState.dependencia_id = '';
                     }
                 }
             }
@@ -460,7 +546,6 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
         if (isFederalRadicacion && !jurisdiccionesLoading && jurisdicciones.length > 0) {
             const fedJur = jurisdicciones.find(j => (j.nombre || '').toLowerCase() === 'federal');
             if (fedJur && String(newCase.jurisdiccion_id) !== String(fedJur.id)) {
-                // eslint-disable-next-line react-hooks/set-state-in-effect
                 setNewCase(prev => ({
                     ...prev,
                     jurisdiccion_id: String(fedJur.id),
@@ -470,6 +555,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
             }
         }
     }, [isFederalRadicacion, jurisdicciones, jurisdiccionesLoading, newCase.jurisdiccion_id]);
+
 
     const openSelectParteModal = () => {
         openModal(SelectParteModal, {
@@ -494,6 +580,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
         openModal(SelectClientModal, {
             linkedClientIds: newCase.linkedClients.map((c) => c.id),
             onClientSelected: (client) => {
+                setFieldErrors(prev => ({ ...prev, linkedClients: undefined }));
                 setNewCase(prev => ({
                     ...prev,
                     linkedClients: appendUniqueById(prev.linkedClients, client),
@@ -600,10 +687,17 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                 // Usamos el handler para que se aplique la misma lógica de "Federal" si aplica
                 handleInputChange({ target: { name: 'radicacion_id', value: radId } });
                 showAppToast({ title: 'Radicación creada', variant: 'success' });
+            } else {
+                throw new Error(getApiErrorMessage(result, 'No se pudo crear la radicación.'));
             }
         } catch (error) {
             logger.error('Error creating radicacion', error);
-            showAppToast({ title: 'Error al crear radicación', variant: 'danger' });
+            showAppToast({ 
+                title: 'Error al crear radicación', 
+                description: error.message,
+                variant: 'danger' 
+            });
+            throw error; // Lanzamos para que el modal no se cierre
         }
     };
 
@@ -615,12 +709,23 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                 await syncJurisdicciones();
                 await refreshJurisdicciones();
                 
-                setNewCase(prev => ({ ...prev, jurisdiccion_id: String(result.data.id), dependencia_id: '' }));
+                setNewCase(prev => ({ 
+                    ...prev, 
+                    jurisdiccion_id: String(result.data.id), 
+                    dependencia_id: '' 
+                }));
                 showAppToast({ title: 'Jurisdicción creada', variant: 'success' });
+            } else {
+                throw new Error(getApiErrorMessage(result, 'No se pudo crear la jurisdicción.'));
             }
         } catch (error) {
             logger.error('Error creating jurisdiccion', error);
-            showAppToast({ title: 'Error al crear jurisdicción', variant: 'danger' });
+            showAppToast({ 
+                title: 'Error al crear jurisdicción', 
+                description: error.message,
+                variant: 'danger' 
+            });
+            throw error; // Lanzamos para que el modal no se cierre
         }
     };
 
@@ -632,12 +737,30 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                 await syncDependenciasJudiciales();
                 await refreshDependenciasJudiciales();
 
-                setNewCase(prev => ({ ...prev, dependencia_id: String(result.data.id) }));
+                const newDepId = String(result.data.id);
+                const newRadId = result.data.radicacion_id != null ? String(result.data.radicacion_id) : undefined;
+                const newJurId = result.data.jurisdiccion_id != null ? String(result.data.jurisdiccion_id) : undefined;
+
+                setNewCase(prev => ({ 
+                    ...prev, 
+                    // Aseguramos que se mantengan (o actualicen si cambiaron en el modal) los IDs relacionados
+                    radicacion_id: newRadId ?? prev.radicacion_id,
+                    jurisdiccion_id: newJurId ?? prev.jurisdiccion_id,
+                    dependencia_id: newDepId 
+                }));
+
                 showAppToast({ title: 'Competencia creada', variant: 'success' });
+            } else {
+                throw new Error(getApiErrorMessage(result, 'No se pudo crear la competencia.'));
             }
         } catch (error) {
             logger.error('Error creating dependencia', error);
-            showAppToast({ title: 'Error al crear competencia', variant: 'danger' });
+            showAppToast({ 
+                title: 'Error al crear competencia', 
+                description: error.message,
+                variant: 'danger' 
+            });
+            throw error; // Lanzamos para que el modal no se cierre
         }
     };
 
@@ -866,24 +989,21 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
     const handleSubmit = async (e) => {
         e.preventDefault();
 
+        // Validaciones inline (campos con borde rojo)
+        const inlineErrors = {};
+        if (!newCase.title?.trim()) inlineErrors.title = 'La carátula es obligatoria.';
+        if (!newCase.nro_expediente?.trim()) inlineErrors.nro_expediente = 'El número de expediente es obligatorio.';
+        if (!newCase.startDate) inlineErrors.startDate = 'La fecha de inicio es obligatoria.';
+        if (mode === FORM_MODE.CREATE && newCase.linkedClients.length === 0) inlineErrors.linkedClients = 'Debés vincular al menos un cliente.';
+        if (!newCase.type) inlineErrors.type = 'El fuero del caso es obligatorio.';
+        if (!newCase.radicacion_id) inlineErrors.radicacion_id = 'La radicación es obligatoria.';
+        if (Object.keys(inlineErrors).length > 0) {
+            setFieldErrors(inlineErrors);
+            showAppToast({ title: 'Campos obligatorios', description: 'Completá todos los campos requeridos antes de guardar.', variant: 'danger' });
+            return;
+        }
+
         // Validamos IDs críticos antes del cast numérico para no enviar `0` a la API.
-        if (!newCase.type) {
-            openRequiredFieldDialog(openDialog, closeDialog, {
-                title: 'Falta seleccionar un fuero',
-                desc: 'Elegí un fuero antes de crear el expediente.',
-            });
-            return;
-        }
-
-        if (!newCase.radicacion_id) {
-            openRequiredFieldDialog(openDialog, closeDialog, {
-                title: 'Falta seleccionar una radicación',
-                desc: 'Elegí una radicación antes de crear el expediente.',
-            });
-            return;
-        }
-
-        // Validación: si la radicación es "Federal", la dependencia es obligatoria
         if (isFederalRadicacion && !newCase.dependencia_id) {
             openRequiredFieldDialog(openDialog, closeDialog, {
                 title: 'Juzgado Federal Requerido',
@@ -958,11 +1078,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
 
             persistRememberedParticipants();
 
-            if (mode === FORM_MODE.CREATE) {
-                setNewCase(buildInitialFormState(FORM_MODE.CREATE, null));
-            }
-
-            await onSuccess({
+            const successPayload = {
                 mode,
                 title: payload.title,
                 case: responsePayloadWithRelations || savedCase,
@@ -974,7 +1090,10 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                             : `El expediente se ${mode === FORM_MODE.EDIT ? 'actualizó' : 'creó'}, pero la API no devolvió el identificador necesario para sincronizar ${failedLinks.join(', ')}.`,
                     }
                     : null,
-            });
+            };
+
+            await onSuccess?.(successPayload);
+            onClose?.();
         } catch (err) {
             void logger.error(mode === FORM_MODE.EDIT ? 'Error editing case' : 'Error creating case', err);
             openDialog({
@@ -1005,9 +1124,14 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         name="title"
                         value={newCase.title}
                         onChange={handleInputChange}
-                        className="w-full h-11 px-4 border border-(--border-default) rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        className={`w-full h-11 px-4 border rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 outline-none transition-all ${
+                            fieldErrors.title
+                                ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500'
+                                : 'border-(--border-default) focus:ring-blue-500/20 focus:border-blue-500'
+                        }`}
                         placeholder="Ej: Gomez vs Empresa S.A."
                     />
+                    {fieldErrors.title && <p className="text-xs text-red-500 mt-1">{fieldErrors.title}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1018,9 +1142,14 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         name="nro_expediente"
                         value={newCase.nro_expediente}
                         onChange={handleInputChange}
-                        className="w-full h-11 px-4 border border-(--border-default) rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        className={`w-full h-11 px-4 border rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 outline-none transition-all ${
+                            fieldErrors.nro_expediente
+                                ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500'
+                                : 'border-(--border-default) focus:ring-blue-500/20 focus:border-blue-500'
+                        }`}
                         placeholder="Ej: 123/2024"
                     />
+                    {fieldErrors.nro_expediente && <p className="text-xs text-red-500 mt-1">{fieldErrors.nro_expediente}</p>}
                 </div>
 
                 <div className="space-y-2">
@@ -1032,8 +1161,13 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         name="startDate"
                         value={newCase.startDate}
                         onChange={handleInputChange}
-                        className="w-full h-11 px-4 border border-(--border-default) rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all"
+                        className={`w-full h-11 px-4 border rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 outline-none transition-all ${
+                            fieldErrors.startDate
+                                ? 'border-red-500 focus:ring-red-500/20 focus:border-red-500'
+                                : 'border-(--border-default) focus:ring-blue-500/20 focus:border-blue-500'
+                        }`}
                     />
+                    {fieldErrors.startDate && <p className="text-xs text-red-500 mt-1">{fieldErrors.startDate}</p>}
                 </div>
             </div>
 
@@ -1048,11 +1182,12 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                     {/* Radicación con Creación Rápida */}
                     <div className="flex flex-col gap-2">
                         <div className="flex justify-between items-center px-1">
-                            <label htmlFor="case-form-radicacion" className="text-sm font-semibold text-(--text-secondary)">
+                            <label htmlFor="case-form-radicacion" className={`text-sm font-semibold ${fieldErrors.radicacion_id ? 'text-red-500' : 'text-(--text-secondary)'}`}>
                                 Radicación <span className="text-red-500">*</span>
                             </label>
                             <button
                                 type="button"
+                                data-testid="new-case-add-radicacion"
                                 onClick={() => setIsRadicacionModalOpen(true)}
                                 className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 active:scale-95 transform"
                             >
@@ -1064,7 +1199,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                             onValueChange={(val) => handleSelectChange('radicacion_id', val)}
                             disabled={radicacionesLoading}
                         >
-                            <SelectTrigger id="case-form-radicacion" className="h-11 rounded-xl shadow-sm">
+                            <SelectTrigger id="case-form-radicacion" className={`h-11 rounded-xl shadow-sm ${fieldErrors.radicacion_id ? 'border-red-500 focus-visible:ring-red-500' : ''}`}>
                                 <SelectValue
                                     placeholder={getCatalogPlaceholder({
                                         loading: radicacionesLoading,
@@ -1079,6 +1214,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                                 ))}
                             </SelectContent>
                         </Select>
+                        {fieldErrors.radicacion_id && <p className="text-xs text-red-500 px-1">{fieldErrors.radicacion_id}</p>}
                     </div>
 
                     {/* Jurisdicción con Creación Rápida */}
@@ -1089,6 +1225,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                             </label>
                             <button
                                 type="button"
+                                data-testid="new-case-add-jurisdiccion"
                                 onClick={() => setIsJurisdiccionModalOpen(true)}
                                 className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 active:scale-95 transform"
                             >
@@ -1126,6 +1263,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         {newCase.jurisdiccion_id && (
                             <button
                                 type="button"
+                                data-testid="new-case-add-dependencia"
                                 onClick={() => setIsDependenciaModalOpen(true)}
                                 className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 active:scale-95 transform"
                             >
@@ -1134,7 +1272,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         )}
                     </div>
                     <Select
-                        value={newCase.dependencia_id ? String(newCase.dependencia_id) : ''}
+                        value={dependenciaSelectValue}
                         onValueChange={(val) => handleSelectChange('dependencia_id', val)}
                         disabled={dependenciasLoading || !newCase.jurisdiccion_id || !newCase.radicacion_id}
                     >
@@ -1173,13 +1311,13 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div className="space-y-2">
-                        <label htmlFor="case-form-type" className="text-sm font-semibold text-(--text-secondary)">Fuero del Caso <span className="text-red-500">*</span></label>
+                        <label htmlFor="case-form-type" className={`text-sm font-semibold ${fieldErrors.type ? 'text-red-500' : 'text-(--text-secondary)'}`}>Fuero del Caso <span className="text-red-500">*</span></label>
                         <Select
                             value={newCase.type ? String(newCase.type) : ''}
                             onValueChange={(val) => handleSelectChange('type', val)}
                             disabled={caseTypesLoading}
                         >
-                            <SelectTrigger id="case-form-type" className="h-11 rounded-xl shadow-sm">
+                            <SelectTrigger id="case-form-type" className={`h-11 rounded-xl shadow-sm ${fieldErrors.type ? 'border-red-500 focus-visible:ring-red-500' : ''}`}>
                                 <SelectValue
                                     placeholder={getCatalogPlaceholder({
                                         loading: caseTypesLoading,
@@ -1194,6 +1332,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                                 ))}
                             </SelectContent>
                         </Select>
+                        {fieldErrors.type && <p className="text-xs text-red-500">{fieldErrors.type}</p>}
                     </div>
 
                     <div className="space-y-3">
@@ -1229,13 +1368,31 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
             </div>
 
             <div className="space-y-3 pt-4 border-t border-(--border-subtle)">
-                <label htmlFor="case-form-description" className="text-sm font-semibold text-(--text-secondary)">Resumen / Descripción del Caso</label>
+                <div className="flex items-center justify-between">
+                    <label htmlFor="case-form-description" className="text-sm font-semibold text-(--text-secondary)">Resumen / Descripción del Caso</label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-(--text-secondary)">
+                        <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={skipDescription}
+                            onChange={(e) => {
+                                const shouldSkip = e.target.checked;
+                                setSkipDescription(shouldSkip);
+                                if (shouldSkip) {
+                                    setNewCase(prev => ({ ...prev, description: '' }));
+                                }
+                            }}
+                        />
+                        No incluir
+                    </label>
+                </div>
                 <textarea
                     id="case-form-description"
                     name="description"
+                    disabled={skipDescription}
                     value={newCase.description}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 border border-(--border-default) rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none h-[110px] resize-none transition-all text-sm"
+                    className={`w-full px-4 py-3 border border-(--border-default) rounded-xl bg-(--bg-input) text-(--text-primary) shadow-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none h-[110px] resize-none transition-all text-sm ${skipDescription ? 'opacity-40 cursor-not-allowed' : ''}`}
                     placeholder="Escribí aquí los detalles principales, estrategia o notas iniciales del expediente..."
                 />
             </div>
@@ -1246,7 +1403,9 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                         {/* Clients */}
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm font-semibold text-(--text-secondary)">Clientes</span>
+                                <span className={`text-sm font-semibold ${fieldErrors.linkedClients ? 'text-red-500' : 'text-(--text-secondary)'}`}>
+                                    Clientes <span className="text-red-500">*</span>
+                                </span>
                                 <button
                                     type="button"
                                     onClick={openSelectClientModal}
@@ -1256,8 +1415,9 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
                                 </button>
                             </div>
                             {newCase.linkedClients.length === 0 && (
-                                <p className="text-xs text-(--text-tertiary) italic">Sin clientes vinculados.</p>
+                                <p className={`text-xs italic ${fieldErrors.linkedClients ? 'text-red-500' : 'text-(--text-tertiary)'}`}>Sin clientes vinculados.</p>
                             )}
+                            {fieldErrors.linkedClients && <p className="text-xs text-red-500">{fieldErrors.linkedClients}</p>}
                             <div className="space-y-2 max-h-[160px] overflow-y-auto pr-1">
                                 {newCase.linkedClients.map((client) => (
                                     <div
@@ -1481,6 +1641,7 @@ const NewCaseForm = ({ onSuccess, mode = FORM_MODE.CREATE, initialCaseData = nul
             jurisdicciones={jurisdicciones}
             competencias={competencias}
             defaultJurisdiccionId={newCase.jurisdiccion_id}
+            defaultRadicacionId={newCase.radicacion_id}
         />
 
         <ConfirmDialog {...dialogProps} />

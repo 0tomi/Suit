@@ -23,6 +23,28 @@ async function readCacheTable(table) {
     });
 }
 
+function normalizeEnrichedDependency(row) {
+    if (!row) return null;
+
+    // Parseamos data_json si viene desde SQLite puramente
+    let data = row;
+    if (row.data_json && typeof row.data_json === 'string') {
+        try {
+            data = { ...row, ...JSON.parse(row.data_json) };
+        } catch (e) {
+            console.error('Error parsing dependency data_json', e);
+        }
+    }
+
+    // Aseguramos que existan los objetos que espera el frontend (en base a los campos del JOIN de SQLite)
+    return {
+        ...data,
+        jurisdiccion: data.jurisdiccion || (data.jurisdiccion_nombre ? { nombre: data.jurisdiccion_nombre } : null),
+        competencia: data.competencia || (data.competencia_nombre ? { fuero: data.competencia_nombre } : null),
+        radicacion: data.radicacion || (data.radicacion_nombre ? { name: data.radicacion_nombre } : null),
+    };
+}
+
 // ─── Lecturas desde caché ─────────────────────────────────────────────────────
 
 /**
@@ -69,7 +91,8 @@ export async function getDependenciaById(id) {
 export async function getDependenciasEnriquecidas(jurisdiccionId = null) {
     // Si tenemos la API de Electron, usamos la versión optimizada en SQL del backend.
     if (window.electronAPI?.db?.getEnrichedDependencies) {
-        return window.electronAPI.db.getEnrichedDependencies(jurisdiccionId, null);
+        const rows = await window.electronAPI.db.getEnrichedDependencies(jurisdiccionId, null);
+        return rows.map(normalizeEnrichedDependency);
     }
 
     // Fallback: implementar enriquecimiento en memoria (como estaba antes).
@@ -103,7 +126,8 @@ export async function getDependenciasEnriquecidas(jurisdiccionId = null) {
  */
 export async function getDependenciasFiltradas(jurisdiccionId = null, radicacionId = null) {
     if (window.electronAPI?.db?.getEnrichedDependencies) {
-        return window.electronAPI.db.getEnrichedDependencies(jurisdiccionId, radicacionId);
+        const rows = await window.electronAPI.db.getEnrichedDependencies(jurisdiccionId, radicacionId);
+        return rows.map(normalizeEnrichedDependency);
     }
     // Fallback si no hay IPC
     const all = await getDependenciasEnriquecidas(jurisdiccionId);

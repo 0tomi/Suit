@@ -881,6 +881,45 @@ function runMigrations(dbInstance) {
         `, 34, 'create-case-tipo-expediente');
         setConfigValue(dbInstance, 'schema_version', '34');
     }
+
+    if (version < 35) {
+        runTolerantMigrationSql(dbInstance, `
+            CREATE TABLE IF NOT EXISTS listing_query_cache (
+                id            TEXT PRIMARY KEY,
+                entity        TEXT NOT NULL,
+                cache_key     TEXT NOT NULL,
+                mode          TEXT NOT NULL,
+                page          INTEGER NOT NULL DEFAULT 1,
+                params_json   TEXT,
+                item_ids_json TEXT,
+                items_json    TEXT,
+                total_pages   INTEGER,
+                total_items   INTEGER,
+                per_page      INTEGER,
+                cached_at     TEXT NOT NULL,
+                synced_at     TEXT
+            )
+        `, 35, 'create-listing-query-cache');
+        runTolerantMigrationSql(dbInstance, `
+            CREATE INDEX IF NOT EXISTS idx_listing_query_cache_lookup
+                ON listing_query_cache (entity, cache_key, page)
+        `, 35, 'idx-listing-query-cache-lookup');
+        setConfigValue(dbInstance, 'schema_version', '35');
+    }
+
+    if (version < 36) {
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE clients ADD COLUMN financial_status TEXT', 36, 'add-clients-financial-status');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN identificacion TEXT', 36, 'add-partes-identificacion');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN direccion TEXT', 36, 'add-partes-direccion');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN genero TEXT', 36, 'add-partes-genero');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN estado TEXT', 36, 'add-partes-estado');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN notas TEXT', 36, 'add-partes-notas');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN created_at TEXT', 36, 'add-partes-created-at');
+        runTolerantMigrationSql(dbInstance, 'ALTER TABLE partes ADD COLUMN updated_at TEXT', 36, 'add-partes-updated-at');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM listing_query_cache WHERE entity IN ('clients', 'partes')", 36, 'clear-people-listing-cache');
+        runTolerantMigrationSql(dbInstance, "DELETE FROM sync_meta WHERE resource IN ('clients', 'partes')", 36, 'clear-people-sync-meta');
+        setConfigValue(dbInstance, 'schema_version', '36');
+    }
 }
 
 module.exports = {

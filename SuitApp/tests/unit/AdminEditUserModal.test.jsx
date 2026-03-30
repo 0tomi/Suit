@@ -3,6 +3,20 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AdminEditUserModal from '../../src/components/admin/AdminEditUserModal.jsx';
 
+vi.mock('../../src/hotkeys/useHotkeysSystem.js', () => ({
+    useHotkeysSystem: () => ({
+        suspendAllHotkeysExceptEscape: vi.fn(() => vi.fn()),
+    }),
+}));
+
+vi.mock('../../src/context/ModalContext.jsx', async (importOriginal) => {
+    const actual = await importOriginal();
+    return {
+        ...actual,
+        useModal: () => ({ modals: [] }),
+    };
+});
+
 /**
  * Feature: edición de usuarios desde Admin
  * Hipótesis cubiertas:

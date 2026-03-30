@@ -18,6 +18,7 @@ const logger = createLogger('hook:agenda-crud-actions');
 export function useAgendaCrudActions({
     agendas,
     caseId,
+    preferredAgendaId = null,
     currentUserId = null,
     modal,
     dispatchModal,
@@ -118,7 +119,10 @@ export function useAgendaCrudActions({
         }
     }, [dispatchModal]);
 
-    const openNewEventAtDate = useCallback((start) => {
+    const openNewEventAtDate = useCallback((start, { onSuccess } = {}) => {
+        const preferredAgenda = preferredAgendaId
+            ? agendasById.get(String(preferredAgendaId)) ?? null
+            : null;
         // Si la agenda está embebida en un caso, priorizamos siempre la agenda de ese expediente.
         const caseAgenda = caseId
             ? agendas.find((agenda) => String(agenda.suit_case_id) === String(caseId))
@@ -126,7 +130,7 @@ export function useAgendaCrudActions({
         const personalAgenda = agendas.find((agenda) =>
             !agenda.suit_case_id && currentUserId != null && String(agenda.user_id) === String(currentUserId),
         ) || agendas.find((agenda) => !agenda.suit_case_id) || agendas[0];
-        const targetAgenda = caseAgenda || personalAgenda;
+        const targetAgenda = preferredAgenda || caseAgenda || personalAgenda;
         const defaultMinutes = clampNotificationMinutes(defaultEventNotificationMinutes, NOTIFICATION_MINUTES_LIMITS);
         const seedMinutes = clampNotificationMinutes(lastEventNotificationMinutes, NOTIFICATION_MINUTES_LIMITS) || DEFAULT_LAST_NOTIFICATION_MINUTES;
         const notifyEnabled = defaultMinutes != null;
@@ -140,7 +144,7 @@ export function useAgendaCrudActions({
                 time: dayjs(start).format('HH:mm'),
                 description: '',
                 agendaId: targetAgenda?.id || '',
-                caseId: caseId || targetAgenda?.suit_case_id || '',
+                caseId: targetAgenda?.suit_case_id || caseId || '',
                 eventTypeId: '1',
                 notifyEnabled,
                 ...notificationState,
@@ -150,11 +154,12 @@ export function useAgendaCrudActions({
                 notifyAt: null,
                 notifyDate: null,
                 notifyTime: null,
+                onSuccess,
             },
         });
-    }, [agendas, caseId, currentUserId, defaultEventNotificationMinutes, dispatchModal, lastEventNotificationMinutes]);
+    }, [agendas, agendasById, caseId, currentUserId, defaultEventNotificationMinutes, dispatchModal, lastEventNotificationMinutes, preferredAgendaId]);
 
-    const openEditEvent = useCallback((event) => {
+    const openEditEvent = useCallback((event, { onSuccess } = {}) => {
         const seedMinutes = clampNotificationMinutes(lastEventNotificationMinutes, NOTIFICATION_MINUTES_LIMITS) || DEFAULT_LAST_NOTIFICATION_MINUTES;
         const eventAgenda = agendasById.get(String(event.agendaId || event.agenda_id));
 
@@ -179,6 +184,7 @@ export function useAgendaCrudActions({
                     notifyDate: null,
                     notifyTime: null,
                 },
+                onSuccess,
             },
         });
 
@@ -257,7 +263,10 @@ export function useAgendaCrudActions({
     }, [modal.formData, updateFormData]);
 
     const saveEvent = useCallback(async () => {
-        if (!modal.formData.title || !modal.formData.date) return;
+        if (!modal.formData.title || !modal.formData.date) {
+            showAppToast({ title: 'Campos obligatorios', description: 'El título y la fecha son obligatorios.', variant: 'danger' });
+            return;
+        }
 
         const notificationResolution = resolveNotificationMinutes(modal.formData);
         if (!notificationResolution.ok) {
@@ -304,6 +313,11 @@ export function useAgendaCrudActions({
             setLastEventNotificationMinutes(targetMinutes);
         }
 
+        // Call success callback before closing
+        if (modal.onSuccess) {
+            modal.onSuccess(result.event ?? null);
+        }
+
         dispatchModal({ type: 'CLOSE' });
 
         if (modal.selectedEvent) {
@@ -338,8 +352,7 @@ export function useAgendaCrudActions({
         createEventEntry,
         currentViewAgendaId,
         dispatchModal,
-        modal.formData,
-        modal.selectedEvent,
+        modal,
         setLastEventNotificationMinutes,
         setToastData,
         updateEventEntry,

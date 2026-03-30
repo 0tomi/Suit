@@ -4,79 +4,13 @@
  * que NO son clientes del estudio.
  */
 import { createLogger } from './logService.js';
+import {
+    buildParteApiPayload,
+    PartePayloadValidationError,
+    logPayloadValidationError,
+} from './personAdapters.js';
 
 const logger = createLogger('parte-service');
-
-class PartePayloadValidationError extends Error {
-    constructor(message, details = []) {
-        super(message);
-        this.name = 'PartePayloadValidationError';
-        this.details = details;
-    }
-}
-
-function normalizeRequiredText(value, field, failures) {
-    if (typeof value !== 'string') {
-        failures.push({ field, reason: 'expected_string', receivedType: typeof value });
-        return null;
-    }
-
-    const normalized = value.trim();
-    if (!normalized) {
-        failures.push({ field, reason: 'empty_required' });
-        return null;
-    }
-
-    return normalized;
-}
-
-function normalizeOptionalText(value, field, failures) {
-    if (value == null) return undefined;
-    if (typeof value !== 'string') {
-        failures.push({ field, reason: 'expected_string_or_nullish', receivedType: typeof value });
-        return undefined;
-    }
-
-    const normalized = value.trim();
-    return normalized || undefined;
-}
-
-function normalizeOptionalEmail(value, field, failures) {
-    const normalized = normalizeOptionalText(value, field, failures);
-    if (normalized === undefined) return undefined;
-
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
-        failures.push({ field, reason: 'invalid_email_format', receivedValue: value });
-        return undefined;
-    }
-
-    return normalized;
-}
-
-function normalizePositiveInteger(value, field, failures) {
-    const normalized = Number(value);
-    if (!Number.isInteger(normalized) || normalized < 1) {
-        failures.push({ field, reason: 'invalid_positive_integer', receivedValue: value });
-        return null;
-    }
-    return normalized;
-}
-
-function buildPayloadValidationError(failures) {
-    const fields = failures.map((failure) => failure.field).join(', ');
-    return new PartePayloadValidationError(
-        `El payload de parte es inválido. Revisá: ${fields}.`,
-        failures,
-    );
-}
-
-function logPayloadValidationError(action, parteData, error) {
-    logger.error(`parte payload validation failed during ${action}`, {
-        error: error.message,
-        failedFields: error.details ?? [],
-        providedFields: Object.keys(parteData || {}),
-    });
-}
 
 function getPartesBackendOrThrow(action) {
     const partesApi = window.electronAPI?.partes;
@@ -86,23 +20,6 @@ function getPartesBackendOrThrow(action) {
         throw error;
     }
     return partesApi;
-}
-
-function buildParteApiPayload(parteData = {}) {
-    const failures = [];
-    const payload = {
-        nombre: normalizeRequiredText(parteData.nombre, 'nombre', failures),
-        apellido: normalizeRequiredText(parteData.apellido, 'apellido', failures),
-        email: normalizeOptionalEmail(parteData.email, 'email', failures),
-        telefono: normalizeOptionalText(parteData.telefono, 'telefono', failures),
-        rol_id: normalizePositiveInteger(parteData.rol_id, 'rol_id', failures),
-    };
-
-    if (failures.length > 0) {
-        throw buildPayloadValidationError(failures);
-    }
-
-    return Object.fromEntries(Object.entries(payload).filter(([, value]) => value !== undefined));
 }
 
 async function executeParteMutation(action, id, parteData) {
@@ -128,7 +45,7 @@ async function executeParteMutation(action, id, parteData) {
         return await partesApi.update(numericId, payload);
     } catch (error) {
         if (error instanceof PartePayloadValidationError) {
-            logPayloadValidationError(action, parteData, error);
+            logPayloadValidationError(action, 'parte', parteData, error);
             return {
                 ok: false,
                 status: 422,
@@ -226,3 +143,5 @@ export async function unlinkParteFromCaso(caseId, parteId) {
         };
     }
 }
+
+export { buildParteApiPayload } from './personAdapters.js';

@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
 import { Plus } from 'lucide-react';
+import { showAppToast } from '../../ui/show-app-toast.jsx';
 
 /**
  * Modal para crear o editar una Jurisdicción.
@@ -10,10 +11,27 @@ import { Plus } from 'lucide-react';
 export default function JurisdiccionModal({ open, onClose, onSave, initialData = null }) {
     const [nombre, setNombre] = useState(initialData?.nombre || '');
     const [saving, setSaving] = useState(false);
+    const [fieldError, setFieldError] = useState('');
+
+    useEffect(() => {
+        if (!open) {
+            setSaving(false);
+            setFieldError('');
+            return;
+        }
+
+        setNombre(initialData?.nombre || '');
+        setFieldError('');
+        setSaving(false);
+    }, [initialData, open]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!nombre.trim()) return;
+        if (!nombre.trim()) {
+            setFieldError('El nombre de la jurisdicción es obligatorio.');
+            showAppToast({ title: 'Campo obligatorio', description: 'Completá el nombre de la jurisdicción.', variant: 'danger' });
+            return;
+        }
 
         setSaving(true);
         try {
@@ -36,17 +54,22 @@ export default function JurisdiccionModal({ open, onClose, onSave, initialData =
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                 <div>
                     <label className="mb-2 block text-sm font-semibold text-(--text-secondary)">
-                        Nombre de la Jurisdicción
+                        Nombre de la Jurisdicción <span className="text-red-500">*</span>
                     </label>
                     <input
                         autoFocus
                         type="text"
                         value={nombre}
-                        onChange={(e) => setNombre(e.target.value)}
+                        onChange={(e) => { setNombre(e.target.value); if (fieldError) setFieldError(''); }}
                         placeholder="Ej: Paraná, Concordia, Federal..."
-                        className="w-full h-11 rounded-xl border border-(--border-default) bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all"
+                        className={`w-full h-11 rounded-xl border bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:ring-2 focus:outline-none transition-all ${
+                            fieldError
+                                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                                : 'border-(--border-default) focus:border-blue-500 focus:ring-blue-500/10'
+                        }`}
                         required
                     />
+                    {fieldError && <p className="mt-1.5 text-xs text-red-500">{fieldError}</p>}
                 </div>
 
                 <Button

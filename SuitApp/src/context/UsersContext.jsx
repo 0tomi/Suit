@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { syncUsers } from '../services/sync/userSyncService.js';
 import { createResourceContext } from './createResourceContext.jsx';
 

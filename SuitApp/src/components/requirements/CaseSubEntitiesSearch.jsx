@@ -7,8 +7,74 @@ import { useDependenciasJudiciales } from '../../context/DependenciasJudicialesC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
 import { Label } from '../ui/Label';
 
+const DEFAULT_SHOW = {
+    caseType: true,
+    radicacion: true,
+    jurisdiccion: true,
+    competencia: true,
+    dependencia: true,
+};
+const EMPTY_OPTIONS = {};
+const EMPTY_MESSAGES = {};
+
+function toOption(value, label) {
+    if (value == null || !label) return null;
+    return { value: String(value), label };
+}
+
+function getCaseTypeLabel(caseType) {
+    return caseType?.name || caseType?.title || caseType?.nombre || '';
+}
+
+function getRadicacionLabel(radicacion) {
+    return radicacion?.tipo || radicacion?.name || radicacion?.nombre_lugar || '';
+}
+
+function getJurisdiccionLabel(jurisdiccion) {
+    return jurisdiccion?.nombre || jurisdiccion?.name || '';
+}
+
+function getCompetenciaLabel(competencia) {
+    return competencia?.fuero || competencia?.name || competencia?.nombre || '';
+}
+
+function getDependenciaLabel(dependencia) {
+    return dependencia?.nombre_juzgado || dependencia?.nombre || dependencia?.title || '';
+}
+
+function normalizeProvidedOptions(fallbackOptions, providedOptions) {
+    if (!Array.isArray(providedOptions)) return fallbackOptions;
+
+    const seen = new Set();
+
+    return providedOptions.reduce((items, option) => {
+        const value = option?.value != null ? String(option.value) : '';
+        const label = option?.label || '';
+        if (!value || !label || seen.has(value)) return items;
+        seen.add(value);
+        items.push({ value, label });
+        return items;
+    }, []);
+}
+
+function buildNoOptionsPlaceholder(emptyMessage) {
+    return (
+        <div className="px-2 py-2 text-sm text-(--text-secondary)">
+            {emptyMessage || 'No hay opciones disponibles.'}
+        </div>
+    );
+}
+
 /** show: objeto con flags booleanos que controlan qué selectores renderizar. Default: todos visibles. */
-export function CaseSubEntitiesSearch({ values, onChange, onFocus, onBlur, show = { caseType: true, radicacion: true, jurisdiccion: true, competencia: true, dependencia: true } }) {
+export function CaseSubEntitiesSearch({
+    values,
+    onChange,
+    onFocus,
+    onBlur,
+    show = DEFAULT_SHOW,
+    options = EMPTY_OPTIONS,
+    emptyMessages = EMPTY_MESSAGES,
+}) {
     const { data: caseTypes = [], initialized: caseTypesInitialized } = useCaseTypes();
     const { data: radicaciones = [], initialized: radicacionesInitialized } = useRadicaciones();
     const { data: jurisdicciones = [], initialized: jurisdiccionesInitialized } = useJurisdicciones();
@@ -17,112 +83,102 @@ export function CaseSubEntitiesSearch({ values, onChange, onFocus, onBlur, show 
 
     const caseTypeOptions = useMemo(() => {
         if (!caseTypesInitialized || !Array.isArray(caseTypes)) return [];
-        return caseTypes.map((ct) => ({ value: ct.id, label: ct.name }));
+        return caseTypes
+            .map((caseType) => toOption(caseType.id, getCaseTypeLabel(caseType)))
+            .filter(Boolean);
     }, [caseTypes, caseTypesInitialized]);
 
     const radicacionOptions = useMemo(() => {
         if (!radicacionesInitialized || !Array.isArray(radicaciones)) return [];
-        return radicaciones.map((r) => ({ value: r.id, label: r.name }));
+        return radicaciones
+            .map((radicacion) => toOption(radicacion.id, getRadicacionLabel(radicacion)))
+            .filter(Boolean);
     }, [radicaciones, radicacionesInitialized]);
 
     const jurisdiccionOptions = useMemo(() => {
         if (!jurisdiccionesInitialized || !Array.isArray(jurisdicciones)) return [];
-        return jurisdicciones.map((j) => ({ value: j.id, label: j.nombre }));
+        return jurisdicciones
+            .map((jurisdiccion) => toOption(jurisdiccion.id, getJurisdiccionLabel(jurisdiccion)))
+            .filter(Boolean);
     }, [jurisdicciones, jurisdiccionesInitialized]);
 
     const competenciaOptions = useMemo(() => {
         if (!competenciasInitialized || !Array.isArray(competencias)) return [];
-        return competencias.map((c) => ({ value: c.id, label: c.fuero }));
+        return competencias
+            .map((competencia) => toOption(competencia.id, getCompetenciaLabel(competencia)))
+            .filter(Boolean);
     }, [competencias, competenciasInitialized]);
 
     const dependenciaOptions = useMemo(() => {
         if (!dependenciasInitialized || !Array.isArray(dependenciasJudiciales)) return [];
-        return dependenciasJudiciales.map((d) => ({ value: d.id, label: d.nombre_juzgado }));
+        return dependenciasJudiciales
+            .map((dependencia) => toOption(dependencia.id, getDependenciaLabel(dependencia)))
+            .filter(Boolean);
     }, [dependenciasJudiciales, dependenciasInitialized]);
 
+    const resolvedOptions = useMemo(() => ({
+        caseType: normalizeProvidedOptions(caseTypeOptions, options.caseType),
+        radicacion: normalizeProvidedOptions(radicacionOptions, options.radicacion),
+        jurisdiccion: normalizeProvidedOptions(jurisdiccionOptions, options.jurisdiccion),
+        competencia: normalizeProvidedOptions(competenciaOptions, options.competencia),
+        dependencia: normalizeProvidedOptions(dependenciaOptions, options.dependencia),
+    }), [
+        caseTypeOptions,
+        competenciaOptions,
+        dependenciaOptions,
+        jurisdiccionOptions,
+        options.caseType,
+        options.competencia,
+        options.dependencia,
+        options.jurisdiccion,
+        options.radicacion,
+        radicacionOptions,
+    ]);
+
+    const renderSelect = (field, label, placeholder, fieldOptions) => {
+        const hasOptions = fieldOptions.length > 0;
+        const emptyMessage = emptyMessages[field];
+
+        return (
+            <div>
+                <Label>{label}</Label>
+                <Select
+                    value={values[field] != null ? String(values[field]) : ''}
+                    onValueChange={(val) => {
+                        const selectedOption = fieldOptions.find((option) => option.value === val);
+                        onChange(field, val, selectedOption?.label);
+                    }}
+                    disabled={!hasOptions}
+                >
+                    <SelectTrigger onFocus={() => onFocus(field)} onBlur={onBlur}>
+                        <SelectValue placeholder={hasOptions ? placeholder : 'Sin opciones disponibles'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {hasOptions
+                            ? fieldOptions.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                    {option.label}
+                                </SelectItem>
+                            ))
+                            : buildNoOptionsPlaceholder(emptyMessage)}
+                    </SelectContent>
+                </Select>
+                {!hasOptions && emptyMessage && (
+                    <p className="mt-1 text-xs text-amber-700">
+                        {emptyMessage}
+                    </p>
+                )}
+            </div>
+        );
+    };
 
     return (
         <div className="space-y-4">
-            {show.caseType && (
-                <div>
-                    <Label>Fuero</Label>
-                    <Select value={values.caseType} onValueChange={(val) => {
-                        const opt = caseTypeOptions.find(o => o.value === val);
-                        onChange('caseType', val, opt?.label);
-                    }}>
-                        <SelectTrigger onFocus={() => onFocus('caseType')} onBlur={onBlur}>
-                            <SelectValue placeholder="Seleccionar fuero..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {caseTypeOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-            {show.radicacion && (
-                <div>
-                    <Label>Radicación</Label>
-                    <Select value={values.radicacion} onValueChange={(val) => {
-                        const opt = radicacionOptions.find(o => o.value === val);
-                        onChange('radicacion', val, opt?.label);
-                    }}>
-                        <SelectTrigger onFocus={() => onFocus('radicacion')} onBlur={onBlur}>
-                            <SelectValue placeholder="Seleccionar radicación..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {radicacionOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-            {show.jurisdiccion && (
-                <div>
-                    <Label>Jurisdicción</Label>
-                    <Select value={values.jurisdiccion} onValueChange={(val) => {
-                        const opt = jurisdiccionOptions.find(o => o.value === val);
-                        onChange('jurisdiccion', val, opt?.label);
-                    }}>
-                        <SelectTrigger onFocus={() => onFocus('jurisdiccion')} onBlur={onBlur}>
-                            <SelectValue placeholder="Seleccionar jurisdicción..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {jurisdiccionOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-            {show.competencia && (
-                <div>
-                    <Label>Competencia</Label>
-                    <Select value={values.competencia} onValueChange={(val) => {
-                        const opt = competenciaOptions.find(o => o.value === val);
-                        onChange('competencia', val, opt?.label);
-                    }}>
-                        <SelectTrigger onFocus={() => onFocus('competencia')} onBlur={onBlur}>
-                            <SelectValue placeholder="Seleccionar competencia..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {competenciaOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
-            {show.dependencia && (
-                <div>
-                    <Label>Juzgado (Dependencia)</Label>
-                    <Select value={values.dependencia} onValueChange={(val) => {
-                        const opt = dependenciaOptions.find(o => o.value === val);
-                        onChange('dependencia', val, opt?.label);
-                    }}>
-                        <SelectTrigger onFocus={() => onFocus('dependencia')} onBlur={onBlur}>
-                            <SelectValue placeholder="Seleccionar juzgado..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {dependenciaOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                </div>
-            )}
+            {show.caseType && renderSelect('caseType', 'Fuero', 'Seleccionar fuero...', resolvedOptions.caseType)}
+            {show.radicacion && renderSelect('radicacion', 'Radicación', 'Seleccionar radicación...', resolvedOptions.radicacion)}
+            {show.jurisdiccion && renderSelect('jurisdiccion', 'Jurisdicción', 'Seleccionar jurisdicción...', resolvedOptions.jurisdiccion)}
+            {show.competencia && renderSelect('competencia', 'Competencia', 'Seleccionar competencia...', resolvedOptions.competencia)}
+            {show.dependencia && renderSelect('dependencia', 'Juzgado (Dependencia)', 'Seleccionar juzgado...', resolvedOptions.dependencia)}
         </div>
     );
 }

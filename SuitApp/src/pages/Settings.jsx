@@ -1,6 +1,6 @@
 import { createElement, useState, useCallback, useEffect, useMemo } from 'react';
 import * as Select from '@radix-ui/react-select';
-import { Settings as SettingsIcon, Sun, Moon, Calendar, Briefcase, UserCircle, Camera, Save, ChevronDown, Check, Clock, LayoutGrid, Keyboard, LogOut, Library, FileText } from 'lucide-react';
+import { Settings as SettingsIcon, Sun, Moon, Calendar, Briefcase, UserCircle, Camera, Save, ChevronDown, Check, Clock, LayoutGrid, Keyboard, LogOut, Library, FileText, Minus, Plus } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useSettings } from '../context/SettingsContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,6 +14,7 @@ import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
 import { useProfileFormState } from '../hooks/useProfileFormState.js';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog.jsx';
 import { Button } from '../components/ui/Button.jsx';
+import { Input } from '../components/ui/Input.jsx';
 import NotificationConfigSection from '../components/Agenda/NotificationConfigSection.jsx';
 import { NOTIFICATION_MINUTES_LIMITS } from '../components/Agenda/notificationConfig.js';
 import { clampNotificationMinutes, fromMinutes, toMinutes } from '../utils/notificationTimeFormat.js';
@@ -26,6 +27,7 @@ import SectionsPanel from '../components/settings/SectionsPanel.jsx';
 import HotkeysSettingsPanel from '../components/settings/HotkeysSettingsPanel.jsx';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../components/ui/Tooltip.jsx';
 import TemplateCapitalizationPanel from '../components/settings/TemplateCapitalizationPanel.jsx';
+import { INTERFACE_SCALE_MAX, INTERFACE_SCALE_MIN, INTERFACE_SCALE_STEP, shiftInterfaceScale } from '../utils/interfaceScale.js';
 
 const CATEGORIES = [
     { id: 'perfil', label: 'Perfil', icon: UserCircle },
@@ -156,6 +158,83 @@ function buildNotificationUiState(minutes) {
     };
 }
 
+/**
+ * Editor de escala global de la interfaz con ingreso manual y pasos rápidos.
+ */
+const InterfaceScaleControl = () => {
+    const { interfaceScale, setInterfaceScale } = useSettings();
+    const [draftValue, setDraftValue] = useState(() => String(interfaceScale));
+
+    useEffect(() => {
+        setDraftValue(String(interfaceScale));
+    }, [interfaceScale]);
+
+    const commitDraft = useCallback((value) => {
+        if (!String(value).trim()) {
+            setDraftValue(String(interfaceScale));
+            return;
+        }
+
+        setInterfaceScale(value);
+    }, [interfaceScale, setInterfaceScale]);
+
+    const handleChange = useCallback((event) => {
+        const nextValue = event.target.value.replace(/\D/g, '').slice(0, 3);
+        setDraftValue(nextValue);
+    }, []);
+
+    const handleStep = useCallback((delta) => {
+        const nextScale = shiftInterfaceScale(interfaceScale, delta);
+        setInterfaceScale(nextScale);
+    }, [interfaceScale, setInterfaceScale]);
+
+    return (
+        <div className="inline-flex items-center rounded-lg border border-(--border-default) bg-(--bg-card) shadow-sm h-9 w-[130px]">
+            <button
+                type="button"
+                aria-label="Reducir escala de la interfaz"
+                onClick={() => handleStep(-INTERFACE_SCALE_STEP)}
+                disabled={interfaceScale <= INTERFACE_SCALE_MIN}
+                className="flex items-center justify-center flex-none w-9 h-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-card-hover) disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-l-lg"
+            >
+                <Minus className="h-4 w-4" />
+            </button>
+            <div className="relative flex items-center flex-1 h-full border-x border-(--border-default) bg-(--bg-input)">
+                <input
+                    id="settings-interface-scale-input"
+                    type="text"
+                    inputMode="numeric"
+                    value={draftValue}
+                    onChange={handleChange}
+                    onBlur={() => commitDraft(draftValue)}
+                    onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                            commitDraft(draftValue);
+                            event.currentTarget.blur();
+                        }
+                        if (event.key === 'Escape') {
+                            setDraftValue(String(interfaceScale));
+                            event.currentTarget.blur();
+                        }
+                    }}
+                    className="w-full h-full border-0 bg-transparent p-0 pb-[1px] text-center text-sm font-medium text-(--text-primary) outline-none focus:ring-2 focus:ring-inset focus:ring-blue-500 pr-3"
+                    aria-label="Escala de la interfaz"
+                />
+                <span className="absolute right-2 top-[50%] -translate-y-[50%] text-[11px] font-semibold text-(--text-secondary) pointer-events-none select-none">%</span>
+            </div>
+            <button
+                type="button"
+                aria-label="Aumentar escala de la interfaz"
+                onClick={() => handleStep(INTERFACE_SCALE_STEP)}
+                disabled={interfaceScale >= INTERFACE_SCALE_MAX}
+                className="flex items-center justify-center flex-none w-9 h-full text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-card-hover) disabled:opacity-40 disabled:cursor-not-allowed transition-colors rounded-r-lg"
+            >
+                <Plus className="h-4 w-4" />
+            </button>
+        </div>
+    );
+};
+
 const GeneralSection = () => {
     const { isDark, toggleTheme } = useTheme();
     const {
@@ -183,6 +262,12 @@ const GeneralSection = () => {
                     <Toggle id="toggle-dark-mode" checked={isDark} onChange={() => toggleTheme()} />
                     <Moon className="h-4 w-4 text-(--text-secondary)" />
                 </div>
+            </SettingRow>
+            <SettingRow
+                label="Escala de la interfaz"
+                description="Ajusta el tamaño general de la app."
+            >
+                <InterfaceScaleControl />
             </SettingRow>
             <SettingRow
                 label="Comportamiento del sidebar"
@@ -653,12 +738,12 @@ const ProfileSection = () => {
 
 /** Color labels and their setting keys */
 const DEADLINE_COLOR_LABELS = [
-    { key: 'pendingNormal',   label: 'Pendiente Normal',   defaultColor: null,      description: 'Sin tinte (fondo del tema)' },
-    { key: 'pendingUrgent',   label: 'Pendiente Urgente',  defaultColor: '#f97316', description: 'Naranja' },
-    { key: 'completed',       label: 'Cumplido',           defaultColor: '#9ca3af', description: 'Gris' },
-    { key: 'postponedNormal', label: 'Prorrogado Normal',  defaultColor: '#3b82f6', description: 'Azul' },
+    { key: 'pendingNormal', label: 'Pendiente Normal', defaultColor: null, description: 'Sin tinte (fondo del tema)' },
+    { key: 'pendingUrgent', label: 'Pendiente Urgente', defaultColor: '#f97316', description: 'Naranja' },
+    { key: 'completed', label: 'Cumplido', defaultColor: '#9ca3af', description: 'Gris' },
+    { key: 'postponedNormal', label: 'Prorrogado Normal', defaultColor: '#3b82f6', description: 'Azul' },
     { key: 'postponedUrgent', label: 'Prorrogado Urgente', defaultColor: '#f97316', description: 'Naranja' },
-    { key: 'overdue',         label: 'Vencido',            defaultColor: '#ef4444', description: 'Rojo' },
+    { key: 'overdue', label: 'Vencido', defaultColor: '#ef4444', description: 'Rojo' },
 ];
 
 const VencimientosSection = () => {
@@ -735,7 +820,7 @@ const VencimientosSection = () => {
         </div>
     );
 };
- 
+
 const BibliotecaSection = () => {
     const {
         libraryNewBadgeEnabled,

@@ -257,7 +257,7 @@ const AdminBitacoraTab = ({ openDialog, closeDialog, setDialogLoading }) => {
                         <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-cyan-500/10 blur-3xl" />
                     </div>
                     <div className="relative flex flex-col gap-5 p-6 lg:flex-row lg:items-start lg:justify-between">
-                        <div className="max-w-2xl">
+                        <div>
                             <div className="inline-flex items-center gap-2 rounded-full border border-sky-500/20 bg-sky-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-300">
                                 <BookOpen className="h-3.5 w-3.5" />
                                 Libro de movimientos
@@ -340,9 +340,9 @@ const AdminBitacoraTab = ({ openDialog, closeDialog, setDialogLoading }) => {
                         </div>
 
                         {error ? (
-                            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
-                                <p className="text-sm font-medium text-red-700">No se pudo cargar la bitácora.</p>
-                                <p className="mt-1 text-sm text-red-700/90 dark:text-red-300">{error}</p>
+                            <div className="rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3 shadow-sm dark:bg-red-500/10">
+                                <p className="text-sm font-medium text-red-700 dark:text-red-400">No se pudo cargar la bitácora.</p>
+                                <p className="mt-1 text-sm text-red-600 dark:text-red-300/80">{error}</p>
                             </div>
                         ) : null}
 
@@ -409,7 +409,7 @@ const AdminBitacoraTab = ({ openDialog, closeDialog, setDialogLoading }) => {
                     <aside className="space-y-4">
                         <div className="rounded-2xl border border-(--border-default) bg-(--bg-card) p-5 shadow-sm">
                             <div className="flex items-center gap-2">
-                                <Clock3 className="h-5 w-5 text-amber-500" />
+                                <Clock3 className="h-5 w-5 text-amber-500 dark:text-amber-400" />
                                 <h3 className="text-lg font-semibold text-(--text-primary)">Mantenimiento</h3>
                             </div>
                             <p className="mt-2 text-sm text-(--text-secondary)">
@@ -435,8 +435,8 @@ const AdminBitacoraTab = ({ openDialog, closeDialog, setDialogLoading }) => {
                         </div>
 
                         <div className="rounded-2xl border border-red-500/20 bg-red-500/5 p-5 shadow-sm">
-                            <div className="flex items-center gap-2">
-                                <Trash2 className="h-5 w-5 text-red-500" />
+                            <div className="flex items-center gap-2 text-red-500 dark:text-red-400">
+                                <Trash2 className="h-5 w-5" />
                                 <h3 className="text-lg font-semibold text-(--text-primary)">Limpieza total</h3>
                             </div>
                             <p className="mt-2 text-sm text-(--text-secondary)">

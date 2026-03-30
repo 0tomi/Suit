@@ -34,6 +34,7 @@ export const REQUISITO_TYPE_LABELS = {
     caseEndDate:          'Fecha de cierre',
     // Sub-entidades del caso
     caseType:             'Tipo de causa',
+    caseExpedientType:    'Tipo de expediente',
     radicacion:           'Radicación',
     jurisdiccion:         'Jurisdicción',
     competencia:          'Competencia',
@@ -106,7 +107,7 @@ export const REQUISITO_CATEGORIES = [
         label: 'Caso',
         types: [
             'caseTitle', 'caseNumber', 'caseStartDate', 'caseEndDate',
-            'caseType', 'radicacion', 'jurisdiccion', 'competencia', 'dependencia',
+            'caseType', 'caseExpedientType', 'radicacion', 'jurisdiccion', 'competencia', 'dependencia',
         ],
     },
     {

@@ -29,4 +29,15 @@ export default defineConfig([
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
     },
   },
+  {
+    files: [
+      'src/constants/**/*.jsx',
+      'src/context/**/*.jsx',
+      'src/components/TabBar/TabContent.jsx',
+      'src/components/ui/ContextMenu.jsx',
+    ],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

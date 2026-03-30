@@ -1,13 +1,15 @@
-import { Plus, Upload, Loader2, HelpCircle } from 'lucide-react';
+import { Plus, Upload, Loader2, RefreshCw } from 'lucide-react';
 import { PrimaryActionButton } from '../ui/PrimaryActionButton';
 import { SectionTutorialTrigger } from '../ui/SectionTutorialTrigger.jsx';
 import { bibliotecaSteps } from '../../constants/tutorialSteps.js';
+import { Button } from '../ui/Button.jsx';
 
 export const BibliotecaHeader = ({
     isRefreshing,
     canCreateCatalog,
     onOpenCatalogModal,
     onOpenUploadModal,
+    onRefresh,
 }) => (
     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -32,6 +34,15 @@ export const BibliotecaHeader = ({
             </p>
         </div>
         <div className="flex gap-2">
+            <Button
+                variant="outline"
+                icon={RefreshCw}
+                onClick={() => void onRefresh?.()}
+                isLoading={isRefreshing}
+                className="min-w-fit whitespace-nowrap"
+            >
+                Refrescar
+            </Button>
             {canCreateCatalog && (
                 <PrimaryActionButton
                     onClick={onOpenCatalogModal}

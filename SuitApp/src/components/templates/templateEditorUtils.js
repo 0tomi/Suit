@@ -121,17 +121,295 @@ function buildPreviewBubbleStyle(extraStyles = []) {
     ].join(';');
 }
 
-const PREVIEW_BUBBLE = (() => {
-    const style = buildPreviewBubbleStyle([
-        'background:#f3f4f6',
-        'border:1px solid #d1d5db',
-        'color:#6b7280',
+const PREVIEW_ALLOWED_TAGS = new Set([
+    'p', 'div', 'br',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+    'strong', 'b', 'em', 'i', 'u',
+    'ul', 'ol', 'li',
+    'table', 'thead', 'tbody', 'tr', 'td', 'th',
+    'span',
+    'blockquote',
+    'pre',
+]);
+
+const PREVIEW_REMOVED_TAGS = new Set([
+    'img', 'iframe', 'video', 'audio', 'canvas', 'svg', 'style', 'script',
+]);
+
+const PREVIEW_TEXT_NODES = { element: 1, text: 3 };
+
+/** Construye la burbuja neutra usada en la galería de plantillas. */
+function buildNeutralPreviewBubble(previewDocument) {
+    const bubble = previewDocument.createElement('span');
+    bubble.setAttribute('style', buildPreviewBubbleStyle([
+        'background:var(--bg-input)',
+        'border:1px solid var(--border-subtle)',
+        'color:var(--text-secondary)',
         'font-size:0.75rem',
         'font-weight:500',
         'margin:0 2px',
-    ]);
-    return `<span style="${style}">Requisito</span>`;
-})();
+    ]));
+    bubble.textContent = 'Requisito';
+    return bubble;
+}
+
+function createPreviewDocument() {
+    return document.implementation.createHTMLDocument('template-preview');
+}
+
+/** Parsea el HTML original a un documento aislado para poder recorrerlo con DOM. */
+function parsePreviewSourceHtml(content) {
+    return new DOMParser().parseFromString(content, 'text/html');
+}
+
+/** Convierte el atributo style en un mapa simple para filtrar solo reglas útiles de lectura. */
+function parseInlineStyles(styleText = '') {
+    return styleText
+        .split(';')
+        .map((declaration) => declaration.trim())
+        .filter(Boolean)
+        .reduce((styles, declaration) => {
+            const colonIndex = declaration.indexOf(':');
+            if (colonIndex === -1) return styles;
+
+            const property = declaration.slice(0, colonIndex).trim().toLowerCase();
+            const value = declaration.slice(colonIndex + 1).trim();
+            if (!property || !value) return styles;
+
+            styles[property] = value;
+            return styles;
+        }, {});
+}
+
+function normalizePreviewFontSize(value) {
+    const match = value.match(/^(\d+(?:\.\d+)?)(px|pt|rem|em)$/i);
+    if (!match) return null;
+
+    const numericValue = Number(match[1]);
+    const unit = match[2].toLowerCase();
+    if (!Number.isFinite(numericValue)) return null;
+
+    if (unit === 'px') {
+        const clamped = Math.min(36, Math.max(11, numericValue));
+        return `${clamped}px`;
+    }
+
+    if (unit === 'pt') {
+        const clamped = Math.min(27, Math.max(8, numericValue));
+        return `${clamped}pt`;
+    }
+
+    if (unit === 'rem' || unit === 'em') {
+        const clamped = Math.min(2.25, Math.max(0.7, numericValue));
+        return `${clamped}${unit}`;
+    }
+
+    return null;
+}
+
+/** Mantiene line-heights razonables para la preview y descarta valores extravagantes de Word. */
+function normalizePreviewLineHeight(value) {
+    const numericMatch = value.match(/^(\d+(?:\.\d+)?)$/);
+    if (numericMatch) {
+        const clamped = Math.min(2.4, Math.max(1.1, Number(numericMatch[1])));
+        return String(clamped);
+    }
+
+    const sizedMatch = value.match(/^(\d+(?:\.\d+)?)(px|rem|em)$/i);
+    if (!sizedMatch) return null;
+
+    const numericValue = Number(sizedMatch[1]);
+    const unit = sizedMatch[2].toLowerCase();
+    if (!Number.isFinite(numericValue)) return null;
+
+    if (unit === 'px') {
+        const clamped = Math.min(40, Math.max(12, numericValue));
+        return `${clamped}px`;
+    }
+
+    const clamped = Math.min(2.5, Math.max(0.9, numericValue));
+    return `${clamped}${unit}`;
+}
+
+/** Solo se respetan alineaciones textuales compatibles con la preview de lectura. */
+function normalizePreviewTextAlign(value) {
+    if (!['left', 'right', 'center', 'justify'].includes(value)) return null;
+    return value;
+}
+
+/** Define el espaciado base por etiqueta para que la preview conserve estructura visual. */
+function getPreviewDefaultStyles(tagName) {
+    switch (tagName) {
+    case 'div':
+    case 'p':
+        return ['margin:0 0 1rem 0'];
+    case 'h1':
+        return ['margin:0 0 1rem 0', 'font-size:1.75rem', 'font-weight:700', 'line-height:1.3'];
+    case 'h2':
+        return ['margin:0 0 0.9rem 0', 'font-size:1.5rem', 'font-weight:700', 'line-height:1.35'];
+    case 'h3':
+        return ['margin:0 0 0.85rem 0', 'font-size:1.3rem', 'font-weight:700', 'line-height:1.4'];
+    case 'h4':
+        return ['margin:0 0 0.8rem 0', 'font-size:1.15rem', 'font-weight:700', 'line-height:1.45'];
+    case 'h5':
+    case 'h6':
+        return ['margin:0 0 0.75rem 0', 'font-size:1rem', 'font-weight:700', 'line-height:1.45'];
+    case 'ul':
+    case 'ol':
+        return ['margin:0 0 1rem 0', 'padding-left:1.5rem'];
+    case 'li':
+        return ['margin:0 0 0.35rem 0'];
+    case 'table':
+        return ['margin:0 0 1rem 0', 'width:100%', 'border-collapse:collapse', 'table-layout:fixed'];
+    case 'th':
+        return [
+            'border:1px solid var(--border-subtle)',
+            'padding:0.5rem 0.65rem',
+            'vertical-align:top',
+            'text-align:left',
+            'font-weight:600',
+        ];
+    case 'td':
+        return [
+            'border:1px solid var(--border-subtle)',
+            'padding:0.5rem 0.65rem',
+            'vertical-align:top',
+        ];
+    case 'blockquote':
+        return [
+            'margin:0 0 1rem 0',
+            'padding-left:1rem',
+            'border-left:3px solid var(--border-subtle)',
+            'color:var(--text-secondary)',
+        ];
+    case 'pre':
+        return [
+            'margin:0 0 1rem 0',
+            'white-space:pre-wrap',
+            'word-break:break-word',
+            'font-family:inherit',
+        ];
+    default:
+        return [];
+    }
+}
+
+/** Mezcla estilos base con una whitelist mínima de tipografía proveniente del HTML fuente. */
+function getPreviewNormalizedStyles(element, tagName) {
+    const inlineStyles = parseInlineStyles(element.getAttribute('style') || '');
+    const styles = [...getPreviewDefaultStyles(tagName)];
+
+    const normalizedFontSize = inlineStyles['font-size']
+        ? normalizePreviewFontSize(inlineStyles['font-size'])
+        : null;
+    if (normalizedFontSize) styles.push(`font-size:${normalizedFontSize}`);
+
+    const normalizedLineHeight = inlineStyles['line-height']
+        ? normalizePreviewLineHeight(inlineStyles['line-height'])
+        : null;
+    if (normalizedLineHeight) styles.push(`line-height:${normalizedLineHeight}`);
+
+    const fontWeight = inlineStyles['font-weight'];
+    if (fontWeight && /^(normal|bold|[1-9]00)$/i.test(fontWeight)) {
+        styles.push(`font-weight:${fontWeight}`);
+    }
+
+    const fontStyle = inlineStyles['font-style'];
+    if (fontStyle && /^(normal|italic|oblique)$/i.test(fontStyle)) {
+        styles.push(`font-style:${fontStyle}`);
+    }
+
+    const textDecoration = inlineStyles['text-decoration'];
+    if (textDecoration && /^(none|underline|line-through|underline line-through|line-through underline)$/i.test(textDecoration)) {
+        styles.push(`text-decoration:${textDecoration}`);
+    }
+
+    const textAlign = normalizePreviewTextAlign(inlineStyles['text-align'] || element.getAttribute('align') || '');
+    if (textAlign) styles.push(`text-align:${textAlign}`);
+
+    return styles.join(';');
+}
+
+/** Reemplaza placeholders dentro de nodos de texto sin destruir la estructura del HTML. */
+function buildPreviewTextNodes(text, previewDocument, renderPlaceholder) {
+    const fragment = previewDocument.createDocumentFragment();
+    const parts = text.split(/(#\d+#)/g);
+
+    parts.forEach((part) => {
+        const match = part.match(/^#(\d+)#$/);
+        if (match) {
+            fragment.append(renderPlaceholder(match[1], previewDocument));
+            return;
+        }
+
+        if (part) {
+            fragment.append(previewDocument.createTextNode(part));
+        }
+    });
+
+    return fragment;
+}
+
+/** Normaliza un nodo del HTML fuente y elimina elementos no textuales o inseguros. */
+function normalizePreviewNode(node, previewDocument, renderPlaceholder) {
+    if (node.nodeType === PREVIEW_TEXT_NODES.text) {
+        return buildPreviewTextNodes(node.textContent || '', previewDocument, renderPlaceholder);
+    }
+
+    if (node.nodeType !== PREVIEW_TEXT_NODES.element) return null;
+
+    const tagName = node.tagName.toLowerCase();
+    if (PREVIEW_REMOVED_TAGS.has(tagName)) return null;
+
+    if (!PREVIEW_ALLOWED_TAGS.has(tagName)) {
+        const fragment = previewDocument.createDocumentFragment();
+        node.childNodes.forEach((childNode) => {
+            const normalizedChild = normalizePreviewNode(childNode, previewDocument, renderPlaceholder);
+            if (normalizedChild) fragment.append(normalizedChild);
+        });
+        return fragment;
+    }
+
+    const normalizedNode = previewDocument.createElement(tagName);
+    const normalizedStyles = getPreviewNormalizedStyles(node, tagName);
+    if (normalizedStyles) {
+        normalizedNode.setAttribute('style', normalizedStyles);
+    }
+
+    node.childNodes.forEach((childNode) => {
+        const normalizedChild = normalizePreviewNode(childNode, previewDocument, renderPlaceholder);
+        if (normalizedChild) normalizedNode.append(normalizedChild);
+    });
+
+    return normalizedNode;
+}
+
+/** Genera una preview HTML controlada que preserva estructura textual y placeholders dinámicos. */
+function buildNormalizedPreviewHtml(content, renderPlaceholder) {
+    if (!content) return '';
+
+    const parsedDocument = parsePreviewSourceHtml(content);
+    const previewDocument = createPreviewDocument();
+    const root = previewDocument.createElement('div');
+    root.setAttribute(
+        'style',
+        [
+            'color:var(--text-primary)',
+            'font-family:inherit',
+            'font-size:0.95rem',
+            'line-height:1.7',
+            'word-break:break-word',
+            'overflow-wrap:anywhere',
+        ].join(';')
+    );
+
+    parsedDocument.body.childNodes.forEach((node) => {
+        const normalizedNode = normalizePreviewNode(node, previewDocument, renderPlaceholder);
+        if (normalizedNode) root.append(normalizedNode);
+    });
+
+    return root.outerHTML;
+}
 
 /**
  * Genera el HTML de vista previa de una plantilla en modo "texto plano".
@@ -146,41 +424,7 @@ const PREVIEW_BUBBLE = (() => {
  * @returns {string} HTML listo para renderizar en vista previa
  */
 export function buildPreviewHtml(content) {
-    if (!content) return '';
-
-    // 1. Normalizar bloques como párrafos → añadir salto de línea tras el cierre
-    const withBreaks = content
-        .replace(/<\/(p|h[1-6]|li|div|tr)>/gi, '</$1>\n')
-        .replace(/<br\s*\/?>/gi, '\n');
-
-    // 2. Extraer solo el texto (quitar todas las etiquetas HTML)
-    const plainText = withBreaks.replace(/<[^>]+>/g, '');
-
-    // 3. Decodificar entidades HTML básicas
-    const decoded = plainText
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#039;/g, "'")
-        .replace(/&nbsp;/g, ' ');
-
-    // 4. Reemplazar #n# por burbujas; escapar el resto para evitar XSS
-    const parts = decoded.split(/(#\d+#)/g);
-    const rendered = parts.map((part) =>
-        /^#\d+#$/.test(part) ? PREVIEW_BUBBLE : escapeHtmlPreview(part)
-    ).join('');
-
-    // 5. Envolver en un <pre> con word-wrap para respetar los saltos de línea
-    return `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;margin:0;">${rendered}</pre>`;
-}
-
-/** Escapa caracteres HTML en texto plano para evitar XSS. */
-function escapeHtmlPreview(text) {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
+    return buildNormalizedPreviewHtml(content, (_, previewDocument) => buildNeutralPreviewBubble(previewDocument));
 }
 
 /**
@@ -191,7 +435,7 @@ function getReqFamily(type) {
     if (type.startsWith('client')) return 'client';
     if (type.startsWith('user')) return 'user';
     if (['caseTitle','caseNumber','caseStartDate','caseEndDate'].includes(type)) return 'case';
-    if (['caseType','radicacion','jurisdiccion','competencia','dependencia'].includes(type)) return 'caseSubEntities';
+    if (['caseType','caseExpedientType','radicacion','jurisdiccion','competencia','dependencia'].includes(type)) return 'caseSubEntities';
     if (type.startsWith('parte')) return 'parte';
     if (type.startsWith('event')) return 'event';
     if (['anioNombrado','mesNombrado','diaNombrado','anioNumero','mesNumero','diaNumero','fechaConMesNombrado'].includes(type)) return 'dateParts';
@@ -221,26 +465,7 @@ export function buildEnhancedPreviewHtml(content, requirements = [], values = {}
     // 1. Mapa de id_campo (#n#) a metadata del requisito
     const reqMap = new Map(requirements.map(r => [String(r.id_campo), r]));
 
-    // 2. Normalizar bloques y extraer texto (igual que buildPreviewHtml)
-    const withBreaks = content
-        .replace(/<\/(p|h[1-6]|li|div|tr)>/gi, '</$1>\n')
-        .replace(/<br\s*\/?>/gi, '\n');
-    const plainText = withBreaks.replace(/<[^>]+>/g, '');
-    const decoded = plainText
-        .replace(/&amp;/g, '&')
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&quot;/g, '"')
-        .replace(/&#039;/g, "'")
-        .replace(/&nbsp;/g, ' ');
-
-    // 3. Procesar por partes
-    const parts = decoded.split(/(#\d+#)/g);
-    const rendered = parts.map((part) => {
-        const match = part.match(/^#(\d+)#$/);
-        if (!match) return escapeHtmlPreview(part);
-
-        const fieldId = match[1];
+    return buildNormalizedPreviewHtml(content, (fieldId, previewDocument) => {
         const req = reqMap.get(fieldId);
 
         // Valores indexados por id_campo (string)
@@ -265,12 +490,12 @@ export function buildEnhancedPreviewHtml(content, requirements = [], values = {}
             extraStyles = 'box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4); z-index: 10;';
         } else if (hasValue) {
             bgColor = 'rgba(219, 234, 254, 0.5)';
-            textColor = '#1e293b';
+            textColor = 'var(--text-primary)';
 
             if (req) {
                 if (req.type.startsWith('client'))                                          borderColor = 'rgba(37, 99, 235, 0.4)';
                 else if (req.type.startsWith('user'))                                       borderColor = 'rgba(147, 51, 234, 0.4)';
-                else if (req.type.startsWith('case') || ['caseType','radicacion','jurisdiccion','competencia','dependencia'].includes(req.type))
+                else if (req.type.startsWith('case') || ['caseType','caseExpedientType','radicacion','jurisdiccion','competencia','dependencia'].includes(req.type))
                                                                                             borderColor = 'rgba(234, 88, 12, 0.4)';
                 else if (req.type.startsWith('parte'))                                      borderColor = 'rgba(219, 39, 119, 0.4)';
                 else if (req.type.startsWith('event'))                                      borderColor = 'rgba(8, 145, 178, 0.4)';
@@ -293,7 +518,8 @@ export function buildEnhancedPreviewHtml(content, requirements = [], values = {}
             ? value
             : (labelOverrides[fieldId] || (req ? getRequisitoLabel(req.type) : 'Requisito'));
 
-        const style = buildPreviewBubbleStyle([
+        const bubble = previewDocument.createElement('span');
+        bubble.setAttribute('style', buildPreviewBubbleStyle([
             'background:' + bgColor,
             'border:1px solid ' + borderColor,
             'color:' + textColor,
@@ -302,12 +528,10 @@ export function buildEnhancedPreviewHtml(content, requirements = [], values = {}
             'margin:2px 4px',
             'transition:all 0.2s ease',
             extraStyles,
-        ]);
-
-        return `<span style="${style}">${label}</span>`;
-    }).join('');
-
-    return `<pre style="white-space:pre-wrap;word-break:break-word;font-family:inherit;margin:0;line-height:1.8;">${rendered}</pre>`;
+        ]));
+        bubble.textContent = label;
+        return bubble;
+    });
 }
 
 /**

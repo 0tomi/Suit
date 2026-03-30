@@ -54,16 +54,16 @@ export default function TemplatePreviewModal({
                     </div>
                 ) : hasContent ? (
                     <div className="space-y-3">
-                        {/* Aviso de previsualización simplificada */}
+                        {/* Aviso sobre el alcance visual de la preview */}
                         <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-700/50 dark:bg-amber-900/20 px-3 py-2.5">
                             <Info size={14} className="shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
                             <p className="text-xs text-amber-700 dark:text-amber-300">
-                                Vista previa simplificada — el formato exacto se aplica al abrir la plantilla en el editor.
+                                Vista previa de lectura: conserva la estructura y la tipografía básica del documento.
                                 Las burbujas grises indican los campos que se completarán con datos del caso.
                             </p>
                         </div>
 
-                        {/* Contenido en texto plano con burbujas de requisito */}
+                        {/* Contenido normalizado de solo lectura con burbujas de requisito */}
                         <div className="overflow-auto rounded-xl bg-(--bg-card-hover) p-4">
                             <div
                                 className="text-sm text-(--text-primary) leading-relaxed"

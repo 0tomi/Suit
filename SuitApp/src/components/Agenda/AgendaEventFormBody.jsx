@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { AlignLeft, Briefcase, Calendar as CalendarIcon, Clock, Loader2, Tag } from 'lucide-react';
 import NotificationConfigSection from './NotificationConfigSection.jsx';
 import { getPersonalAgendaLabel } from '../../utils/agenda/personalAgendaLabel.js';
@@ -24,6 +24,8 @@ const AgendaEventFormBody = ({
 }) => {
     const formId = useId();
     const titleInputRef = useRef(null);
+    const [titleTouched, setTitleTouched] = useState(false);
+    const [skipDescription, setSkipDescription] = useState(false);
     const usersById = useMemo(
         () => new Map((users || []).map((entry) => [String(entry.id), entry])),
         [users],
@@ -36,16 +38,26 @@ const AgendaEventFormBody = ({
     return (
         <div className="p-6 space-y-4">
             <div>
-                <label htmlFor={`${formId}-title`} className="block text-sm font-medium text-(--text-secondary) mb-1">Título</label>
+                <label htmlFor={`${formId}-title`} className="block text-sm font-medium text-(--text-secondary) mb-1">
+                    Título <span className="text-red-500">*</span>
+                </label>
                 <input
                     id={`${formId}-title`}
                     ref={titleInputRef}
                     type="text"
-                    className="w-full px-3 py-2 border border-(--border-default) rounded-lg bg-(--bg-input) text-(--text-primary) focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+                    className={`w-full px-3 py-2 border rounded-lg bg-(--bg-input) text-(--text-primary) focus:ring-2 outline-none transition-all ${
+                        titleTouched && !formData.title
+                            ? 'border-red-500 focus:ring-red-500 focus:border-red-500'
+                            : 'border-(--border-default) focus:ring-blue-500 focus:border-blue-500'
+                    }`}
                     placeholder="Ej: Audiencia..."
                     value={formData.title}
                     onChange={e => setFormData({ ...formData, title: e.target.value })}
+                    onBlur={() => setTitleTouched(true)}
                 />
+                {titleTouched && !formData.title && (
+                    <p className="mt-1 text-xs text-red-500">El título es obligatorio</p>
+                )}
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -79,12 +91,30 @@ const AgendaEventFormBody = ({
             </div>
 
             <div>
-                <label htmlFor={`${formId}-description`} className="block text-sm font-medium text-(--text-secondary) mb-1 flex items-center gap-1">
-                    <AlignLeft size={14} /> Descripción
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                    <label htmlFor={`${formId}-description`} className="block text-sm font-medium text-(--text-secondary) flex items-center gap-1">
+                        <AlignLeft size={14} /> Descripción
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-(--text-secondary)">
+                        <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={skipDescription}
+                            onChange={(e) => {
+                                const shouldSkip = e.target.checked;
+                                setSkipDescription(shouldSkip);
+                                if (shouldSkip) {
+                                    setFormData({ ...formData, description: '' });
+                                }
+                            }}
+                        />
+                        No incluir
+                    </label>
+                </div>
                 <textarea
                     id={`${formId}-description`}
-                    className="w-full px-3 py-2 border border-(--border-default) rounded-lg bg-(--bg-input) text-(--text-primary) focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24"
+                    disabled={skipDescription}
+                    className={`w-full px-3 py-2 border border-(--border-default) rounded-lg bg-(--bg-input) text-(--text-primary) focus:ring-2 focus:ring-blue-500 outline-none resize-none h-24 transition-colors ${skipDescription ? 'opacity-40 cursor-not-allowed' : ''}`}
                     placeholder="Detalles del evento..."
                     value={formData.description}
                     onChange={e => setFormData({ ...formData, description: e.target.value })}

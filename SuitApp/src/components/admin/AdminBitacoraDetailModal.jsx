@@ -18,6 +18,95 @@ function formatDate(value) {
     return dateFormatter.format(parsed);
 }
 
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}(T[\d:.]+Z?)?$/;
+
+function looksLikeDate(value) {
+    return typeof value === 'string' && ISO_DATE_RE.test(value.trim());
+}
+
+const FIELD_LABELS = {
+    // Fechas
+    created_at: 'Fecha de creación',
+    updated_at: 'Fecha de actualización',
+    deleted_at: 'Fecha de eliminación',
+    date: 'Fecha',
+    start_date: 'Fecha de inicio',
+    end_date: 'Fecha de fin',
+    due_date: 'Fecha de vencimiento',
+    starts_at: 'Inicio',
+    ends_at: 'Fin',
+    // Generales
+    id: 'ID',
+    name: 'Nombre',
+    title: 'Título',
+    description: 'Descripción',
+    status: 'Estado',
+    type: 'Tipo',
+    notes: 'Notas',
+    reason: 'Motivo',
+    active: 'Activo',
+    number: 'Número',
+    content: 'Contenido',
+    version: 'Versión',
+    locked: 'Bloqueado',
+    tags: 'Etiquetas',
+    amount: 'Monto',
+    observations: 'Observaciones',
+    // IDs de relaciones
+    user_id: 'ID del usuario',
+    client_id: 'ID del cliente',
+    lawyer_id: 'ID del abogado',
+    case_id: 'ID del caso',
+    suit_case_id: 'ID del expediente',
+    document_id: 'ID del documento',
+    honorario_id: 'ID del honorario',
+    tax_id: 'ID del gasto',
+    fee_id: 'ID del honorario',
+    delivery_id: 'ID de la entrega',
+    radicacion_id: 'ID de la radicación',
+    jurisdiction_id: 'ID de la jurisdicción',
+    competency_id: 'ID de la competencia',
+    role_id: 'ID del rol',
+    agenda_id: 'ID de la agenda',
+    event_id: 'ID del evento',
+    // Entidades relacionadas (objetos anidados)
+    honorario: 'Honorario',
+    suit_case: 'Expediente',
+    client: 'Cliente',
+    lawyer: 'Abogado',
+    user: 'Usuario',
+    document: 'Documento',
+    agenda: 'Agenda',
+    event: 'Evento',
+    role: 'Rol',
+    jurisdiction: 'Jurisdicción',
+    competency: 'Competencia',
+    // Campos específicos
+    monto: 'Monto',
+    detalles: 'Detalles',
+    pagado: 'Pagado',
+    email: 'Email',
+    phone: 'Teléfono',
+    phone_number: 'Teléfono',
+    mobile: 'Móvil',
+    address: 'Dirección',
+    first_name: 'Nombre',
+    last_name: 'Apellido',
+    file_path: 'Ruta del archivo',
+    size: 'Tamaño',
+    mime_type: 'Tipo de archivo',
+    city: 'Ciudad',
+    province: 'Provincia',
+    country: 'País',
+    zip: 'Código postal',
+    dni: 'DNI',
+    cuit: 'CUIT',
+    website: 'Sitio web',
+    summary: 'Resumen',
+    color: 'Color',
+    location: 'Lugar',
+};
+
 function getActionBadgeVariant(action) {
     switch (action) {
         case 'created':
@@ -42,24 +131,30 @@ function getActionBadgeVariant(action) {
 }
 
 function prettifyKey(key) {
-    return String(key || '')
+    const normalized = String(key || '').trim();
+    if (FIELD_LABELS[normalized]) return FIELD_LABELS[normalized];
+    return normalized
         .replaceAll('_', ' ')
         .replace(/\s+/g, ' ')
         .trim()
         .replace(/^./, (chunk) => chunk.toUpperCase());
 }
 
-function formatValue(value) {
-    if (value === null) return 'null';
-    if (value === undefined) return 'Sin dato';
+function formatScalarValue(value) {
+    if (value === null || value === undefined) return '—';
     if (typeof value === 'boolean') return value ? 'Sí' : 'No';
     if (typeof value === 'number' || typeof value === 'bigint') return String(value);
-    if (typeof value === 'string') return value.trim() || 'Sin dato';
-    return JSON.stringify(value, null, 2);
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return '—';
+        if (looksLikeDate(trimmed)) return formatDate(trimmed);
+        return trimmed;
+    }
+    return String(value);
 }
 
-function isComplexValue(value) {
-    return Array.isArray(value) || (value && typeof value === 'object');
+function isObjectValue(value) {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 function resolveActorName(entry) {
@@ -161,14 +256,35 @@ const AdminBitacoraDetailModal = ({ open, onClose, entry }) => {
                         ) : (
                             <div className="grid gap-3 md:grid-cols-2">
                                 {attributeEntries.map(([key, value]) => (
-                                    <div key={key} className="rounded-xl border border-(--border-subtle) bg-(--bg-card-hover) px-4 py-3">
-                                        <p className="text-xs uppercase tracking-wider text-(--text-tertiary)">{prettifyKey(key)}</p>
-                                        {isComplexValue(value) ? (
-                                            <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words rounded-lg bg-(--bg-card) p-3 text-xs text-(--text-primary)">{formatValue(value)}</pre>
-                                        ) : (
-                                            <p className="mt-1 text-sm font-medium text-(--text-primary)">{formatValue(value)}</p>
-                                        )}
-                                    </div>
+                                    isObjectValue(value) ? (
+                                        <div key={key} className="col-span-full rounded-xl border border-(--border-subtle) bg-(--bg-card-hover) px-4 py-3">
+                                            <p className="text-xs uppercase tracking-wider text-(--text-tertiary)">{prettifyKey(key)}</p>
+                                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                                                {Object.entries(value).map(([subKey, subVal]) => (
+                                                    <div key={subKey} className="rounded-lg border border-(--border-subtle) bg-(--bg-card) px-3 py-2">
+                                                        <p className="text-xs uppercase tracking-wider text-(--text-tertiary)">{prettifyKey(subKey)}</p>
+                                                        {Array.isArray(subVal) ? (
+                                                            <p className="mt-1 text-xs text-(--text-secondary)">{subVal.length === 0 ? '—' : subVal.map(formatScalarValue).join(', ')}</p>
+                                                        ) : (
+                                                            <p className="mt-1 text-sm font-medium text-(--text-primary)">{formatScalarValue(subVal)}</p>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ) : Array.isArray(value) ? (
+                                        <div key={key} className="rounded-xl border border-(--border-subtle) bg-(--bg-card-hover) px-4 py-3">
+                                            <p className="text-xs uppercase tracking-wider text-(--text-tertiary)">{prettifyKey(key)}</p>
+                                            <p className="mt-1 text-sm font-medium text-(--text-primary)">
+                                                {value.length === 0 ? '—' : value.map(formatScalarValue).join(', ')}
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div key={key} className="rounded-xl border border-(--border-subtle) bg-(--bg-card-hover) px-4 py-3">
+                                            <p className="text-xs uppercase tracking-wider text-(--text-tertiary)">{prettifyKey(key)}</p>
+                                            <p className="mt-1 text-sm font-medium text-(--text-primary)">{formatScalarValue(value)}</p>
+                                        </div>
+                                    )
                                 ))}
                             </div>
                         )}

@@ -56,7 +56,7 @@ const {
     deletePendingEventBundle,
     promotePendingEvent,
 } = require('./db/outboxRepository.cjs');
-const { searchEvents } = require('./db/eventsSearchRepository.cjs');
+const { searchEvents, getAgendaEventTypes } = require('./db/eventsSearchRepository.cjs');
 const {
     getProfileById,
     getProfileByRemoteUserId,
@@ -258,6 +258,7 @@ module.exports = {
     getTemplateRequirements: (templateId) =>
         getTemplateRequirements(getActiveProfileDb(), templateId),
     searchEvents: (options) => searchEvents(getActiveProfileDb(), options),
+    getAgendaEventTypes: (agendaId) => getAgendaEventTypes(getActiveProfileDb(), agendaId),
     // Solo para tests internos del main process.
     _unsafe: {
         getActiveProfileDb,

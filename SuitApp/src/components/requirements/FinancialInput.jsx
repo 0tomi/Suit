@@ -19,9 +19,22 @@ export function FinancialInput({ show, values, onChange, onFocus, onBlur }) {
                     <Label htmlFor="amount-input">Monto</Label>
                     <Input
                         id="amount-input"
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={values.amount || ''}
-                        onChange={(e) => onChange('amount', e.target.value)}
+                        onChange={(e) => {
+                            const value = e.target.value;
+                            // Reemplaza comas por puntos y elimina todo lo que no sea número o punto.
+                            const sanitizedValue = value.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+                            // Asegura que haya solo un punto decimal
+                            const parts = sanitizedValue.split('.');
+                            if (parts.length > 2) {
+                                // Si hay más de un punto, se re-arma el número con solo el primero.
+                                onChange('amount', `${parts[0]}.${parts.slice(1).join('')}`);
+                            } else {
+                                onChange('amount', sanitizedValue);
+                            }
+                        }}
                         onFocus={() => onFocus('amount')}
                         onBlur={onBlur}
                     />

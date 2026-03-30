@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Label } from '../ui/Label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select';
+import { showAppToast } from '../ui/show-app-toast';
 import { createLogger } from '../../services/logService';
 import { getApiErrorMessage } from '../../utils/apiErrorMessage';
 
@@ -37,7 +38,9 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
     const { tipo_pagos: tipoPagos } = useTipoPagos();
     const [form, dispatch] = useReducer(formReducer, formInitial);
     const [loading, setLoading] = useState(false);
-    const [status, setStatus] = useState(null); // { type: 'success' | 'danger', message: string }
+    const [status, setStatus] = useState(null); // solo para advertencia dinámica de monto ajustado
+    const [montoError, setMontoError] = useState('');
+    const [skipNota, setSkipNota] = useState(false);
 
     const totalEntregado = useMemo(() => {
         return (entregas || []).reduce((acc, curr) => acc + Number(curr.monto || 0), 0);
@@ -45,6 +48,7 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
 
     const handleFieldChange = (field) => (e) => {
         if (status) setStatus(null);
+        if (field === 'monto' && montoError) setMontoError('');
         let value = e.target.value;
 
         // Validación dinámica para el monto: no permitir exceder el saldo restante
@@ -72,19 +76,17 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
 
         const monto = parseFloat(form.monto);
         if (!form.monto || monto <= 0) {
-            setStatus({ type: 'danger', message: 'El monto debe ser mayor a cero.' });
+            setMontoError('El monto debe ser mayor a cero.');
+            showAppToast({ title: 'Campo obligatorio', description: 'El monto debe ser mayor a cero.', variant: 'danger' });
             return;
         }
 
         if (honorario && honorario.monto) {
             const maxPermitido = Number(honorario.monto) - totalEntregado;
-            // Usamos un pequeño margen para errores de punto flotante si es necesario,
-            // pero con honorarios legales usualmente 2 decimales es suficiente.
             if (monto > (maxPermitido + 0.01)) {
-                 setStatus({ 
-                    type: 'danger', 
-                    message: `El monto excede el saldo pendiente. Máximo permitido: $${maxPermitido.toFixed(2)}` 
-                });
+                const msg = `El monto excede el saldo pendiente. Máximo permitido: $${maxPermitido.toFixed(2)}`;
+                setMontoError(msg);
+                showAppToast({ title: 'Monto inválido', description: msg, variant: 'danger' });
                 return;
             }
         }
@@ -98,16 +100,17 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
             });
             
             if (result.ok) {
-                setStatus({ type: 'success', message: 'Entrega creada correctamente.' });
+                showAppToast({ title: 'Éxito', description: 'Entrega creada correctamente.', variant: 'success' });
                 dispatch({ type: 'RESET' });
-                // Limpiar mensaje de éxito después de 3 segundos
-                setTimeout(() => setStatus(null), 3000);
+                setMontoError('');
+                setSkipNota(false);
             } else {
-                setStatus({ type: 'danger', message: getApiErrorMessage(result, 'No se pudo crear la entrega.') });
+                const serverMessage = getApiErrorMessage(result, 'No se pudo crear la entrega.');
+                showAppToast({ title: 'Error', description: serverMessage, variant: 'danger' });
             }
         } catch (err) {
             logger.error('Error creating entrega', err);
-            setStatus({ type: 'danger', message: 'Ocurrió un error al contactar al servidor.' });
+            showAppToast({ title: 'Error de Red', description: 'Ocurrió un error al contactar al servidor.', variant: 'danger' });
         } finally {
             setLoading(false);
         }
@@ -115,19 +118,31 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
 
     return (
         <div className="mb-6">
-            <form onSubmit={handleSubmit} className="p-4 border border-gray-100 rounded-lg bg-gray-50 flex flex-wrap gap-4 items-end" noValidate>
+            <form onSubmit={handleSubmit} className="p-4 border border-(--border-subtle) rounded-lg bg-(--bg-subtle) flex flex-wrap gap-4 items-end" noValidate>
                 {status && (
                     <div className={`w-full p-3 rounded-md text-sm mb-2 border ${
                         status.type === 'success' 
-                            ? 'bg-green-50 border-green-200 text-green-700' 
-                            : 'bg-red-50 border-red-200 text-red-700'
+                            ? 'bg-(--bg-success-subtle) border-(--border-success) text-(--text-success)' 
+                            : 'bg-(--bg-danger-subtle) border-(--border-danger) text-(--text-danger)'
                     }`}>
                         {status.message}
                     </div>
                 )}
                 <div className="flex-1 min-w-[150px]">
-                    <Label htmlFor="monto">Monto</Label>
-                    <Input id="monto" type="number" step="0.01" min="0.01" max={honorario?.monto ? (Number(honorario.monto) - totalEntregado).toFixed(2) : undefined} value={form.monto} onChange={handleFieldChange('monto')} required />
+                    <Label htmlFor="monto">Monto <span className="text-red-500">*</span></Label>
+                    <Input
+                        id="monto"
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        max={honorario?.monto ? (Number(honorario.monto) - totalEntregado).toFixed(2) : undefined}
+                        value={form.monto}
+                        onChange={handleFieldChange('monto')}
+                        onKeyDown={(e) => ['e', 'E'].includes(e.key) && e.preventDefault()}
+                        aria-invalid={Boolean(montoError)}
+                        className={montoError ? 'border-red-300 focus:ring-red-500' : ''}
+                    />
+                    {montoError ? <p className="mt-1 text-xs text-red-600">{montoError}</p> : null}
                 </div>
                 <div className="flex-1 min-w-[200px]">
                     <Label htmlFor="tipo_pago_id">Tipo de Pago</Label>
@@ -141,8 +156,24 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
                     </Select>
                 </div>
                 <div className="flex-1 min-w-[200px]">
-                    <Label htmlFor="nota">Nota (opcional)</Label>
-                    <Input id="nota" type="text" value={form.nota} onChange={handleFieldChange('nota')} />
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                        <Label htmlFor="nota">Nota (opcional)</Label>
+                        <label className="flex items-center gap-1.5 text-xs text-(--text-tertiary) cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={skipNota}
+                                onChange={(e) => {
+                                    setSkipNota(e.target.checked);
+                                    if (e.target.checked) {
+                                        dispatch({ type: 'SET_FIELD', field: 'nota', payload: '' });
+                                    }
+                                }}
+                                className="rounded"
+                            />
+                            No cargar
+                        </label>
+                    </div>
+                    <Input id="nota" type="text" disabled={skipNota} value={form.nota} onChange={handleFieldChange('nota')} className={skipNota ? 'opacity-40 cursor-not-allowed' : ''} />
                 </div>
                 <div>
                     <Button type="submit" disabled={loading} className="h-10">
@@ -152,12 +183,12 @@ export function NewEntregaForm({ addEntrega, honorario, entregas = [] }) {
             </form>
 
             {honorario && (
-                <div className="mt-4 px-6 py-4 bg-blue-50 border border-blue-100 rounded-xl text-sm flex flex-wrap justify-center gap-x-8 gap-y-3 text-blue-900 shadow-sm transition-all">
+                <div className="mt-4 px-6 py-4 bg-(--bg-info-subtle) border border-(--border-info) rounded-xl text-sm flex flex-wrap justify-center gap-x-8 gap-y-3 text-(--text-info) shadow-sm transition-all">
                     <div className="transition-all hover:scale-105"><span className="font-bold opacity-75">ID de Honorario:</span> {honorario.id}</div>
                     <div className="transition-all hover:scale-105"><span className="font-bold opacity-75">Monto Total:</span> ${Number(honorario.monto).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                     <div className="transition-all hover:scale-105"><span className="font-bold opacity-75">Total Entregado:</span> ${totalEntregado.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                    <div className="transition-all hover:scale-105"><span className="font-bold opacity-75 text-amber-700">Saldo Pendiente:</span> <span className="font-black text-amber-800">${(Number(honorario.monto) - totalEntregado).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-                    {honorario.detalles && <div className="w-full text-center border-t border-blue-100/50 pt-2 italic opacity-80"><span className="font-bold not-italic opacity-100">Nota:</span> {honorario.detalles}</div>}
+                    <div className="transition-all hover:scale-105"><span className="font-bold opacity-75 text-amber-600 dark:text-amber-400">Saldo Pendiente:</span> <span className="font-black text-amber-700 dark:text-amber-500">${(Number(honorario.monto) - totalEntregado).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+                    {honorario.detalles && <div className="w-full text-center border-t border-(--border-info) pt-2 italic opacity-80"><span className="font-bold not-italic opacity-100">Nota:</span> {honorario.detalles}</div>}
                 </div>
             )}
         </div>

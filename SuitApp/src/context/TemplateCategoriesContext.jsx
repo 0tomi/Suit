@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createResourceContext } from './createResourceContext.jsx';
 import { syncTemplateCategories } from '../services/sync/templateSyncService.js';
 

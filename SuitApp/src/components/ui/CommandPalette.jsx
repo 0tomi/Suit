@@ -136,7 +136,7 @@ export const CommandPalette = ({ onClose }) => {
                                         onMouseEnter={() => setSelectedIndex(index)}
                                         onClick={() => {
                                             onClose();
-                                            navigate(entry.path);
+                                            openTab(entry.path);
                                         }}
                                     >
                                         <div className="flex items-center gap-3">

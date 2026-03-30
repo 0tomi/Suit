@@ -3,7 +3,7 @@ export const DEFAULT_CLIENT_GENDER = 'X';
 export const CLIENT_GENDER_OPTIONS = [
     { value: 'M', label: 'Masculino' },
     { value: 'F', label: 'Femenino' },
-    { value: 'X', label: 'X' },
+    { value: 'X', label: 'X / otro' },
 ];
 
 /**

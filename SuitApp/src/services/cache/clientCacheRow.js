@@ -39,6 +39,7 @@ export function buildClientCacheRow(client, existingClient = null) {
         type: toNullableString(merged.type, 'person'),
         gender: toNullableString(merged.gender, 'X'),
         status: toNullableString(merged.status, 'active'),
+        financial_status: toNullableString(merged.financial_status),
         notes: toNullableString(merged.notes),
         data_json: JSON.stringify(merged),
         synced_at: formatISO(new Date()),

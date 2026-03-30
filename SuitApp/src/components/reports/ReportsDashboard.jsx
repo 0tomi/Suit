@@ -27,10 +27,12 @@ import { useEventTypes } from '../../context/EventTypesContext.jsx';
 import { useHotkeyAction } from '../../hotkeys/useHotkeysSystem';
 import { useReportsDashboardState } from '../../hooks/useReportsDashboardState.js';
 import { HOTKEY_ACTIONS } from '../../hotkeys/hotkeys';
-import { getHonorariosByDateRange } from '../../services/honorarioService.js';
-import { getGastosByDateRange } from '../../services/gastoSuitCaseService.js';
 import { getUsersDirectory } from '../../services/adminUserService.js';
 import { createLogger } from '../../services/logService.js';
+import {
+    getGastosStats,
+    getHonorariosStats,
+} from '../../services/economiaListingBackendService.js';
 import { Button } from '../ui/Button.jsx';
 import ReportsActivityChart from './ReportsActivityChart.jsx';
 import ReportsUpcomingCard from './ReportsUpcomingCard.jsx';
@@ -38,7 +40,7 @@ import ReportsStatCard from './ReportsStatCard.jsx';
 import EconomiaBarChart from './EconomiaBarChart.jsx';
 import HonorariosVsGastosChart from './HonorariosVsGastosChart.jsx';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
-import { buildReportsMetrics } from '../../utils/reports/reportMetrics.js';
+import { buildEconomyTimelineFromStats, buildReportsMetrics } from '../../utils/reports/reportMetrics.js';
 import SideMenuPageLayout from '../ui/SideMenuPageLayout.jsx';
 import { SectionTutorialTrigger } from '../ui/SectionTutorialTrigger.jsx';
 import { estadisticasSteps } from '../../constants/tutorialSteps.js';
@@ -47,61 +49,6 @@ dayjs.extend(localizedFormat);
 dayjs.locale('es');
 
 const logger = createLogger('reports-dashboard');
-
-// Nombres cortos de mes para los labels del eje X.
-const MONTH_SHORT = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-const MONTH_LONG  = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
-/**
- * Genera 12 buckets mensuales (más antiguo → más reciente) con los totales
- * de honorarios, entregas y gastos agrupados por mes de creación.
- *
- * Los "entregas" se derivan del campo `total_entregas` de cada honorario,
- * acumulándolas en el mes del honorario padre (simplificación razonable ya
- * que la API no expone un endpoint propio de entregas por rango).
- */
-function extractArray(payload) {
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.data)) return payload.data;
-    return [];
-}
-
-function buildEconomyTimeline(honorariosRaw, gastosRaw) {
-    // Normalización defensiva: la API puede retornar array directo o { data: [...] }
-    const honorarios = extractArray(honorariosRaw);
-    const gastos = extractArray(gastosRaw);
-
-    const now = dayjs();
-    const buckets = Array.from({ length: 12 }, (_, i) => {
-        const m = now.subtract(11 - i, 'month');
-        return {
-            key: m.format('YYYY-MM'),
-            shortLabel: MONTH_SHORT[m.month()],
-            monthLabel: `${MONTH_LONG[m.month()]} ${m.year()}`,
-            honorarios: 0,
-            entregas: 0,
-            gastos: 0,
-        };
-    });
-    const bucketMap = Object.fromEntries(buckets.map((b) => [b.key, b]));
-
-    for (const h of honorarios) {
-        const key = dayjs(h.created_at).format('YYYY-MM');
-        if (bucketMap[key]) {
-            bucketMap[key].honorarios += Number(h.monto) || 0;
-            bucketMap[key].entregas  += Number(h.total_entregas) || 0;
-        }
-    }
-
-    for (const g of gastos) {
-        const key = dayjs(g.created_at).format('YYYY-MM');
-        if (bucketMap[key]) {
-            bucketMap[key].gastos += Number(g.monto) || 0;
-        }
-    }
-
-    return buckets;
-}
 
 function formatEventTimestamp(eventItem) {
     const rawDate = eventItem?.starts_at || eventItem?.start || eventItem?.date;
@@ -331,12 +278,13 @@ export function ReportsDashboard() {
     const { events, refreshEvents } = useEvents();
     const { event_types: eventTypes = [] } = useEventTypes();
     const {
-        globalHonorarios, globalGastos, previousHonorarios, honorarios12, gastos12,
+        honorariosCurrent, gastosCurrent, honorariosPrevious, honorarios12, gastos12,
         selectedUserId, setSelectedUserId,
         usersList, setUsersList,
         caseClientMap, setCaseClientMap,
         setIsRefreshing,
         setEconomyData,
+        economyError, setEconomyError,
     } = useReportsDashboardState();
 
     const [activeTab, setActiveTab] = useState('summary');
@@ -367,7 +315,7 @@ export function ReportsDashboard() {
             .catch((err) => void logger.warn('No se pudo cargar usuarios', { error: err?.message }));
     }, [isAdmin, connected, setUsersList]);
 
-    // Carga datos financieros globales: mes actual, mes anterior y 12 meses para gráficos.
+    // Carga datos financieros globales desde el backend de Electron.
     useEffect(() => {
         if (!connected) return;
 
@@ -381,25 +329,47 @@ export function ReportsDashboard() {
         const to12   = endOfMonth;
 
         const loadEconomy = async () => {
+            setEconomyError(null);
             try {
-                const [hCurrent, gCurrent, hPrev, h12, g12] = await Promise.all([
-                    getHonorariosByDateRange(startOfMonth, endOfMonth, selectedUserId),
-                    getGastosByDateRange(startOfMonth, endOfMonth, selectedUserId),
-                    getHonorariosByDateRange(startOfPrevMonth, endOfPrevMonth, selectedUserId),
-                    getHonorariosByDateRange(from12, to12, selectedUserId),
-                    getGastosByDateRange(from12, to12, selectedUserId),
+                const [hCurrentResult, gCurrentResult, hPrevResult, h12Result, g12Result] = await Promise.allSettled([
+                    getHonorariosStats({ filters: { from: startOfMonth, to: endOfMonth, userId: selectedUserId } }),
+                    getGastosStats({ filters: { from: startOfMonth, to: endOfMonth, userId: selectedUserId } }),
+                    getHonorariosStats({ filters: { from: startOfPrevMonth, to: endOfPrevMonth, userId: selectedUserId } }),
+                    getHonorariosStats({ filters: { from: from12, to: to12, userId: selectedUserId } }),
+                    getGastosStats({ filters: { from: from12, to: to12, userId: selectedUserId } }),
                 ]);
 
                 if (cancelled) return;
-                setEconomyData({ hCurrent, gCurrent, hPrev, h12, g12 });
+
+                const failures = [];
+                const resolveValue = (result, label) => {
+                    if (result.status === 'fulfilled') return result.value;
+                    failures.push(label);
+                    return [];
+                };
+
+                setEconomyData({
+                    hCurrent: resolveValue(hCurrentResult, 'honorarios del mes actual'),
+                    gCurrent: resolveValue(gCurrentResult, 'gastos del mes actual'),
+                    hPrev: resolveValue(hPrevResult, 'honorarios del mes anterior'),
+                    h12: resolveValue(h12Result, 'honorarios de 12 meses'),
+                    g12: resolveValue(g12Result, 'gastos de 12 meses'),
+                });
+
+                if (failures.length > 0) {
+                    setEconomyError(`No se pudieron cargar: ${failures.join(', ')}.`);
+                }
             } catch (err) {
-                void logger.error('Error cargando datos economicos globales', err);
+                if (!cancelled) {
+                    void logger.error('Error cargando datos economicos globales', err);
+                    setEconomyError(err?.message || 'No se pudieron cargar los datos de economía.');
+                }
             }
         };
 
         void loadEconomy();
         return () => { cancelled = true; };
-    }, [connected, selectedUserId, setEconomyData]);
+    }, [connected, selectedUserId, setEconomyData, setEconomyError]);
 
     const reportsMetrics = useMemo(() => {
         return buildReportsMetrics({
@@ -407,18 +377,18 @@ export function ReportsDashboard() {
             clients,
             events,
             deadlines,
-            honorarios: globalHonorarios,
-            gastos: globalGastos,
+            honorariosStats: honorariosCurrent,
+            gastosStats: gastosCurrent,
             caseClientMap,
         });
-    }, [cases, clients, deadlines, events, globalHonorarios, globalGastos, caseClientMap]);
+    }, [cases, clients, deadlines, events, honorariosCurrent, gastosCurrent, caseClientMap]);
 
     const prevReportsMetrics = useMemo(() => {
         return buildReportsMetrics({
-            honorarios: previousHonorarios,
+            honorariosStats: honorariosPrevious,
             now: dayjs().subtract(1, 'month').toDate(),
         });
-    }, [previousHonorarios]);
+    }, [honorariosPrevious]);
 
     const eventTypesById = useMemo(
         () => new Map((eventTypes || []).map((item) => [String(item.id), item])),
@@ -464,7 +434,10 @@ export function ReportsDashboard() {
     }, [refreshEvents]);
 
     const economyTimeline = useMemo(
-        () => buildEconomyTimeline(honorarios12, gastos12),
+        () => buildEconomyTimelineFromStats({
+            honorariosStats: honorarios12,
+            gastosStats: gastos12,
+        }),
         [honorarios12, gastos12],
     );
 
@@ -555,6 +528,12 @@ export function ReportsDashboard() {
                                 valueClassName="text-rose-600 dark:text-rose-400"
                             />
                         </div>
+
+                        {economyError && (
+                            <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-900 dark:text-amber-100">
+                                {economyError}
+                            </div>
+                        )}
 
                         <div className="grid gap-6 lg:grid-cols-2">
                             <EconomiaBarChart

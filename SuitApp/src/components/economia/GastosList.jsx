@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
-import { getGastosByDateRange } from '../../services/gastoSuitCaseService';
 import { Table } from '../ui/Table';
 import { Button } from '../ui/Button';
 import { DateRangePicker } from '../ui/DateRangePicker';
@@ -10,6 +9,11 @@ import { NewGastoModal } from './NewGastoModal';
 import { useAuth } from '../../context/AuthContext';
 import { useGastoCatalogo } from '../../context/GastoCatalogoContext.jsx';
 import { useUsers } from '../../context/UsersContext.jsx';
+import { Pagination } from '../ui/Pagination';
+import {
+    getGastosListingPage,
+    invalidateEconomiaListingCache,
+} from '../../services/economiaListingBackendService.js';
 import PropTypes from 'prop-types';
 
 /** Formatea un Date a YYYY-MM-DD para la API. */
@@ -25,12 +29,6 @@ function formatDisplayDate(dateStr) {
     } catch {
         return dateStr;
     }
-}
-
-function normalizeCollection(payload) {
-    if (Array.isArray(payload)) return payload;
-    if (Array.isArray(payload?.data)) return payload.data;
-    return [];
 }
 
 import { EconomiaFilterBar } from './EconomiaFilterBar';
@@ -50,8 +48,15 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
         enabled: !caseId || caseCacheReady,
         skipInitialFetch: Boolean(caseId && caseCacheReady),
     });
-    const [rangeGastos, setRangeGastos] = useState([]);
-    const [rangeLoading, setRangeLoading] = useState(true);
+    const [listingState, setListingState] = useState({
+        items: [],
+        page: 1,
+        total: 0,
+        totalPages: 1,
+        perPage: 30,
+        source: 'cache',
+    });
+    const [listingLoading, setListingLoading] = useState(true);
     const [dateRange, setDateRange] = useState({
         from: startOfMonth(new Date()),
         to: endOfMonth(new Date()),
@@ -62,10 +67,10 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
     const [selectedUserId, setSelectedUserId] = useState('all');
     const [sortBy, setSortBy] = useState('created_at');
     const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fromDate = formatDateForApi(dateRange.from);
     const toDate = formatDateForApi(dateRange.to);
-    const rawActiveGastos = caseId ? cachedGastos : rangeGastos;
 
     const gastosCatalogoMap = useMemo(() => new Map(
         gastosCatalogo.map((gastoCatalogo) => [String(gastoCatalogo.id), gastoCatalogo])
@@ -77,7 +82,9 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
     }, [gastosCatalogoMap]);
 
     const activeGastos = useMemo(() => {
-        let filtered = [...rawActiveGastos];
+        if (!caseId) return listingState.items;
+
+        let filtered = [...cachedGastos];
 
         // 1. Filtro por usuario (solo admin)
         if (isAdmin && selectedUserId !== 'all') {
@@ -110,37 +117,53 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
         });
 
         return filtered;
-    }, [getGastoDisplay, isAdmin, selectedUserId, rawActiveGastos, searchTerm, sortBy, sortOrder]);
+    }, [caseId, cachedGastos, getGastoDisplay, isAdmin, listingState.items, selectedUserId, searchTerm, sortBy, sortOrder]);
 
-    const activeLoading = caseId ? cachedGastosLoading : rangeLoading;
+    const activeLoading = caseId ? cachedGastosLoading : listingLoading;
 
-    /**
-     * La vista global sigue trabajando por rango; el detalle de caso usa el hook cache-first.
-     */
-    const fetchRangeGastos = useCallback(async () => {
+    const fetchRangeGastos = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
         if (caseId) return;
 
         if (!fromDate || !toDate) {
-            setRangeGastos([]);
-            setRangeLoading(false);
+            setListingState((prev) => ({ ...prev, items: [], total: 0, totalPages: 1, perPage: 30 }));
+            setListingLoading(false);
             return;
         }
 
-        setRangeLoading(true);
+        setListingLoading(true);
         try {
-            const data = await getGastosByDateRange(fromDate, toDate);
-            setRangeGastos(normalizeCollection(data));
+            if (invalidate) {
+                await invalidateEconomiaListingCache();
+            }
+
+            const response = await getGastosListingPage({
+                page,
+                filters: {
+                    from: fromDate,
+                    to: toDate,
+                    userId: isAdmin && selectedUserId !== 'all' ? Number(selectedUserId) : null,
+                    searchTerm,
+                    sortBy,
+                    sortDirection: sortOrder,
+                },
+            });
+
+            setListingState(response);
+            if (response.page && response.page !== page) {
+                setCurrentPage(response.page);
+            }
         } catch (error) {
             console.error("Error fetching gastos", error);
+            setListingState((prev) => ({ ...prev, items: [], total: 0, totalPages: 1 }));
         } finally {
-            setRangeLoading(false);
+            setListingLoading(false);
         }
-    }, [caseId, fromDate, toDate]);
+    }, [caseId, currentPage, fromDate, isAdmin, searchTerm, selectedUserId, sortBy, sortOrder, toDate]);
 
     useEffect(() => {
         if (caseId) return;
-        void fetchRangeGastos();
-    }, [caseId, fetchRangeGastos]);
+        void fetchRangeGastos({ page: currentPage });
+    }, [caseId, currentPage, fetchRangeGastos]);
 
     function getUserName(userId) {
         if (!userId) return 'S/U';
@@ -150,7 +173,7 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
 
     const handleCreateGasto = () => {
         openModal(NewGastoModal, {
-            onSuccess: caseId ? reloadGastos : fetchRangeGastos,
+            onSuccess: caseId ? reloadGastos : () => fetchRangeGastos({ invalidate: true, page: currentPage }),
             caseId,
         });
     };
@@ -167,26 +190,51 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
             {!caseId && (
                 <EconomiaFilterBar
                     searchTerm={searchTerm}
-                    onSearchChange={setSearchTerm}
+                    onSearchChange={(value) => {
+                        setSearchTerm(value);
+                        setCurrentPage(1);
+                    }}
                     dateRange={dateRange}
-                    onDateRangeChange={setDateRange}
+                    onDateRangeChange={(value) => {
+                        setDateRange(value);
+                        setCurrentPage(1);
+                    }}
                     showStatusFilter={false} // Gastos no tienen estado de pago en esta vista
                     sortBy={sortBy}
-                    onSortByChange={setSortBy}
+                    onSortByChange={(value) => {
+                        setSortBy(value);
+                        setCurrentPage(1);
+                    }}
                     sortOrder={sortOrder}
-                    onSortOrderChange={setSortOrder}
+                    onSortOrderChange={(value) => {
+                        setSortOrder(value);
+                        setCurrentPage(1);
+                    }}
                     isAdmin={isAdmin}
                     users={users}
                     selectedUserId={selectedUserId}
-                    onUserChange={setSelectedUserId}
+                    onUserChange={(value) => {
+                        setSelectedUserId(value);
+                        setCurrentPage(1);
+                    }}
                     searchPlaceholder="Buscar por caso o tipo de gasto..."
+                />
+            )}
+
+            {!caseId && (
+                <Pagination
+                    totalItems={listingState.total}
+                    itemsPerPage={listingState.perPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
                 />
             )}
 
             <Table
                 isEmpty={!activeLoading && activeGastos.length === 0}
                 emptyMessage={caseId ? "No se encontraron gastos para este caso." : "No se encontraron gastos con los filtros seleccionados."}
-                trigger={`${searchTerm}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}`}
+                trigger={`${searchTerm}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}-${currentPage}-${listingState.source}`}
                 columns={[
                     ...(!caseId ? [{ header: 'Caso' }] : []),
                     { header: 'Tipo de Gasto' },
@@ -196,8 +244,8 @@ export const GastosList = ({ caseId, caseCacheReady = true }) => {
                 ]}
             >
                 {activeGastos.map(g => (
-                    <tr key={g.id} className="hover:bg-gray-50">
-                        {!caseId && <td className="p-4">{g.suit_case?.title || `Caso #${g.suit_case_id}` || 'N/A'}</td>}
+                    <tr key={g.id} className="hover:bg-(--bg-card-hover) transition-colors">
+                        {!caseId && <td className="p-4">{g.suit_case?.title || g.case_title || `Caso #${g.suit_case_id}` || 'N/A'}</td>}
                         <td className="p-4">{getGastoDisplay(g)}</td>
                         <td className="p-4">${g.monto}</td>
                         <td className="p-4">{formatDisplayDate(g.created_at)}</td>

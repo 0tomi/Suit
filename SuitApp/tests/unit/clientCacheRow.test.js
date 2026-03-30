@@ -12,6 +12,7 @@ describe('clientCacheRow', () => {
                 email: 'ana@example.com',
                 type: 'person',
                 status: 'active',
+                financial_status: 'deudor',
             },
         };
 
@@ -26,11 +27,13 @@ describe('clientCacheRow', () => {
             email: 'ana@example.com',
             type: 'person',
             status: 'active',
+            financial_status: 'deudor',
         });
         expect(JSON.parse(row.data_json)).toMatchObject({
             id: 15,
             first_name: 'Ana',
             last_name: 'Suarez',
+            financial_status: 'deudor',
         });
     });
 

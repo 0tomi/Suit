@@ -17,6 +17,8 @@ import { showAppToast } from './components/ui/show-app-toast.jsx';
 import { buildTriggeredNotificationDescription } from './utils/notifications/buildTriggeredNotificationDescription.js';
 import GlobalHotkeysHandlers from './components/GlobalHotkeysHandlers.jsx';
 import { useTabs } from './context/TabsContext.jsx';
+import { useSettings } from './context/SettingsContext.jsx';
+import { interfaceScaleToZoomFactor } from './utils/interfaceScale.js';
 const Login = lazy(() => import('./pages/Login.jsx'));
 
 /**
@@ -84,6 +86,30 @@ function NotificationRuntime() {
     );
 }
 
+/**
+ * Mantiene sincronizado el zoom real de Electron con la preferencia persistida
+ * del usuario para que la escala viva en Configuración y no en atajos del shell.
+ */
+function InterfaceScaleRuntime() {
+    const { interfaceScale } = useSettings();
+
+    useEffect(() => {
+        if (!window.electronAPI?.window?.setZoomFactor) return;
+
+        window.electronAPI.window
+            .setZoomFactor(interfaceScaleToZoomFactor(interfaceScale))
+            .catch((error) => {
+                void window.electronAPI?.logs?.warn?.({
+                    scope: 'interface-scale',
+                    message: 'No se pudo aplicar la escala de interfaz.',
+                    error: error?.message || String(error),
+                });
+            });
+    }, [interfaceScale]);
+
+    return null;
+}
+
 function RootComponent() {
     return (
         <ApiProvider>
@@ -91,6 +117,7 @@ function RootComponent() {
                 <AppProviders>
                     {/* ModalProvider va aquí para que los modales tengan acceso a todos los resource providers */}
                     <ModalProvider>
+                        <InterfaceScaleRuntime />
                         <GlobalHotkeysHandlers />
                         <NotificationRuntime />
                     </ModalProvider>

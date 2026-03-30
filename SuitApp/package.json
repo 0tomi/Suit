@@ -2,7 +2,7 @@
   "name": "suitapp",
   "productName": "SuitAPP",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
@@ -111,8 +111,7 @@
     "yet-another-react-lightbox": "^3.29.1"
   },
   "overrides": {
-    "tar": "7.5.11",
-    "brace-expansion": ">=5.0.5"
+    "tar": "7.5.11"
   },
   "build": {
     "appId": "com.suitapp.desktop",

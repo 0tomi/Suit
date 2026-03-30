@@ -10,7 +10,7 @@ export function TabsContainer() {
     const { tabs, activeTabId } = useTabs();
 
     return (
-        <div className="flex-1 min-h-0 flex flex-col overflow-auto">
+        <div className="flex-1 min-h-0 flex flex-col overflow-auto [scrollbar-gutter:stable]">
             {tabs.map(tab => (
                 <TabContent
                     key={tab.id}

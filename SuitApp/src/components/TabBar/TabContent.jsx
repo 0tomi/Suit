@@ -1,4 +1,4 @@
-import { Suspense, createContext, useContext, useCallback, useMemo } from 'react';
+import { Suspense, createContext, useContext, useCallback, useMemo, createElement } from 'react';
 import {
     Routes, Route, Navigate,
     UNSAFE_NavigationContext,
@@ -47,7 +47,7 @@ function TabRouterProvider({ tab, onNavigate, onGoBack, children }) {
 
     // Helper para construir el path completo (pathname + search) desde un argumento To de React Router.
     // React Router siempre pasa un objeto { pathname, search, hash } al navigator.
-    const resolveFullPath = (to) => {
+    const resolveFullPath = useCallback((to) => {
         if (typeof to === 'string') {
             // Permite navegaciones relativas de search/hash sin perder el pathname actual.
             if (to.startsWith('?') || to.startsWith('#')) {
@@ -59,7 +59,7 @@ function TabRouterProvider({ tab, onNavigate, onGoBack, children }) {
         const search   = to.search ?? '';
         const hash     = to.hash ?? '';
         return `${pathname}${search}${hash}`;
-    };
+    }, [location.pathname]);
 
     // Navigator: implementa el contrato que useNavigate() espera internamente.
     // push(to, state) y replace(to, state) reciben state como segundo argumento.
@@ -73,7 +73,7 @@ function TabRouterProvider({ tab, onNavigate, onGoBack, children }) {
             onNavigate(resolveFullPath(to), 'replace', state);
         },
         go: (delta) => onGoBack(delta),
-    }), [location.pathname, onNavigate, onGoBack]);
+    }), [onGoBack, onNavigate, resolveFullPath]);
 
     const navCtx = useMemo(() => ({
         basename: '/',
@@ -134,8 +134,8 @@ export function TabContent({ tab, isActive }) {
 
     return (
         <div
-            className="flex-1 min-h-0 w-full h-full"
-            style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column' }}
+            className="flex-1 min-h-0 w-full h-full flex flex-col"
+            style={{ display: isActive ? 'flex' : 'none' }}
             aria-hidden={!isActive}
         >
             <TabIdContext.Provider value={tab.id}>
@@ -144,15 +144,21 @@ export function TabContent({ tab, isActive }) {
                     onNavigate={handleNavigate}
                     onGoBack={handleGoBack}
                 >
-                    <Suspense fallback={<TabSuspenseFallback />}>
-                        <Routes>
-                            <Route path="/" element={<Navigate to="/agenda" replace />} />
-                            {TAB_INTERNAL_ROUTES.map(({ path, component: Component }) => (
-                                <Route key={path} path={path} element={<Component />} />
-                            ))}
-                            <Route path="*" element={<Navigate to="/agenda" replace />} />
-                        </Routes>
-                    </Suspense>
+                    <div className="flex-1 flex flex-col min-h-0">
+                        <Suspense fallback={<TabSuspenseFallback />}>
+                            <Routes>
+                                <Route path="/" element={<Navigate to="/agenda" replace />} />
+                                {TAB_INTERNAL_ROUTES.map((route) => (
+                                    <Route
+                                        key={route.path}
+                                        path={route.path}
+                                        element={createElement(route.component)}
+                                    />
+                                ))}
+                                <Route path="*" element={<Navigate to="/agenda" replace />} />
+                            </Routes>
+                        </Suspense>
+                    </div>
                 </TabRouterProvider>
             </TabIdContext.Provider>
         </div>

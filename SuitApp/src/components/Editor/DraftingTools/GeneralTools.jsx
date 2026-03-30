@@ -2,7 +2,7 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import {
     Search, Briefcase, Users, FileText, Loader2, ChevronDown, ChevronRight,
     User, Mail, Phone, MapPin, Calendar, Clock,
-    Hash, Tag, ShieldCheck, ExternalLink
+    Hash, Tag, ShieldCheck, ExternalLink, DollarSign
 } from 'lucide-react';
 import { useCases } from '../../../context/CasesContext';
 import { useClients } from '../../../context/ClientsContext';

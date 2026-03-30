@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createResourceContext } from './createResourceContext';
 import { syncPartes } from '../services/sync/parteSyncService.js';
 import { TIER_CATALOG } from '../services/sync/SyncScheduler.js';

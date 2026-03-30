@@ -115,6 +115,22 @@ function getClientsDeltaFromApi(since) {
     });
 }
 
+function getClientDocumentsFromApi(clientId, {
+    page_personal = 1,
+    page_cases = 1,
+    page_case_docs = 1,
+} = {}) {
+    return requestClientsApi({
+        path: `/clients/${clientId}/documents`,
+        method: 'GET',
+        query: {
+            page_personal,
+            page_cases,
+            page_case_docs,
+        },
+    });
+}
+
 module.exports = {
     listClientsFromApi,
     getClientFromApi,
@@ -123,4 +139,5 @@ module.exports = {
     deleteClientInApi,
     getClientsLastModifiedFromApi,
     getClientsDeltaFromApi,
+    getClientDocumentsFromApi,
 };

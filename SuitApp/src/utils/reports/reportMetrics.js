@@ -1,6 +1,15 @@
 import dayjs from 'dayjs';
 import { isCaseClosed } from '../caseStatus.js';
 
+function parseJsonSafely(value) {
+  if (!value || typeof value !== 'string') return null;
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
 function parseDateCandidate(value) {
   if (!value) return null;
@@ -69,6 +78,19 @@ function createMonthBucketCursor(now, offset) {
   return dayjs(now).startOf('month').subtract(offset, 'month');
 }
 
+function readEmbeddedCaseClients(caseItem) {
+  if (Array.isArray(caseItem?.clients)) {
+    return caseItem.clients;
+  }
+
+  const parsed = parseJsonSafely(caseItem?.data_json);
+  if (Array.isArray(parsed?.clients)) {
+    return parsed.clients;
+  }
+
+  return null;
+}
+
 /**
  * Construye la serie mensual combinando eventos con altas de casos y clientes.
  * Esto ofrece una lectura operativa sin depender de una única entidad.
@@ -120,7 +142,12 @@ function buildActiveClientIds(activeCases, caseClientMap) {
 
   activeCases.forEach((caseItem) => {
     const caseId = String(caseItem?.id ?? '');
-    const clientIds = caseClientMap.get(caseId) || [];
+    const embeddedClients = readEmbeddedCaseClients(caseItem) || [];
+    const mappedClientIds = caseClientMap.get(caseId) || [];
+    const clientIds = mappedClientIds.length > 0
+      ? mappedClientIds
+      : embeddedClients.map((client) => client?.id);
+
     clientIds.forEach((id) => activeClientIds.add(String(id)));
   });
 
@@ -140,14 +167,73 @@ function sortByDateAsc(left, right, readDate) {
   return 0;
 }
 
+function extractStatCollection(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.data)) return payload.data;
+  return [];
+}
+
+function resolveStatNumber(row, keys = []) {
+  for (const key of keys) {
+    const value = Number(row?.[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return 0;
+}
+
+function resolveStatMonth(row) {
+  return String(row?.month || row?.key || row?.period || '').slice(0, 7);
+}
+
+function buildEconomyTimelineFromStats({
+  honorariosStats: initialHonorariosStats = [],
+  gastosStats: initialGastosStats = [],
+  now = new Date(),
+} = {}) {
+  const honorariosStats = extractStatCollection(initialHonorariosStats);
+  const gastosStats = extractStatCollection(initialGastosStats);
+
+  const nowDate = dayjs(now);
+  const buckets = Array.from({ length: 12 }, (_, i) => {
+    const cursor = nowDate.subtract(11 - i, 'month');
+    return {
+      key: cursor.format('YYYY-MM'),
+      shortLabel: cursor.format('MMM'),
+      monthLabel: cursor.format('MMMM YYYY'),
+      honorarios: 0,
+      entregas: 0,
+      gastos: 0,
+    };
+  });
+  const bucketMap = new Map(buckets.map((bucket) => [bucket.key, bucket]));
+
+  for (const row of honorariosStats) {
+    const key = resolveStatMonth(row);
+    const bucket = bucketMap.get(key);
+    if (!bucket) continue;
+    bucket.honorarios += resolveStatNumber(row, ['monto_total', 'total_amount', 'amount']);
+    bucket.entregas += resolveStatNumber(row, ['pagado_total', 'total_paid', 'paid_amount']);
+  }
+
+  for (const row of gastosStats) {
+    const key = resolveStatMonth(row);
+    const bucket = bucketMap.get(key);
+    if (!bucket) continue;
+    bucket.gastos += resolveStatNumber(row, ['monto_total', 'total_amount', 'amount']);
+  }
+
+  return buckets;
+}
+
 export function buildReportsMetrics({
   cases: initialCases = [],
   clients: initialClients = [],
   events: initialEvents = [],
   deadlines: initialDeadlines = [],
-  honorarios: initialHonorarios = [],
-  gastos: initialGastos = [],
+  honorariosStats: initialHonorariosStats = [],
+  gastosStats: initialGastosStats = [],
   caseClientMap = new Map(),
+  resolvedCaseClientsByCaseId = null,
   now = new Date(),
 } = {}) {
   const nowDate = dayjs(now);
@@ -158,8 +244,31 @@ export function buildReportsMetrics({
   const clients = Array.isArray(initialClients) ? initialClients : [];
   const events = Array.isArray(initialEvents) ? initialEvents : [];
   const deadlines = Array.isArray(initialDeadlines) ? initialDeadlines : [];
-  const honorarios = Array.isArray(initialHonorarios) ? initialHonorarios : [];
-  const gastos = Array.isArray(initialGastos) ? initialGastos : [];
+  const honorariosStats = extractStatCollection(initialHonorariosStats);
+  const gastosStats = extractStatCollection(initialGastosStats);
+
+  const normalizedCaseClientMap = caseClientMap instanceof Map
+    ? new Map(caseClientMap)
+    : new Map();
+
+  if (resolvedCaseClientsByCaseId && typeof resolvedCaseClientsByCaseId === 'object') {
+    Object.entries(resolvedCaseClientsByCaseId).forEach(([caseId, resolvedClients]) => {
+      normalizedCaseClientMap.set(
+        String(caseId),
+        (Array.isArray(resolvedClients) ? resolvedClients : []).map((client) => client?.id),
+      );
+    });
+  }
+
+  cases.forEach((caseItem) => {
+    const caseId = String(caseItem?.id ?? '');
+    if (!caseId || normalizedCaseClientMap.has(caseId)) return;
+
+    const embeddedClients = readEmbeddedCaseClients(caseItem);
+    if (!embeddedClients) return;
+
+    normalizedCaseClientMap.set(caseId, embeddedClients.map((client) => client?.id));
+  });
 
   const activeCases = cases.filter((caseItem) => !isCaseClosed(caseItem));
   const pendingEvents = events
@@ -183,7 +292,7 @@ export function buildReportsMetrics({
   });
 
   const urgentDeadlines = nextDeadlines.filter((deadline) => isUrgentDeadline(deadline));
-  const activeClientIds = buildActiveClientIds(activeCases, caseClientMap);
+  const activeClientIds = buildActiveClientIds(activeCases, normalizedCaseClientMap);
   const activityTimeline = buildActivityTimeline({
     cases,
     clients,
@@ -227,9 +336,9 @@ export function buildReportsMetrics({
   });
 
   // Métricas de Economía
-  const totalHonorarios = honorarios.reduce((acc, h) => acc + (Number(h.monto) || 0), 0);
-  const totalEntregas = honorarios.reduce((acc, h) => acc + (Number(h.total_entregas) || 0), 0);
-  const totalGastos = gastos.reduce((acc, g) => acc + (Number(g.monto) || 0), 0);
+  const totalHonorarios = honorariosStats.reduce((acc, row) => acc + resolveStatNumber(row, ['monto_total', 'total_amount', 'amount']), 0);
+  const totalEntregas = honorariosStats.reduce((acc, row) => acc + resolveStatNumber(row, ['pagado_total', 'total_paid', 'paid_amount']), 0);
+  const totalGastos = gastosStats.reduce((acc, row) => acc + resolveStatNumber(row, ['monto_total', 'total_amount', 'amount']), 0);
 
   return {
     counts: {
@@ -263,3 +372,8 @@ export function buildReportsMetrics({
     },
   };
 }
+
+export {
+  buildEconomyTimelineFromStats,
+  readEmbeddedCaseClients,
+};

@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { usePartes } from '../../context/PartesContext';
 import { useRoles } from '../../context/RolesContext';
 import { deleteParte } from '../../services/parteService.js';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -8,10 +7,16 @@ import { useConfirmDialog } from '../../hooks/useConfirmDialog.js';
 import { Button } from '../ui/Button';
 import PeopleSectionLayout from './PeopleSectionLayout';
 import { showAppToast } from '../ui/show-app-toast.jsx';
+import { Badge } from '../ui/Badge.jsx';
 import { createLogger } from '../../services/logService.js';
 import { NewParteModal } from './NewParteModal';
 import { useModal } from '../../context/ModalContext';
+import ParteDetailModal from './ParteDetailModal.jsx';
 import PartesFilterBar from './PartesFilterBar';
+import {
+    getPartesListingPage,
+    invalidatePartesListingCache,
+} from '../../services/partesListingBackendService.js';
 
 const logger = createLogger('people-partes-tab');
 const FILTER_STORAGE_KEY = 'partes-filter-state';
@@ -41,102 +46,119 @@ const DEFAULT_FILTERS = {
     sortOrder: 'desc',
 };
 
-function sortPartes(list, sortBy, sortOrder) {
-    return [...list].sort((a, b) => {
-        if (sortBy === 'alpha') {
-            const aName = `${a.nombre || ''} ${a.apellido || ''}`.toLowerCase();
-            const bName = `${b.nombre || ''} ${b.apellido || ''}`.toLowerCase();
-            const cmp = aName.localeCompare(bName, 'es');
-            return sortOrder === 'asc' ? cmp : -cmp;
-        }
-        // created_at
-        const aVal = a.created_at ? new Date(a.created_at).getTime() : 0;
-        const bVal = b.created_at ? new Date(b.created_at).getTime() : 0;
-        return sortOrder === 'desc' ? bVal - aVal : aVal - bVal;
-    });
+const INITIAL_LISTING_STATE = {
+    items: [],
+    page: 1,
+    total: 0,
+    totalPages: 1,
+    perPage: 10,
+    source: 'cache',
+};
+
+function normalizePartesListingResponse(response) {
+    const payload = response && typeof response === 'object' ? response : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+
+    return {
+        items,
+        page: Number(payload.page ?? 1) || 1,
+        total: Number(payload.total ?? items.length) || 0,
+        totalPages: Math.max(1, Number(payload.totalPages ?? 1) || 1),
+        perPage: Math.max(1, Number(payload.perPage ?? 10) || 10),
+        source: payload.source || 'cache',
+    };
 }
 
 const PartesTab = () => {
-    const { partes, refreshPartes } = usePartes();
     const { roles } = useRoles();
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
     const { openModal } = useModal();
+    const requestIdRef = useRef(0);
 
     const savedFilters = loadFilterState() || {};
     const [searchTerm, setSearchTerm] = useState(savedFilters.searchTerm ?? DEFAULT_FILTERS.searchTerm);
     const [sortBy, setSortBy] = useState(savedFilters.sortBy ?? DEFAULT_FILTERS.sortBy);
     const [sortOrder, setSortOrder] = useState(savedFilters.sortOrder ?? DEFAULT_FILTERS.sortOrder);
-
     const [currentPage, setCurrentPage] = useState(1);
-    const [optimisticPartes, setOptimisticPartes] = useState([]);
-    const itemsPerPage = 10;
+    const [listingState, setListingState] = useState(INITIAL_LISTING_STATE);
+    const [listingLoading, setListingLoading] = useState(true);
+
+    const rolesById = useMemo(
+        () => new Map(roles.map((rol) => [String(rol.id), rol.titulo])),
+        [roles],
+    );
 
     useEffect(() => {
         saveFilterState({ searchTerm, sortBy, sortOrder });
     }, [searchTerm, sortBy, sortOrder]);
 
-    useEffect(() => {
-        void refreshPartes();
-    }, [refreshPartes]);
+    const loadPartesListing = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
+        const requestId = ++requestIdRef.current;
+        setListingLoading(true);
+
+        try {
+            if (invalidate) {
+                await invalidatePartesListingCache();
+            }
+
+            const response = await getPartesListingPage({
+                page,
+                filters: {
+                    searchTerm,
+                    sortBy,
+                    sortOrder,
+                },
+            });
+
+            if (requestIdRef.current !== requestId) return;
+
+            const normalized = normalizePartesListingResponse(response);
+            setListingState(normalized);
+            if (normalized.page !== page) {
+                setCurrentPage(normalized.page);
+            }
+        } catch (error) {
+            if (requestIdRef.current !== requestId) return;
+            void logger.error('No se pudo cargar el listado de partes', {
+                error: error?.message || String(error),
+                page,
+                searchTerm,
+                sortBy,
+                sortOrder,
+            });
+            showAppToast({
+                title: 'Error',
+                description: 'No se pudo cargar el listado de partes.',
+                variant: 'danger',
+            });
+        } finally {
+            if (requestIdRef.current === requestId) {
+                setListingLoading(false);
+            }
+        }
+    }, [currentPage, searchTerm, sortBy, sortOrder]);
 
     useEffect(() => {
-        // Cuando la parte ya llegó desde el contexto global, dejamos de sostenerla
-        // en el estado optimista local para no duplicar filas en la tabla.
-        setOptimisticPartes((prev) => prev.filter((parte) => (
-            !partes.some((persistedParte) => String(persistedParte.id) === String(parte.id))
-        )));
-    }, [partes]);
+        void loadPartesListing({ page: currentPage });
+    }, [currentPage, loadPartesListing]);
 
     const handleOpenNewParteModal = () => {
         openModal(NewParteModal, {
-            onParteCreated: (createdParte) => {
+            onParteCreated: async () => {
                 setCurrentPage(1);
-                if (!createdParte?.id) {
-                    void refreshPartes();
-                    return;
-                }
-
-                setOptimisticPartes((prev) => [
-                    createdParte,
-                    ...prev.filter((parte) => String(parte.id) !== String(createdParte.id)),
-                ]);
+                await loadPartesListing({ invalidate: true, page: 1 });
             },
         }, { overlayClass: 'bg-black/10 backdrop-blur-[2px]' });
     };
 
-    const getRolName = useCallback((rolId) => {
-        const rol = roles.find(r => r.id === rolId);
-        return rol ? rol.titulo : 'N/A';
-    }, [roles]);
+    const getRolName = useCallback((rolId) => rolesById.get(String(rolId)) || 'N/A', [rolesById]);
 
-    const visiblePartes = useMemo(() => {
-        const persistedIds = new Set(partes.map((parte) => String(parte.id)));
-        const pendingPartes = optimisticPartes.filter((parte) => !persistedIds.has(String(parte.id)));
-        return [...pendingPartes, ...partes];
-    }, [optimisticPartes, partes]);
-
-    const filteredPartes = useMemo(() => {
-        const search = searchTerm.trim().toLowerCase();
-        let filtered = visiblePartes;
-
-        if (search) {
-            filtered = visiblePartes.filter(parte => {
-                const fullName = `${parte.nombre || ''} ${parte.apellido || ''}`.toLowerCase();
-                const rolName = getRolName(parte.rol_id).toLowerCase();
-                return fullName.includes(search) || 
-                       rolName.includes(search) || 
-                       (parte.email && parte.email.toLowerCase().includes(search)) ||
-                       (parte.telefono && parte.telefono.includes(search));
-            });
-        }
-        
-        return sortPartes(filtered, sortBy, sortOrder);
-    }, [visiblePartes, searchTerm, sortBy, sortOrder, getRolName]);
-
-    const paginatedPartes = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return filteredPartes.slice(startIndex, startIndex + itemsPerPage);
-    }, [filteredPartes, currentPage]);
+    const handleOpenParteDetail = useCallback((parte) => {
+        openModal(ParteDetailModal, {
+            parte,
+            roleTitle: getRolName(parte.rol_id),
+        }, { overlayClass: 'bg-black/20 backdrop-blur-[2px]' });
+    }, [getRolName, openModal]);
 
     const handleDelete = (id, e) => {
         e.stopPropagation();
@@ -155,7 +177,7 @@ const PartesTab = () => {
                             description: 'Parte eliminada correctamente.',
                             variant: 'success',
                         });
-                        await refreshPartes();
+                        await loadPartesListing({ invalidate: true, page: currentPage });
                     } else {
                         showAppToast({
                             title: 'Error',
@@ -165,12 +187,16 @@ const PartesTab = () => {
                     }
                 } catch (err) {
                     void logger.error('Error deleting parte', err);
-                    showAppToast({ title: 'Error', description: 'Ocurrió un error al contactar al servidor.', variant: 'danger' });
+                    showAppToast({
+                        title: 'Error',
+                        description: 'Ocurrió un error al contactar al servidor.',
+                        variant: 'danger',
+                    });
                 } finally {
                     setDialogLoading(false);
                     closeDialog();
                 }
-            }
+            },
         });
     };
 
@@ -183,9 +209,14 @@ const PartesTab = () => {
             description="Gestiona las partes involucradas en los casos."
             primaryAction={{
                 icon: Plus,
-                label: "Nueva Parte",
-                onClick: handleOpenNewParteModal
+                label: 'Nueva Parte',
+                onClick: handleOpenNewParteModal,
             }}
+            topContent={listingLoading ? (
+                <div className="rounded-xl border border-(--border-subtle) bg-(--bg-card) px-4 py-3 text-sm text-(--text-secondary)">
+                    Cargando partes...
+                </div>
+            ) : null}
             filterBar={
                 <PartesFilterBar
                     searchTerm={searchTerm}
@@ -194,31 +225,53 @@ const PartesTab = () => {
                         setCurrentPage(1);
                     }}
                     sortBy={sortBy}
-                    onSortByChange={setSortBy}
+                    onSortByChange={(value) => {
+                        setSortBy(value);
+                        setCurrentPage(1);
+                    }}
                     sortOrder={sortOrder}
-                    onSortOrderChange={setSortOrder}
-                    resultCount={hasActiveSearch ? filteredPartes.length : undefined}
+                    onSortOrderChange={(value) => {
+                        setSortOrder(value);
+                        setCurrentPage(1);
+                    }}
+                    resultCount={hasActiveSearch ? listingState.total : undefined}
                 />
             }
             tableProps={{
-                isEmpty: filteredPartes.length === 0,
-                emptyMessage: hasActiveSearch ? "No se encontraron resultados para tu búsqueda." : "No se encontraron partes.",
+                isEmpty: listingLoading ? false : listingState.items.length === 0,
+                emptyMessage: hasActiveSearch ? 'No se encontraron resultados para tu búsqueda.' : 'No se encontraron partes.',
                 columns: [
                     { header: 'Nombre' },
                     { header: 'Rol' },
+                    { header: 'Estado' },
                     { header: 'Contacto' },
-                    { header: 'Acciones', align: 'right' }
-                ]
+                    { header: 'Acciones', align: 'right' },
+                ],
             }}
-            items={paginatedPartes}
+            items={listingState.items}
             renderRow={(parte) => {
                 const fullName = `${parte.nombre || ''} ${parte.apellido || ''}`.trim();
                 return (
-                    <tr key={parte.id} className="hover:bg-(--bg-card-hover) transition-colors group">
+                    <tr
+                        key={parte.id}
+                        onClick={() => handleOpenParteDetail(parte)}
+                        className="hover:bg-(--bg-card-hover) transition-colors group cursor-pointer"
+                    >
                         <td className="px-6 py-4">
                             <div className="font-medium text-(--text-primary)">{fullName || 'Sin nombre'}</div>
                         </td>
                         <td className="px-6 py-4 text-(--text-secondary)">{getRolName(parte.rol_id)}</td>
+                        <td className="px-6 py-4">
+                            {parte.estado === 'activo' || parte.estado === 'Activo' ? (
+                                <Badge variant="success">Activo</Badge>
+                            ) : parte.estado === 'inactivo' || parte.estado === 'Inactivo' ? (
+                                <Badge variant="default">Inactivo</Badge>
+                            ) : parte.estado ? (
+                                <Badge variant="default">{parte.estado}</Badge>
+                            ) : (
+                                <span className="text-sm text-(--text-tertiary)">—</span>
+                            )}
+                        </td>
                         <td className="px-6 py-4">
                             <div className="flex flex-col space-y-1">
                                 {parte.email && <div className="text-sm text-(--text-secondary)">{parte.email}</div>}
@@ -241,10 +294,10 @@ const PartesTab = () => {
             paginationProps={{
                 currentPage,
                 onPageChange: setCurrentPage,
-                totalItems: filteredPartes.length,
-                itemsPerPage
+                totalItems: listingState.total,
+                itemsPerPage: listingState.perPage,
             }}
-            trigger={`${searchTerm}-${sortBy}-${sortOrder}`}
+            trigger={`${searchTerm}-${sortBy}-${sortOrder}-${currentPage}-${listingState.source}`}
         >
             <ConfirmDialog {...dialogProps} />
         </PeopleSectionLayout>

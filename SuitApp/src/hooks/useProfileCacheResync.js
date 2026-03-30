@@ -8,14 +8,12 @@ import { useCases } from '../context/CasesContext.jsx';
 import { useClients } from '../context/ClientsContext.jsx';
 import { useDocuments } from '../context/DocumentsContext.jsx';
 import { useUsers } from '../context/UsersContext.jsx';
-import { useTemplateCategories } from '../context/TemplateCategoriesContext.jsx';
 import { useTemplates } from '../context/TemplatesContext.jsx';
 import { useCaseTypes } from '../context/CaseTypesContext.jsx';
 import { useEventTypes } from '../context/EventTypesContext.jsx';
 import { useEvents } from '../context/EventsContext.jsx';
 import { useDeadlines } from '../context/DeadlinesContext.jsx';
-import { usePublicFiles } from '../context/PublicFilesContext.jsx';
-import { usePublicFileCatalogs } from '../context/PublicFileCatalogsContext.jsx';
+import { useTemplateCategories } from '../context/TemplateCategoriesContext.jsx';
 import { syncCases } from '../services/sync/caseSyncService.js';
 import { syncClients } from '../services/sync/clientSyncService.js';
 import { syncDocuments } from '../services/sync/documentSyncService.js';
@@ -23,8 +21,6 @@ import { syncUsers } from '../services/sync/userSyncService.js';
 import { syncTemplateCategories, syncTemplates } from '../services/sync/templateSyncService.js';
 import { syncCaseTypes, syncEventTypes } from '../services/sync/metadataSyncService.js';
 import { syncAgendas } from '../services/sync/agendaSyncService.js';
-import { syncPublicFiles } from '../services/sync/publicFileSyncService.js';
-import { syncPublicFileCatalogs } from '../services/sync/publicFileCatalogSyncService.js';
 import { resetSyncInFlightState } from '../services/sync/syncCore.js';
 import {
     ALL_AGENDAS_VIEW,
@@ -68,8 +64,6 @@ export function useProfileCacheResync() {
     const { loadLocalEventTypes } = useEventTypes();
     const { loadLocalData: loadLocalEvents } = useEvents();
     const { bootstrapDeadlines } = useDeadlines();
-    const { loadLocalData: loadLocalPublicFiles } = usePublicFiles();
-    const { loadLocalData: loadLocalPublicFileCatalogs } = usePublicFileCatalogs();
     const [pendingUploadsCount, setPendingUploadsCount] = useState(0);
     const [resyncing, setResyncing] = useState(false);
 
@@ -130,8 +124,6 @@ export function useProfileCacheResync() {
                 syncCaseTypes().then((changed) => ({ resource: 'case_types', ok: true, changed })),
                 syncEventTypes().then((changed) => ({ resource: 'event_types', ok: true, changed })),
                 syncAgendas().then((changed) => ({ resource: 'agendas', ok: true, changed })),
-                syncPublicFileCatalogs().then((changed) => ({ resource: 'public_file_catalogs', ok: true, changed })),
-                syncPublicFiles().then((changed) => ({ resource: 'public_files', ok: true, changed })),
             ]);
 
             const normalizedSyncResults = syncResults.map((result, index) => {
@@ -149,8 +141,6 @@ export function useProfileCacheResync() {
                     'case_types',
                     'event_types',
                     'agendas',
-                    'public_file_catalogs',
-                    'public_files',
                 ];
 
                 return {
@@ -189,8 +179,6 @@ export function useProfileCacheResync() {
                 loadLocalCaseTypes(),
                 loadLocalEventTypes(),
                 loadLocalEvents(),
-                loadLocalPublicFileCatalogs(),
-                loadLocalPublicFiles(),
             ]);
 
             await window.electronAPI.notifications?.loadTodayFromApi?.();
@@ -218,8 +206,6 @@ export function useProfileCacheResync() {
         loadLocalDocuments,
         loadLocalEventTypes,
         loadLocalEvents,
-        loadLocalPublicFileCatalogs,
-        loadLocalPublicFiles,
         loadLocalTemplateCategories,
         loadLocalTemplates,
         loadLocalUsers,

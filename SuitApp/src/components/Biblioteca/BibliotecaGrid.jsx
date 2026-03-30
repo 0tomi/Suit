@@ -14,33 +14,38 @@ export const BibliotecaGrid = ({
     onDelete,
     onGenerateQr,
     deleteLoading,
+    loadingMore = false,
     isNew, // Nuevo prop: puede ser booleano o función (file) => boolean
 }) => {
+    const scrollContainerRef = useRef(null);
     const observerTarget = useRef(null);
 
     useEffect(() => {
-        if (!hasMore || !onLoadMore) return;
+        if (!hasMore || !onLoadMore || loadingMore) return;
+
+        const currentTarget = observerTarget.current;
+        const currentRoot = scrollContainerRef.current;
+        if (!currentTarget || !currentRoot) return;
 
         const observer = new IntersectionObserver(
             (entries) => {
                 if (entries[0].isIntersecting) {
+                    observer.unobserve(entries[0].target);
                     onLoadMore();
                 }
             },
-            { threshold: 0.1 } // Se ejecuta cuando el 10% del div entra en vista
+            {
+                root: currentRoot,
+                threshold: 0.1,
+            }
         );
 
-        const currentTarget = observerTarget.current;
-        if (currentTarget) {
-            observer.observe(currentTarget);
-        }
+        observer.observe(currentTarget);
 
         return () => {
-            if (currentTarget) {
-                observer.unobserve(currentTarget);
-            }
+            observer.disconnect();
         };
-    }, [hasMore, onLoadMore]);
+    }, [hasMore, loadingMore, onLoadMore]);
 
     if (files.length === 0) {
         return (
@@ -56,7 +61,10 @@ export const BibliotecaGrid = ({
 
     return (
         <div className="flex flex-col flex-1 min-h-0">
-            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6 content-start overflow-y-auto pr-2 pb-4 flex-1">
+            <div
+                ref={scrollContainerRef}
+                className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6 content-start overflow-y-auto pr-2 pb-4 flex-1"
+            >
                 {files.map((file) => {
                     // Si isNew es una funcion, la ejecutamos. Si es booleano, lo usamos.
                     // Si no viene, usamos file.is_new original.
@@ -81,7 +89,6 @@ export const BibliotecaGrid = ({
                         ref={observerTarget} 
                         className="col-span-full h-12 flex justify-center items-center text-(--text-tertiary) text-sm"
                     >
-                        {/* Se puede poner un spinner aquí, pero la carga es instantánea desde sqlite */}
                         Cargando más archivos...
                     </div>
                 )}

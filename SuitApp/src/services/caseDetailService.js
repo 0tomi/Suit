@@ -222,6 +222,11 @@ function resolveJurisdiccionLabel(caseData, dependencia) {
         return dependencia.jurisdiccion.nombre;
     }
 
+    // Soporte para resultados planos de la cache (JOIN de SQL)
+    if (dependencia?.jurisdiccion_nombre) {
+        return dependencia.jurisdiccion_nombre;
+    }
+
     if (caseData?.dependencia_id != null) {
         return `Jurisdicción de dependencia #${caseData.dependencia_id} no resuelta`;
     }

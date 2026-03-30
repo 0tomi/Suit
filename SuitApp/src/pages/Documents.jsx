@@ -32,19 +32,19 @@ import {
     getDocumentListingPage,
     invalidateDocumentListingCache,
 } from '../services/documentListingBackendService.js';
-import { buildDocumentCreatePath, buildDocumentEditPath } from '../utils/appRoutes.js';
+import { buildDocumentCreatePath } from '../utils/appRoutes.js';
 import { DOCUMENT_STATUS_OPTIONS, getDocumentStatusLabel, getDocumentStatusVariant } from '../utils/documentStatus.js';
 import { Button } from '../components/ui/Button.jsx';
 import { convertDocumentToHtml } from '../services/documentConverterService.js';
 import { createLogger } from '../services/logService.js';
-import { buildPrintPageCss, normalizeMargins } from '../components/Editor/marginsUtils.js';
 import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
 import { documentosSteps } from '../constants/tutorialSteps.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/Select.jsx';
 import { getBaseNameWithoutExtension } from '../utils/fileNameUtils.js';
+import { useDocumentActionControls } from '../hooks/useDocumentActionControls.js';
 const logger = createLogger('page:documents');
 
-const FALLBACK_ITEMS_PER_PAGE = 15;
+const FALLBACK_ITEMS_PER_PAGE = 40;
 const DOCUMENT_COLUMNS = [
     { header: 'Nombre' },
     { header: 'Caso' },
@@ -53,7 +53,7 @@ const DOCUMENT_COLUMNS = [
     { header: 'Creación' },
     { header: 'Acciones', align: 'right' },
 ];
-const INITIAL_UI_STATE = { settingsOpen: false, detailsOpen: false, selectedDoc: null, caseDialogOpen: false };
+const INITIAL_UI_STATE = { caseDialogOpen: false };
 const INITIAL_CLOSED_CASES_STATE = { items: [], loaded: false, loading: false };
 const INITIAL_LISTING_STATE = {
     items: [],
@@ -158,18 +158,24 @@ function DocumentsFiltersPanel({
                 />
                 <div className="flex flex-col gap-1.5">
                     <label htmlFor="documents-status-filter" className="text-xs font-medium text-(--text-secondary)">Estado</label>
-                    <select
-                        id="documents-status-filter"
-                        data-testid="filter-status-select"
+                    <Select
                         value={filters.selectedStatus || ''}
-                        onChange={(e) => onUpdateFilters({ selectedStatus: e.target.value })}
-                        className="w-full rounded-lg bg-(--bg-card) border border-(--border-subtle) px-3 py-2 text-sm text-(--text-primary) outline-none focus:ring-2 focus:ring-blue-500/20"
+                        onValueChange={(value) => onUpdateFilters({ selectedStatus: value === 'all' ? '' : value })}
                     >
-                        <option value="">Todos los estados</option>
-                        {DOCUMENT_STATUS_OPTIONS.map((statusOption) => (
-                            <option key={statusOption} value={statusOption}>{statusOption}</option>
-                        ))}
-                    </select>
+                        <SelectTrigger
+                            id="documents-status-filter"
+                            data-testid="filter-status-select"
+                            className="bg-(--bg-card)"
+                        >
+                            <SelectValue placeholder="Todos los estados" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos los estados</SelectItem>
+                            {DOCUMENT_STATUS_OPTIONS.map((statusOption) => (
+                                <SelectItem key={statusOption} value={statusOption}>{statusOption}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div className="flex min-w-[280px] flex-1 flex-col gap-1.5">
                     <label htmlFor="documents-sort-select" className="text-xs font-medium text-(--text-secondary)">Orden</label>
@@ -236,7 +242,7 @@ function DocumentsTableSection({
                     <tr key={doc.id} className="group transition-colors hover:bg-(--bg-card-hover)">
                         <td className="px-6 py-4">
                             <div className="flex items-center space-x-3">
-                                <div className="rounded-lg bg-blue-500/10 p-2 text-blue-600">
+                                <div className="rounded-lg bg-blue-100 dark:bg-blue-900/50 p-2 text-blue-600 dark:text-blue-400">
                                     <File className="h-5 w-5" />
                                 </div>
                                 <button
@@ -326,7 +332,6 @@ const Documents = () => {
     const [currentPage, setCurrentPage] = useState(1);
     const [listingState, setListingState] = useState(INITIAL_LISTING_STATE);
     const [closedCasesState, setClosedCasesState] = useState(INITIAL_CLOSED_CASES_STATE);
-    const [exportingDocId, setExportingDocId] = useState(null);
     const [isImporting, setIsImporting] = useState(false);
     const listingRequestRef = useRef(0);
     const deferredSearchQuery = useDeferredValue(filters.searchQuery);
@@ -443,7 +448,7 @@ const Documents = () => {
 
             setListingState({
                 items,
-                totalDocuments: Number(response?.totalDocuments) || items.length,
+                totalDocuments: Number(response?.total ?? response?.totalDocuments) || items.length,
                 totalPages,
                 perPage: Math.max(1, Number(response?.perPage) || FALLBACK_ITEMS_PER_PAGE),
                 loading: false,
@@ -487,14 +492,22 @@ const Documents = () => {
                     : doc
             )),
         }));
-        setUi((current) => (
-            current.selectedDoc?.id === updatedDoc.id
-                ? { ...current, selectedDoc: { ...current.selectedDoc, ...updatedDoc } }
-                : current
-        ));
         void invalidateDocumentListingCache();
         void refreshCurrentListing({ forceRefresh: true });
     }, [refreshCurrentListing]);
+    const {
+        modalState,
+        exportingDocId,
+        openSettingsModal,
+        openDetailsModal,
+        closeSettingsModal,
+        closeDetailsModal,
+        openDocumentEditor,
+        handleExportPdf,
+        applyDocumentUpdate,
+    } = useDocumentActionControls({
+        onDocumentUpdated: handleUpdateDocument,
+    });
 
     // Hotkeys contextuales
     useHotkeyAction(HOTKEY_ACTIONS.NEW_DOCUMENT, () => navigate(buildDocumentCreatePath()));
@@ -532,10 +545,6 @@ const Documents = () => {
     const itemsPerPage = listingState.perPage || FALLBACK_ITEMS_PER_PAGE;
     const paginatedDocs = listingState.items;
     const filteredDocsCount = listingState.totalDocuments;
-
-    const openDocumentEditor = useCallback((documentId) => {
-        navigate(buildDocumentEditPath(documentId));
-    }, [navigate]);
 
     /** Abre el diálogo de archivo, convierte DOCX/PDF a HTML y abre el editor con el resultado. */
     const handleImportDocument = useCallback(async () => {
@@ -575,22 +584,6 @@ const Documents = () => {
             setIsImporting(false);
         }
     }, [navigate]);
-
-    const openSettingsModal = useCallback((doc) => {
-        setUi((current) => ({ ...current, settingsOpen: true, detailsOpen: false, selectedDoc: doc }));
-    }, []);
-
-    const openDetailsModal = useCallback((doc) => {
-        setUi((current) => ({ ...current, detailsOpen: true, settingsOpen: false, selectedDoc: doc }));
-    }, []);
-
-    const closeSettingsModal = useCallback(() => {
-        setUi((current) => ({ ...current, settingsOpen: false, selectedDoc: null }));
-    }, []);
-
-    const closeDetailsModal = useCallback(() => {
-        setUi((current) => ({ ...current, detailsOpen: false, selectedDoc: null }));
-    }, []);
 
     const openCaseFilterDialog = useCallback(() => {
         setUi((current) => ({ ...current, caseDialogOpen: true }));
@@ -636,17 +629,13 @@ const Documents = () => {
             invalidateDocumentListingCache(),
         ]);
         await refreshCurrentListing({ forceRefresh: true });
-        setUi((current) => (
-            current.selectedDoc?.id === doc.id
-                ? { ...current, settingsOpen: false, selectedDoc: null }
-                : current
-        ));
+        closeSettingsModal();
         showAppToast({
             title: 'Documento eliminado',
             description: `${doc.name || doc.title || `Documento #${doc.id}`} eliminado correctamente.`,
             variant: 'success',
         });
-    }, [deleteDocumentFromCache, refreshCurrentListing]);
+    }, [closeSettingsModal, deleteDocumentFromCache, refreshCurrentListing]);
 
     const requestDeleteDocument = useCallback((doc) => {
         if (!doc) return;
@@ -672,68 +661,6 @@ const Documents = () => {
             },
         });
     }, [closeDialog, executeDeleteDocument, openDialog, setDialogLoading]);
-
-    const handleExportPdf = useCallback(async (doc) => {
-        if (!doc) return;
-        if (typeof window === 'undefined' || typeof window.electronAPI?.documents?.exportPdf !== 'function') {
-            showAppToast({
-                title: 'Exportación no disponible',
-                description: 'La exportación a PDF solo está disponible en Electron.',
-                variant: 'danger',
-            });
-            return;
-        }
-
-        setExportingDocId(doc.id);
-        try {
-            const [
-                { getDocumentContent },
-                { getReportStyles },
-            ] = await Promise.all([
-                import('../services/documentService.js'),
-                import('../utils/pdf/pdfStyleHelper.js'),
-            ]);
-            const content = await getDocumentContent(doc.id);
-
-            if (!content) {
-                throw new Error('No se pudo obtener el contenido del documento.');
-            }
-
-            const styles = getReportStyles();
-            const resolvedMargins = normalizeMargins(doc?.margins || null);
-            const wrappedHtml = `
-                <div class="prose prose-base max-w-none bg-white export-document" style="box-sizing: border-box; width: 100%; min-height: auto; margin: 0 auto;">
-                    ${content}
-                </div>
-            `;
-
-            const result = await window.electronAPI.documents.exportPdf({
-                title: doc.name || doc.title || `documento-${doc.id}`,
-                html: wrappedHtml,
-                styles: `${styles}\n${buildPrintPageCss(resolvedMargins)}\n.export-document { width: 100%; max-width: none; }`
-            });
-
-            if (result?.canceled) return;
-            if (result?.error) throw new Error(result.error);
-
-            const pathHelper = result?.filePath || '';
-            const fileName = pathHelper.split(/[\\/]/).pop() || 'documento.pdf';
-            showAppToast({
-                title: 'PDF exportado',
-                description: `Se generó "${fileName}".`,
-                variant: 'success',
-            });
-        } catch (error) {
-            void logger.error('Error exportando PDF desde lista', error);
-            showAppToast({
-                title: 'Error al exportar',
-                description: error.message || 'No se pudo generar el PDF.',
-                variant: 'danger',
-            });
-        } finally {
-            setExportingDocId(null);
-        }
-    }, []);
 
     return (
         <div className="space-y-6">
@@ -808,19 +735,19 @@ const Documents = () => {
             />
 
             <DocumentSettingsModal
-                isOpen={ui.settingsOpen}
+                isOpen={modalState.settingsOpen}
                 onClose={closeSettingsModal}
-                documentData={ui.selectedDoc}
-                onUpdate={handleUpdateDocument}
+                documentData={modalState.selectedDoc}
+                onUpdate={applyDocumentUpdate}
                 allowCaseAssociationEdit={false}
                 canDelete={canDeleteDocuments}
-                onDelete={() => requestDeleteDocument(ui.selectedDoc)}
+                onDelete={() => requestDeleteDocument(modalState.selectedDoc)}
             />
 
             <DocumentDetailsModal
-                open={ui.detailsOpen}
+                open={modalState.detailsOpen}
                 onClose={closeDetailsModal}
-                documentData={ui.selectedDoc}
+                documentData={modalState.selectedDoc}
             />
 
             <ConfirmDialog {...dialogProps} />

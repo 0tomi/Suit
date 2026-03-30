@@ -10,6 +10,7 @@ export const CreateCatalogModal = ({
 }) => {
     const [name, setName] = useState('');
     const [description, setDescription] = useState('');
+    const [skipDescription, setSkipDescription] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -55,14 +56,32 @@ export const CreateCatalogModal = ({
                     />
                 </div>
                 <div>
-                    <label htmlFor="catalog-desc" className="block text-sm font-medium text-(--text-secondary) mb-1">
-                        Descripción (Opcional)
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                        <label htmlFor="catalog-desc" className="block text-sm font-medium text-(--text-secondary)">
+                            Descripción (Opcional)
+                        </label>
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none text-xs text-(--text-secondary)">
+                            <input
+                                type="checkbox"
+                                className="accent-blue-600"
+                                checked={skipDescription}
+                                onChange={(e) => {
+                                    const shouldSkip = e.target.checked;
+                                    setSkipDescription(shouldSkip);
+                                    if (shouldSkip) {
+                                        setDescription('');
+                                    }
+                                }}
+                            />
+                            No incluir
+                        </label>
+                    </div>
                     <textarea
                         id="catalog-desc"
+                        disabled={skipDescription}
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
-                        className="w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-24 resize-y"
+                        className={`w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-24 resize-y transition-colors ${skipDescription ? 'opacity-40 cursor-not-allowed' : ''}`}
                         placeholder="Una breve descripción del uso de este catálogo"
                     />
                 </div>

@@ -4,6 +4,7 @@ import {
     Eye, User, Clock,
     Tag, Search, MapPin, Hash, ExternalLink
 } from 'lucide-react';
+import { DollarSign } from 'lucide-react';
 import { useDocuments } from '../../../context/DocumentsContext';
 import { useMultimedia } from '../../../context/MultimediaContext.jsx';
 import { useFiles } from '../../../context/FilesContext.jsx';

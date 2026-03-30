@@ -1,4 +1,4 @@
-import { useMemo, useReducer, useRef } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     LayoutTemplate,
@@ -13,14 +13,15 @@ import {
 import { PrimaryActionButton } from '../components/ui/PrimaryActionButton';
 import { SearchBar } from '../components/ui/SearchBar';
 import { EmptyState } from '../components/ui/EmptyState';
+import { Pagination } from '../components/ui/Pagination';
 import { Modal } from '../components/ui/Modal.jsx';
-import { useTemplates } from '../context/TemplatesContext.jsx';
 import { useTemplateCategories } from '../context/TemplateCategoriesContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { showAppToast } from '../components/ui/show-app-toast.jsx';
 import { createTemplateCategory, deleteTemplate } from '../services/templateService.js';
+import { getTemplateListingPage, invalidateTemplateListingCache } from '../services/templateListingBackendService.js';
 import { getTemplateForPreview } from '../services/templatePreviewService.js';
 import { Button } from '../components/ui/Button.jsx';
 import TemplatePreviewModal from '../components/Editor/TemplatePreviewModal.jsx';
@@ -29,7 +30,10 @@ import { createLogger } from '../services/logService.js';
 import NewTemplateModal from '../components/templates/NewTemplateModal.jsx';
 import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
 import { templatesSteps } from '../constants/tutorialSteps.js';
+import { usePageFocus } from '../hooks/usePageFocus.js';
 const logger = createLogger('page:template-gallery');
+const SHOW_TEMPLATE_SUBTITLES = false;
+const DEFAULT_TEMPLATE_PER_PAGE = 40;
 
 const INITIAL_STATE = {
     selectedCategory: 'all',
@@ -44,6 +48,17 @@ const INITIAL_STATE = {
     newTemplateModalOpen: false,
     useModalOpen: false,
     useModalTemplate: null,
+    categoryError: null,
+};
+
+const INITIAL_LISTING_STATE = {
+    items: [],
+    page: 1,
+    total: 0,
+    totalPages: 1,
+    perPage: DEFAULT_TEMPLATE_PER_PAGE,
+    source: 'cache',
+    appliedLocalFilters: false,
 };
 
 function templateGalleryReducer(state, action) {
@@ -53,7 +68,7 @@ function templateGalleryReducer(state, action) {
         case 'SET_CATEGORY':
             return { ...state, selectedCategory: action.payload };
         case 'OPEN_CATEGORY_MODAL':
-            return { ...state, categoryModalOpen: true };
+            return { ...state, categoryModalOpen: true, categoryError: null };
         case 'CLOSE_CATEGORY_MODAL':
             return {
                 ...state,
@@ -61,6 +76,7 @@ function templateGalleryReducer(state, action) {
                 creatingCategory: false,
                 newCategoryName: '',
                 newCategoryDescription: '',
+                categoryError: null,
             };
         case 'SET_CREATING_CATEGORY':
             return { ...state, creatingCategory: action.payload };
@@ -68,6 +84,8 @@ function templateGalleryReducer(state, action) {
             return { ...state, newCategoryName: action.payload };
         case 'SET_NEW_CATEGORY_DESCRIPTION':
             return { ...state, newCategoryDescription: action.payload };
+        case 'SET_CATEGORY_ERROR':
+            return { ...state, categoryError: action.payload };
         case 'OPEN_PREVIEW_MODAL':
             return {
                 ...state,
@@ -112,6 +130,21 @@ function getDeleteTemplateErrorMessage(result) {
     return result?.data?.message || result?.error || 'Error al eliminar plantilla.';
 }
 
+function normalizeTemplateListingResponse(response) {
+    const payload = response && typeof response === 'object' ? response : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+
+    return {
+        items,
+        page: Math.max(1, Number(payload.page) || 1),
+        total: Math.max(0, Number(payload.total ?? payload.totalDocuments ?? items.length) || 0),
+        totalPages: Math.max(1, Number(payload.totalPages) || 1),
+        perPage: Math.max(1, Number(payload.perPage) || DEFAULT_TEMPLATE_PER_PAGE),
+        source: payload.source || 'cache',
+        appliedLocalFilters: Boolean(payload.appliedLocalFilters),
+    };
+}
+
 const TemplateGalleryHeader = ({
     isRefreshing,
     canCreateCategory,
@@ -136,7 +169,9 @@ const TemplateGalleryHeader = ({
                     </span>
                 )}
             </div>
-            <p className="text-(--text-secondary) mt-1">Modelos sincronizados con la API y cacheados localmente.</p>
+            {SHOW_TEMPLATE_SUBTITLES ? (
+                <p className="text-(--text-secondary) mt-1">Modelos sincronizados con la API y cacheados localmente.</p>
+            ) : null}
         </div>
         <div className="flex gap-2">
             {canCreateCategory && (
@@ -251,9 +286,11 @@ const TemplateCard = ({
                 >
                     {template.title || `Modelo #${template.id}`}
                 </h3>
-                <p className="text-sm text-(--text-secondary) line-clamp-3 mb-4">
-                    {description}
-                </p>
+                {SHOW_TEMPLATE_SUBTITLES ? (
+                    <p className="text-sm text-(--text-secondary) line-clamp-3 mb-4">
+                        {description}
+                    </p>
+                ) : null}
 
                 <div className="mt-auto flex items-center justify-between pt-3 border-t border-(--border-subtle)">
                     <span className="text-xs text-(--text-tertiary)">Modelo #{template.id}</span>
@@ -347,6 +384,7 @@ const CategoryModal = ({
     creatingCategory,
     newCategoryName,
     newCategoryDescription,
+    categoryError,
     onClose,
     onSubmit,
     onNameChange,
@@ -391,6 +429,7 @@ const CategoryModal = ({
                     className="w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary) focus:outline-none focus:ring-2 focus:ring-blue-500"
                     placeholder="Ej: Laboral, Penal, Comercial"
                 />
+                {categoryError && <p className="mt-1 text-xs text-red-500">{categoryError}</p>}
             </div>
             <div>
                 <label htmlFor="template-category-description" className="block text-sm font-medium text-(--text-secondary) mb-1">
@@ -413,19 +452,18 @@ const TemplateGallery = () => {
     const { user } = useAuth();
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
     const {
-        templates,
-        refreshTemplates,
-        syncing: syncingTemplates,
-        initialized: templatesInitialized,
-    } = useTemplates();
-    const {
         template_categories: categories,
         refreshTemplateCategories,
         syncing: syncingCategories,
         initialized: categoriesInitialized,
     } = useTemplateCategories();
     const [state, dispatch] = useReducer(templateGalleryReducer, INITIAL_STATE);
+    const [listingState, setListingState] = useState(INITIAL_LISTING_STATE);
+    const [listingLoading, setListingLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
+    const listingRequestIdRef = useRef(0);
     const previewRequestIdRef = useRef(0);
+    const deferredSearchTerm = useDeferredValue(state.searchTerm);
 
     const canDeleteTemplates = Boolean(user?.role && user.role !== 'user');
     const canCreateCategory = user?.role === 'admin' || user?.role === 'lawyer';
@@ -446,25 +484,78 @@ const TemplateGallery = () => {
         return categoryStillExists ? state.selectedCategory : 'all';
     }, [categories, state.selectedCategory]);
 
-    const isLoading = (!templatesInitialized || !categoriesInitialized) && templates.length === 0 && categories.length === 0;
-    const isRefreshing = syncingTemplates || syncingCategories;
+    const refreshTemplatesPage = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
+        const requestId = ++listingRequestIdRef.current;
+        setListingLoading(true);
 
-    const filteredTemplates = useMemo(() => {
-        const normalizedSearch = state.searchTerm.trim().toLowerCase();
+        try {
+            if (invalidate) {
+                await invalidateTemplateListingCache();
+            }
 
-        return templates.filter((template) => {
-            const matchesCategory =
-                activeCategory === 'all' || String(template.template_category_id) === String(activeCategory);
-            const title = String(template.title || '').toLowerCase();
-            const categoryName = String(categoryMap.get(String(template.template_category_id))?.name || '').toLowerCase();
-            const matchesSearch =
-                normalizedSearch.length === 0 ||
-                title.includes(normalizedSearch) ||
-                categoryName.includes(normalizedSearch);
+            const response = await getTemplateListingPage({
+                page,
+                filters: {
+                    categoryId: activeCategory,
+                    searchTerm: deferredSearchTerm.trim(),
+                },
+            });
 
-            return matchesCategory && matchesSearch;
-        });
-    }, [activeCategory, categoryMap, state.searchTerm, templates]);
+            if (listingRequestIdRef.current !== requestId) return;
+
+            const normalized = normalizeTemplateListingResponse(response);
+            if (page > normalized.totalPages && normalized.totalPages > 0 && normalized.totalPages !== page) {
+                setCurrentPage(normalized.totalPages);
+                return;
+            }
+
+            setListingState(normalized);
+            if (normalized.page !== page) {
+                setCurrentPage(normalized.page);
+            }
+        } catch (error) {
+            if (listingRequestIdRef.current !== requestId) return;
+            void logger.error('No se pudo cargar el listado de templates', {
+                error: error?.message || String(error),
+                page,
+                categoryId: activeCategory,
+                searchTerm: deferredSearchTerm,
+            });
+        } finally {
+            if (listingRequestIdRef.current === requestId) {
+                setListingLoading(false);
+            }
+        }
+    }, [activeCategory, currentPage, deferredSearchTerm]);
+
+    const refreshTemplatesOnFocus = useCallback(() => {
+        void Promise.allSettled([
+            refreshTemplateCategories(),
+            refreshTemplatesPage({ page: currentPage }),
+        ]);
+    }, [currentPage, refreshTemplateCategories, refreshTemplatesPage]);
+
+    // Rehidrata la galeria al volver a la tab activa.
+    usePageFocus({ onFocus: refreshTemplatesOnFocus });
+
+    useEffect(() => {
+        // Rehidrata al recuperar foco real de la ventana de Electron.
+        const handleWindowFocus = () => {
+            refreshTemplatesOnFocus();
+        };
+
+        window.addEventListener('focus', handleWindowFocus);
+        return () => window.removeEventListener('focus', handleWindowFocus);
+    }, [refreshTemplatesOnFocus]);
+
+    useEffect(() => {
+        void refreshTemplatesPage({ page: currentPage });
+    }, [currentPage, activeCategory, deferredSearchTerm, refreshTemplatesPage]);
+
+    const visibleTemplates = listingState.items;
+
+    const isLoading = (listingLoading && listingState.items.length === 0) || (!categoriesInitialized && categories.length === 0);
+    const isRefreshing = listingLoading || syncingCategories;
 
     const handleEditTemplate = (templateId) => {
         navigate(`/templates/edit/${templateId}`);
@@ -473,7 +564,7 @@ const TemplateGallery = () => {
     const handleUseTemplate = (templateId) => {
         // Busca el template en la lista cacheada para tener id y title disponibles.
         // El modal cargará el body completo internamente.
-        const found = templates.find((t) => String(t.id) === String(templateId));
+        const found = listingState.items.find((t) => String(t.id) === String(templateId));
         dispatch({ type: 'OPEN_USE_MODAL', payload: found || { id: templateId } });
     };
 
@@ -549,7 +640,7 @@ const TemplateGallery = () => {
                         }
                     }
 
-                    await refreshTemplates();
+                    await refreshTemplatesPage({ invalidate: true, page: currentPage });
                     showAppToast({
                         title: 'Plantilla eliminada',
                         description: `${template.title || `Modelo #${template.id}`} eliminada correctamente.`,
@@ -574,13 +665,10 @@ const TemplateGallery = () => {
         const name = state.newCategoryName.trim();
 
         if (!name) {
-            showAppToast({
-                title: 'Nombre requerido',
-                description: 'Ingresa un nombre para la categoría.',
-                variant: 'warning',
-            });
+            dispatch({ type: 'SET_CATEGORY_ERROR', payload: 'Ingresa un nombre para la categoría.' });
             return;
         }
+        dispatch({ type: 'SET_CATEGORY_ERROR', payload: null });
 
         dispatch({ type: 'SET_CREATING_CATEGORY', payload: true });
         try {
@@ -632,14 +720,28 @@ const TemplateGallery = () => {
 
             <TemplateGalleryFilters
                 searchTerm={state.searchTerm}
-                onSearchChange={(event) => dispatch({ type: 'SET_SEARCH_TERM', payload: event.target.value })}
+                onSearchChange={(event) => {
+                    dispatch({ type: 'SET_SEARCH_TERM', payload: event.target.value });
+                    setCurrentPage(1);
+                }}
                 categoryOptions={categoryOptions}
                 activeCategory={activeCategory}
-                onSelectCategory={(categoryId) => dispatch({ type: 'SET_CATEGORY', payload: categoryId })}
+                onSelectCategory={(categoryId) => {
+                    dispatch({ type: 'SET_CATEGORY', payload: categoryId });
+                    setCurrentPage(1);
+                }}
+            />
+
+            <Pagination
+                totalItems={listingState.total}
+                itemsPerPage={listingState.perPage}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
+                className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
             />
 
             <TemplateGalleryGrid
-                filteredTemplates={filteredTemplates}
+                filteredTemplates={visibleTemplates}
                 categoryMap={categoryMap}
                 canDeleteTemplates={canDeleteTemplates}
                 onDeleteTemplate={requestDeleteTemplate}
@@ -671,9 +773,15 @@ const TemplateGallery = () => {
                 creatingCategory={state.creatingCategory}
                 newCategoryName={state.newCategoryName}
                 newCategoryDescription={state.newCategoryDescription}
+                categoryError={state.categoryError}
                 onClose={() => dispatch({ type: 'CLOSE_CATEGORY_MODAL' })}
                 onSubmit={handleCreateCategory}
-                onNameChange={(event) => dispatch({ type: 'SET_NEW_CATEGORY_NAME', payload: event.target.value })}
+                onNameChange={(event) => {
+                    dispatch({ type: 'SET_NEW_CATEGORY_NAME', payload: event.target.value });
+                    if (state.categoryError) {
+                        dispatch({ type: 'SET_CATEGORY_ERROR', payload: null });
+                    }
+                }}
                 onDescriptionChange={(event) => dispatch({ type: 'SET_NEW_CATEGORY_DESCRIPTION', payload: event.target.value })}
             />
 

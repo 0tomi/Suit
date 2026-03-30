@@ -101,6 +101,7 @@ const FIELD_RESOLVERS = {
 
     // ── Sub-entidades del caso (cada una tiene su propio ID) ──────────────────
     caseType:             { table: 'case_types',              extract: (r) => r.name ?? '' },
+    caseExpedientType:    { table: 'tipo_expedientes',        extract: (r) => r.title ?? r.titulo ?? '' },
     radicacion:           { table: 'radicaciones',            extract: (r) => r.name ?? '' },
     jurisdiccion:         { table: 'jurisdicciones',          extract: (r) => r.nombre ?? '' },
     competencia:          { table: 'competencias',            extract: (r) => r.fuero ?? '' },
@@ -112,7 +113,19 @@ const FIELD_RESOLVERS = {
     parteAddress:         { table: 'partes', extract: (r) => r.address ?? '' },
 
     // ── Eventos ───────────────────────────────────────────────────────────────
-    eventType:            { table: 'events', extract: (r) => r.type ?? '' },
+    eventType: {
+        resolve: async (eventId, cache) => {
+            const eventRow = await resolveEntity('events', eventId, cache);
+            if (!eventRow) return '';
+
+            const parsedEvent = parseRow(eventRow);
+            const eventTypeId = parsedEvent?.event_type_id ?? parsedEvent?.eventTypeId ?? null;
+            if (eventTypeId == null) return '';
+
+            const eventTypeRow = await resolveEntity('event_types', eventTypeId, cache);
+            return parseRow(eventTypeRow)?.name ?? '';
+        },
+    },
     eventName:            { table: 'events', extract: (r) => r.title ?? '' },
     eventDate:            { table: 'events', extract: (r) => formatEventDate(r.starts_at) },
 
@@ -410,18 +423,22 @@ export async function fillTemplate({ templateId, body, fieldIds = {}, requiremen
                 return;
             }
 
-            const entity = await resolveEntity(resolver.table, rawValue, entityCache);
-            if (entity) {
-                let extracted = resolver.extract(parseRow(entity));
-
-                // Si el tratamiento formal está desactivado, quitar el prefijo Sr./Sra.
-                // que los resolvers de nombre completo y apellido agregan automáticamente.
-                if (!clientTreatmentEnabled && (type === 'clientCompleteName' || type === 'clientLastName')) {
-                    extracted = extracted.replace(/^(Sr\.|Sra\.)\s+/, '');
-                }
-
-                resolved[id_campo] = applyCapitalization(extracted, type, capitalizationSettings);
+            let extracted = '';
+            if (typeof resolver.resolve === 'function') {
+                extracted = await resolver.resolve(rawValue, entityCache);
+            } else {
+                const entity = await resolveEntity(resolver.table, rawValue, entityCache);
+                if (!entity) return;
+                extracted = resolver.extract(parseRow(entity));
             }
+
+            // Si el tratamiento formal está desactivado, quitar el prefijo Sr./Sra.
+            // que los resolvers de nombre completo y apellido agregan automáticamente.
+            if (!clientTreatmentEnabled && (type === 'clientCompleteName' || type === 'clientLastName')) {
+                extracted = extracted.replace(/^(Sr\.|Sra\.)\s+/, '');
+            }
+
+            resolved[id_campo] = applyCapitalization(extracted, type, capitalizationSettings);
         }));
 
         // ─── Mapa de género por id_campo ─────────────────────────────────────

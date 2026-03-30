@@ -48,11 +48,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     clients: {
         list: (options) => ipcRenderer.invoke('clients:list', options),
         get: (id) => ipcRenderer.invoke('clients:get', id),
+        getDocuments: (clientId, options) => ipcRenderer.invoke('clients:getDocuments', clientId, options),
         create: (payload) => ipcRenderer.invoke('clients:create', payload),
         update: (id, payload) => ipcRenderer.invoke('clients:update', id, payload),
         delete: (id) => ipcRenderer.invoke('clients:delete', id),
         getLastModified: () => ipcRenderer.invoke('clients:lastModified'),
         sync: () => ipcRenderer.invoke('clients:sync'),
+        getListingPage: (options) => ipcRenderer.invoke('clients:getListingPage', options),
+        invalidateListingCache: () => ipcRenderer.invoke('clients:invalidateListingCache'),
     },
 
     partes: {
@@ -66,6 +69,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
         listByCase: (caseId) => ipcRenderer.invoke('partes:listByCase', caseId),
         linkToCase: (caseId, parteId) => ipcRenderer.invoke('partes:linkToCase', caseId, parteId),
         unlinkFromCase: (caseId, parteId) => ipcRenderer.invoke('partes:unlinkFromCase', caseId, parteId),
+        getListingPage: (options) => ipcRenderer.invoke('partes:getListingPage', options),
+        invalidateListingCache: () => ipcRenderer.invoke('partes:invalidateListingCache'),
+    },
+
+    templates: {
+        getListingPage: (options) => ipcRenderer.invoke('templates:getListingPage', options),
+        invalidateListingCache: () => ipcRenderer.invoke('templates:invalidateListingCache'),
+    },
+
+    economia: {
+        getHonorariosListingPage: (options) => ipcRenderer.invoke('economia:getHonorariosListingPage', options),
+        getGastosListingPage: (options) => ipcRenderer.invoke('economia:getGastosListingPage', options),
+        getHonorariosStats: (options) => ipcRenderer.invoke('economia:getHonorariosStats', options),
+        getGastosStats: (options) => ipcRenderer.invoke('economia:getGastosStats', options),
+        invalidateListingCache: () => ipcRenderer.invoke('economia:invalidateListingCache'),
     },
 
     dialog: {
@@ -100,6 +118,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
 
     publicFiles: {
+        list: (options) => ipcRenderer.invoke('publicFiles:list', options),
+        listByCatalog: (catalogId, options) => ipcRenderer.invoke('publicFiles:listByCatalog', catalogId, options),
+        upload: (payload) => ipcRenderer.invoke('publicFiles:upload', payload),
+        update: (fileId, payload) => ipcRenderer.invoke('publicFiles:update', fileId, payload),
+        delete: (fileId) => ipcRenderer.invoke('publicFiles:delete', fileId),
+        getMyPermissions: (fileId) => ipcRenderer.invoke('publicFiles:getMyPermissions', fileId),
+        getPermissions: (fileId) => ipcRenderer.invoke('publicFiles:getPermissions', fileId),
+        setPermissions: (fileId, payload) => ipcRenderer.invoke('publicFiles:setPermissions', fileId, payload),
+        revokePermission: (fileId, userId) => ipcRenderer.invoke('publicFiles:revokePermission', fileId, userId),
         // Descarga un archivo público de la API y lo guarda en disco via diálogo nativo.
         // Retorna { saved: true, filePath } o { saved: false, error? }
         download: (fileId, suggestedName) =>
@@ -114,7 +141,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
         generateUploadLink: (options) => ipcRenderer.invoke('publicFiles:generateUploadLink', options),
     },
 
+    publicFileCatalogs: {
+        list: () => ipcRenderer.invoke('publicFileCatalogs:list'),
+        create: (payload) => ipcRenderer.invoke('publicFileCatalogs:create', payload),
+        update: (catalogId, payload) => ipcRenderer.invoke('publicFileCatalogs:update', catalogId, payload),
+        delete: (catalogId) => ipcRenderer.invoke('publicFileCatalogs:delete', catalogId),
+    },
+
     cases: {
+        getListingPage: (options) => ipcRenderer.invoke('cases:getListingPage', options),
+        invalidateListingCache: () => ipcRenderer.invoke('cases:invalidateListingCache'),
         // Genera un enlace temporal para carga/descarga de archivos o multimedia en un caso.
         // Retorna { upload_url | download_url, expires_at }
         generateLink: (options) => ipcRenderer.invoke('cases:generateLink', options),
@@ -145,6 +181,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
         getTemplateRequirements: (templateId) =>
             ipcRenderer.invoke('db:getTemplateRequirements', templateId),
         searchEvents: (options) => ipcRenderer.invoke('db:searchEvents', options),
+        getAgendaEventTypes: (agendaId) => ipcRenderer.invoke('db:getAgendaEventTypes', agendaId),
         upsertMany: (table, rows) => ipcRenderer.invoke('db:upsertMany', table, rows),
         reconcileEventsForAgenda: (agendaId, rows) =>
             ipcRenderer.invoke('db:reconcileEventsForAgenda', agendaId, rows),
@@ -173,6 +210,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     system: {
         getFonts: () => ipcRenderer.invoke('system:getFonts'),
+    },
+
+    window: {
+        setZoomFactor: (factor) => ipcRenderer.invoke('window:setZoomFactor', factor),
     },
 
     notifications: {

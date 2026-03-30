@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { Landmark, Scale, Plus, Pencil, Trash2, SearchX, ChevronRight, BookOpen } from 'lucide-react';
 import { useJurisdicciones } from '../../context/JurisdiccionesContext.jsx';
 import { useCompetencias } from '../../context/CompetenciasContext.jsx';
@@ -12,6 +12,7 @@ import { EmptyState } from '../ui/EmptyState.jsx';
 import { ConfirmDialog } from '../ui/ConfirmDialog.jsx';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog.js';
 import { showAppToast } from '../ui/show-app-toast.jsx';
+import { getApiErrorMessage, translateTechnicalErrorMessage } from '../../utils/apiErrorMessage.js';
 import JurisdiccionModal from './modals/JurisdiccionModal.jsx';
 import DependenciaJudicialModal from './modals/DependenciaJudicialModal.jsx';
 
@@ -40,6 +41,13 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
     const [editingJurisdiccion, setEditingJurisdiccion] = useState(null);
     const [editingDependencia, setEditingDependencia] = useState(null);
 
+    // Cálculos de altura dinámica para la lista
+    const listContainerRef = useRef(null);
+    const rightListContainerRef = useRef(null);
+    const [maxListHeight, setMaxListHeight] = useState(null);
+    const [maxRightHeight, setMaxRightHeight] = useState(null);
+    const ITEM_ESTIMATED_HEIGHT = 60; // 56px height + gap
+
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
 
     // Sincronizar con la API al entrar al tab
@@ -50,6 +58,39 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
         refreshDependenciasJudiciales();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []); 
+
+    // Cálculo dinámico de altura disponible para los listados
+    useEffect(() => {
+        const calculateMaxHeight = () => {
+            // Panel Izquierdo
+            if (listContainerRef.current) {
+                const rect = listContainerRef.current.getBoundingClientRect();
+                const footerReservedSpace = 100;
+                const availableHeight = (window.innerHeight - rect.top - footerReservedSpace) * 0.9;
+                setMaxListHeight(Math.max(300, availableHeight));
+            }
+
+            // Panel Derecho
+            if (rightListContainerRef.current) {
+                const rect = rightListContainerRef.current.getBoundingClientRect();
+                const bottomReservedSpace = 40;
+                const availableHeight = (window.innerHeight - rect.top - bottomReservedSpace) * 0.9;
+                setMaxRightHeight(Math.max(300, availableHeight));
+            }
+        };
+
+        calculateMaxHeight();
+        window.addEventListener('resize', calculateMaxHeight);
+        
+        // Pequeño timeout para asegurar que el DOM se asentó post-animaciones de entrada
+        const timer = setTimeout(calculateMaxHeight, 500);
+        
+        return () => {
+            window.removeEventListener('resize', calculateMaxHeight);
+            clearTimeout(timer);
+        };
+    }, []);
+
 
     // Filtrar jurisdicciones por búsqueda
     const filteredJurisdicciones = useMemo(() => {
@@ -110,14 +151,14 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
             } else {
                 showAppToast({
                     title: 'Error',
-                    description: result.error || 'No se pudo completar la operación.',
+                    description: getApiErrorMessage(result, 'No se pudo completar la operación.'),
                     variant: 'danger'
                 });
             }
         } catch (error) {
             showAppToast({
                 title: 'Error',
-                description: error.message,
+                description: translateTechnicalErrorMessage(error.message),
                 variant: 'danger'
             });
         }
@@ -144,15 +185,12 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                     } else {
                         setDialogLoading(false);
                         closeDialog();
-                        let errorMsg = result.error || result.data?.message || 'La API rechazó la solicitud.';
-                        if (result.status === 403) errorMsg = 'No tienes permisos suficientes (rol abogado/admin requerido).';
-                        if (result.status === 500) errorMsg = 'Error interno del servidor.';
-                        showAppToast({ title: 'Error al eliminar', description: errorMsg, variant: 'danger' });
+                        showAppToast({ title: 'Error al eliminar', description: getApiErrorMessage(result, 'La API rechazó la solicitud.'), variant: 'danger' });
                     }
                 } catch (error) {
                     setDialogLoading(false);
                     closeDialog();
-                    showAppToast({ title: 'Error al eliminar', description: error.message, variant: 'danger' });
+                    showAppToast({ title: 'Error al eliminar', description: translateTechnicalErrorMessage(error.message), variant: 'danger' });
                 }
             }
         });
@@ -180,14 +218,14 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
             } else {
                 showAppToast({
                     title: 'Error',
-                    description: result.error || 'No se pudo guardar la asociación.',
+                    description: getApiErrorMessage(result, 'No se pudo guardar la asociación.'),
                     variant: 'danger'
                 });
             }
         } catch (error) {
             showAppToast({
                 title: 'Error',
-                description: error.message,
+                description: translateTechnicalErrorMessage(error.message),
                 variant: 'danger'
             });
         }
@@ -210,15 +248,12 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                     } else {
                         setDialogLoading(false);
                         closeDialog();
-                        let errorMsg = result.error || result.data?.message || 'La API rechazó la solicitud.';
-                        if (result.status === 403) errorMsg = 'No tienes permisos suficientes (rol abogado/admin requerido).';
-                        if (result.status === 500) errorMsg = 'Error interno del servidor.';
-                        showAppToast({ title: 'Error al eliminar', description: errorMsg, variant: 'danger' });
+                        showAppToast({ title: 'Error al eliminar', description: getApiErrorMessage(result, 'La API rechazó la solicitud.'), variant: 'danger' });
                     }
                 } catch (error) {
                     setDialogLoading(false);
                     closeDialog();
-                    showAppToast({ title: 'Error al eliminar', description: error.message, variant: 'danger' });
+                    showAppToast({ title: 'Error al eliminar', description: translateTechnicalErrorMessage(error.message), variant: 'danger' });
                 }
             }
         });
@@ -248,17 +283,6 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                         Gestiona las jurisdicciones y asocia competencias (juzgados) a cada una.
                     </p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                    {canEdit && (
-                        <Button 
-                            icon={Plus} 
-                            onClick={() => { setEditingJurisdiccion(null); setIsJurisdiccionModalOpen(true); }}
-                        >
-                            Nueva Jurisdicción
-                        </Button>
-                    )}
-                </div>
             </div>
 
             {/* Split View */}
@@ -273,7 +297,11 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                         containerClassName="flex-none"
                     />
 
-                    <div className="flex flex-col gap-1 overflow-y-auto max-h-[600px] pr-1 custom-scrollbar">
+                    <div 
+                        ref={listContainerRef}
+                        className="flex flex-col gap-1 overflow-y-auto pr-1 custom-scrollbar"
+                        style={maxListHeight ? { maxHeight: `${maxListHeight}px` } : { maxHeight: '300px' }}
+                    >
                         {jurisdiccionesLoading && jurisdicciones.length === 0 ? (
                             <div className="py-10 text-center text-sm text-(--text-secondary)">Cargando...</div>
                         ) : filteredJurisdicciones.length === 0 ? (
@@ -339,6 +367,21 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                             })
                         )}
                     </div>
+
+                    {/* Botón de creación al pie de la lista */}
+                    {canEdit && (
+                        <div className="mt-auto pt-2 border-t border-(--border-subtle)">
+                            <button
+                                onClick={() => { setEditingJurisdiccion(null); setIsJurisdiccionModalOpen(true); }}
+                                className="flex w-full items-center gap-3 px-3 py-3 text-blue-600 transition-all hover:bg-blue-500/5 rounded-xl group"
+                            >
+                                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
+                                    <Plus className="h-4 w-4" />
+                                </div>
+                                <span className="font-semibold text-sm text-blue-600">Nueva Jurisdicción</span>
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Panel Derecho: Competencias Asociadas */}
@@ -362,7 +405,6 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
 
                                 {canEdit && (
                                     <Button 
-                                        variant="outline" 
                                         size="sm" 
                                         icon={Plus}
                                         onClick={() => { setEditingDependencia(null); setIsDependenciaModalOpen(true); }}
@@ -372,7 +414,11 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
                                 )}
                             </div>
 
-                            <div className="flex-1 overflow-y-auto">
+                            <div 
+                                ref={rightListContainerRef}
+                                className="flex-1 overflow-y-auto pr-1 custom-scrollbar"
+                                style={maxRightHeight ? { maxHeight: `${maxRightHeight}px` } : {}}
+                            >
                                 {dependenciasLoading ? (
                                     <div className="py-20 text-center text-(--text-secondary)">Buscando asociaciones...</div>
                                 ) : dependencias.length === 0 ? (
@@ -457,7 +503,10 @@ export default function JurisdiccionesCatalogSection({ isAdmin, canEdit }) {
             {/* Modales */}
             <JurisdiccionModal
                 open={isJurisdiccionModalOpen}
-                onClose={() => setIsJurisdiccionModalOpen(false)}
+                onClose={() => {
+                    setIsJurisdiccionModalOpen(false);
+                    setEditingJurisdiccion(null);
+                }}
                 onSave={handleSaveJurisdiccion}
                 initialData={editingJurisdiccion}
             />

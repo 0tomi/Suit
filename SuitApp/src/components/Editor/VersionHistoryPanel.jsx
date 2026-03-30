@@ -64,7 +64,7 @@ export default function VersionHistoryPanel({
 }) {
     if (loading) {
         return (
-            <div className="flex min-h-48 items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 text-sm text-gray-500">
+            <div className="flex min-h-48 items-center justify-center gap-3 rounded-xl border border-dashed border-(--border-default) bg-(--bg-card-hover) text-sm text-(--text-tertiary)">
                 <Loader2 className="h-5 w-5 animate-spin" />
                 <span>Cargando historial...</span>
             </div>
@@ -73,12 +73,12 @@ export default function VersionHistoryPanel({
 
     if (error) {
         return (
-            <div className="space-y-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            <div className="space-y-3 rounded-xl border border-red-500/20 bg-red-500/5 p-4 text-sm text-red-700 dark:text-red-400">
                 <p>{error}</p>
                 <button
                     type="button"
                     onClick={onRetry}
-                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 font-medium text-red-700 transition-colors hover:bg-red-100"
+                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 font-medium text-red-700 transition-colors hover:bg-red-500/20 dark:text-red-300"
                 >
                     <RefreshCcw size={14} />
                     Reintentar
@@ -89,11 +89,11 @@ export default function VersionHistoryPanel({
 
     if (!versions.length) {
         return (
-            <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 bg-gray-50 px-6 text-center">
-                <History className="h-8 w-8 text-gray-300" />
+            <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-(--border-default) bg-(--bg-card-hover) px-6 text-center">
+                <History className="h-8 w-8 text-(--text-tertiary)" />
                 <div className="space-y-1">
-                    <p className="text-sm font-medium text-gray-600">No hay versiones disponibles</p>
-                    <p className="text-sm text-gray-400">El historial aparecerá cuando la API informe versiones del documento.</p>
+                    <p className="text-sm font-medium text-(--text-secondary)">No hay versiones disponibles</p>
+                    <p className="text-sm text-(--text-tertiary)">El historial aparecerá cuando la API informe versiones del documento.</p>
                 </div>
             </div>
         );
@@ -101,7 +101,7 @@ export default function VersionHistoryPanel({
 
     return (
         <div className="space-y-3">
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-(--text-tertiary)">
                 Abre una versión en modo lectura. Si luego habilitas edición y guardas, la API creará una versión nueva automáticamente.
             </p>
 
@@ -114,30 +114,30 @@ export default function VersionHistoryPanel({
                         <div
                             key={version.id || `${versionNumber}-${version.created_at || index}`}
                             className={`rounded-xl border p-4 transition-colors ${
-                                isActive ? 'border-blue-300 bg-blue-50/70' : 'border-gray-200 bg-white'
+                                isActive ? 'border-blue-500/50 bg-blue-500/10' : 'border-(--border-default) bg-(--bg-card-hover)'
                             }`}
                         >
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 space-y-1">
                                     <div className="flex items-center gap-2">
-                                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-semibold text-gray-700">
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2.5 py-1 text-xs font-semibold text-blue-600 dark:text-blue-400">
                                             <FileText size={12} />
                                             v{versionNumber}
                                         </span>
                                         {isActive ? (
-                                            <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                                            <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                                                 Abierta actualmente
                                             </span>
                                         ) : null}
                                     </div>
-                                    <p className="text-sm font-medium text-gray-900">{resolveVersionAuthor(version)}</p>
-                                    <p className="text-sm text-gray-500">{formatVersionDate(version.created_at || version.updated_at)}</p>
+                                    <p className="text-sm font-medium text-(--text-primary)">{resolveVersionAuthor(version)}</p>
+                                    <p className="text-sm text-(--text-secondary)">{formatVersionDate(version.created_at || version.updated_at)}</p>
                                 </div>
 
                                 <button
                                     type="button"
                                     onClick={() => onOpenVersion(version)}
-                                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50"
+                                    className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-500/20 dark:text-blue-400"
                                 >
                                     Abrir
                                 </button>

@@ -2,6 +2,25 @@ import { getAllRequisitosFromApi } from '../requisitosService.js';
 import { createLogger } from '../logService.js';
 
 const logger = createLogger('sync:requisitos');
+const REQUIRED_REQUIREMENT_TYPES = new Set(['caseExpedientType']);
+
+function buildRequirementRows(items) {
+    return items.map((r) => ({
+        id: r.id,
+        type: r.type ?? null,
+        title: r.title ?? null,
+        deleted_at: r.deleted_at ?? null,
+        updated_at: r.updated_at ?? null,
+        synced_at: new Date().toISOString(),
+    }));
+}
+
+function isBackfillNeeded(existingRows) {
+    if (!Array.isArray(existingRows) || existingRows.length === 0) return true;
+
+    const existingTypes = new Set(existingRows.map((row) => row.type).filter(Boolean));
+    return [...REQUIRED_REQUIREMENT_TYPES].some((type) => !existingTypes.has(type));
+}
 
 /**
  * Verifica si la tabla de requisitos está vacía y, de ser así, la siembra
@@ -16,11 +35,17 @@ const logger = createLogger('sync:requisitos');
  */
 export async function ensureRequisitosSeeded() {
     const existing = await window.electronAPI.db.getAll('requisitos');
-    if (existing && existing.length > 0) {
+    const needsBackfill = isBackfillNeeded(existing);
+
+    if (existing && existing.length > 0 && !needsBackfill) {
         return false;
     }
 
-    logger.info('cache vacía, sembrando desde API');
+    logger.info(
+        existing && existing.length > 0
+            ? 'catálogo de requisitos incompleto, rehidratando desde API'
+            : 'cache vacía, sembrando desde API'
+    );
 
     const response = await getAllRequisitosFromApi();
     if (!response) {
@@ -36,14 +61,7 @@ export async function ensureRequisitosSeeded() {
         return false;
     }
 
-    const rows = items.map((r) => ({
-        id: r.id,
-        type: r.type ?? null,
-        title: r.title ?? null,
-        deleted_at: r.deleted_at ?? null,
-        updated_at: r.updated_at ?? null,
-        synced_at: new Date().toISOString(),
-    }));
+    const rows = buildRequirementRows(items);
 
     await window.electronAPI.db.upsertMany('requisitos', rows);
 
@@ -51,7 +69,7 @@ export async function ensureRequisitosSeeded() {
     const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
     await window.electronAPI.sync.setMeta('requisitos', now, now);
 
-    logger.info('requisitos sembrados', { count: rows.length });
+    logger.info('requisitos actualizados', { count: rows.length, backfill: needsBackfill });
     return true;
 }
 

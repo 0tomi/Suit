@@ -112,8 +112,6 @@ export async function clearStaleResources() {
         'jurisdicciones', 'competencias', 'dependencias_judiciales',
         // Multimedia y archivos generales — metadatos cacheados, contenido binario on-demand
         'multimedia', 'files',
-        // Biblioteca de archivos públicos
-        'public_files', 'public_file_catalogs',
     ];
     const thresholdMs = STALE_THRESHOLD_DAYS * 24 * 60 * 60 * 1000;
     const now = Date.now();

@@ -1,9 +1,9 @@
 import { useCallback, useReducer, useState } from 'react';
 
 const initialEconomy = {
-    globalHonorarios: [],
-    globalGastos: [],
-    previousHonorarios: [],
+    honorariosCurrent: [],
+    gastosCurrent: [],
+    honorariosPrevious: [],
     honorarios12: [],
     gastos12: [],
 };
@@ -14,9 +14,9 @@ function economyReducer(state, action) {
         // Antes eran 5 setState separados tras el Promise.all de loadEconomy.
         case 'SET_ECONOMY_DATA':
             return {
-                globalHonorarios: action.hCurrent,
-                globalGastos: action.gCurrent,
-                previousHonorarios: action.hPrev,
+                honorariosCurrent: action.hCurrent,
+                gastosCurrent: action.gCurrent,
+                honorariosPrevious: action.hPrev,
                 honorarios12: action.h12,
                 gastos12: action.g12,
             };
@@ -42,6 +42,7 @@ export function useReportsDashboardState() {
 
     // Estado de refresco manual
     const [isRefreshing, setIsRefreshing]     = useState(false);
+    const [economyError, setEconomyError] = useState(null);
 
     /** Actualiza los 5 arrays económicos en un único re-render. */
     const setEconomyData = useCallback(({ hCurrent, gCurrent, hPrev, h12, g12 }) => {
@@ -54,6 +55,7 @@ export function useReportsDashboardState() {
         usersList, setUsersList,
         caseClientMap, setCaseClientMap,
         isRefreshing, setIsRefreshing,
+        economyError, setEconomyError,
         setEconomyData,
     };
 }

@@ -399,7 +399,7 @@ export default function Deadlines() {
     };
 
     return (
-        <div className="space-y-4 relative p-6 max-w-7xl mx-auto">
+        <div className="space-y-4 relative max-w-7xl mx-auto">
 
             {/* Header */}
             <div className="flex justify-between items-start gap-4">

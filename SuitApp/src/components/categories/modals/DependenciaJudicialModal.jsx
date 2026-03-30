@@ -4,6 +4,7 @@ import { Button } from '../../ui/Button.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../ui/Select.jsx';
 import { Plus, Landmark, Scale } from 'lucide-react';
 import { useRadicaciones } from '../../../context/RadicacionesContext.jsx';
+import { showAppToast } from '../../ui/show-app-toast.jsx';
 
 /**
  * Modal para asociar una competencia (crear una Dependencia Judicial).
@@ -15,18 +16,22 @@ export default function DependenciaJudicialModal({
     jurisdicciones = [], 
     competencias = [], 
     initialData = null,
-    defaultJurisdiccionId = null
+    defaultJurisdiccionId = null,
+    defaultRadicacionId = null
 }) {
     const { data: radicaciones } = useRadicaciones();
     
     const [nombre, setNombre] = useState(initialData?.nombre_juzgado || '');
     const [jurisdiccionId, setJurisdiccionId] = useState(initialData?.jurisdiccion_id || defaultJurisdiccionId || '');
     const [competenciaId, setCompetenciaId] = useState(initialData?.competencia_id || '');
-    const [radicacionId, setRadicacionId] = useState(initialData?.radicacion_id || '');
+    const [radicacionId, setRadicacionId] = useState(initialData?.radicacion_id || defaultRadicacionId || '');
     const [saving, setSaving] = useState(false);
+    const [fieldErrors, setFieldErrors] = useState({});
 
     const currentJurisdiccion = jurisdicciones.find(j => String(j.id) === String(jurisdiccionId));
     const isFederal = currentJurisdiccion?.nombre?.toLowerCase().includes('federal');
+    const hasSelectedCompetencia = competencias.some((competencia) => String(competencia.id) === String(competenciaId));
+    const competenciaSelectValue = competenciaId && hasSelectedCompetencia ? String(competenciaId) : undefined;
 
     // Sincronizar estado cuando cambia initialData o defaultJurisdiccionId
     useEffect(() => {
@@ -34,9 +39,9 @@ export default function DependenciaJudicialModal({
             setNombre(initialData?.nombre_juzgado || '');
             setJurisdiccionId(initialData?.jurisdiccion_id || defaultJurisdiccionId || '');
             setCompetenciaId(initialData?.competencia_id || '');
-            setRadicacionId(initialData?.radicacion_id || '');
+            setRadicacionId(initialData?.radicacion_id || defaultRadicacionId || '');
         }
-    }, [open, initialData, defaultJurisdiccionId]);
+    }, [open, initialData, defaultJurisdiccionId, defaultRadicacionId]);
 
     // Lógica para Radicación Federal automática
     useEffect(() => {
@@ -48,9 +53,22 @@ export default function DependenciaJudicialModal({
         }
     }, [isFederal, radicaciones]);
 
+    useEffect(() => {
+        if (!open || !competenciaId || competencias.length === 0 || hasSelectedCompetencia) return;
+        setCompetenciaId('');
+    }, [competenciaId, competencias, hasSelectedCompetencia, open]);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!nombre.trim() || !jurisdiccionId || !competenciaId || !radicacionId) return;
+        const errors = {};
+        if (!nombre.trim()) errors.nombre = 'El nombre del juzgado es obligatorio.';
+        if (!competenciaId) errors.competenciaId = 'Seleccioná una competencia / fuero.';
+        if (!radicacionId) errors.radicacionId = 'Seleccioná una radicación.';
+        if (Object.keys(errors).length > 0) {
+            setFieldErrors(errors);
+            showAppToast({ title: 'Campos obligatorios', description: 'Completá todos los campos requeridos.', variant: 'danger' });
+            return;
+        }
 
         setSaving(true);
         try {
@@ -90,28 +108,33 @@ export default function DependenciaJudicialModal({
                     {/* Nombre del Juzgado */}
                     <div>
                         <label className="mb-2 block text-sm font-semibold text-(--text-secondary)">
-                            Nombre del Juzgado
+                            Nombre del Juzgado <span className="text-red-500">*</span>
                         </label>
                         <input
                             type="text"
                             value={nombre}
-                            onChange={(e) => setNombre(e.target.value)}
+                            onChange={(e) => { setNombre(e.target.value); if (fieldErrors.nombre) setFieldErrors(p => ({ ...p, nombre: undefined })); }}
                             placeholder="Ej: Civil Nro 1"
-                            className="w-full h-11 rounded-xl border border-(--border-default) bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all"
+                            className={`w-full h-11 rounded-xl border bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:ring-2 focus:outline-none transition-all ${
+                                fieldErrors.nombre
+                                    ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                                    : 'border-(--border-default) focus:border-blue-500 focus:ring-blue-500/10'
+                            }`}
                             required
                         />
+                        {fieldErrors.nombre && <p className="mt-1.5 text-xs text-red-500">{fieldErrors.nombre}</p>}
                     </div>
 
                     {/* Competencia / Fuero */}
                     <div>
                         <label className="mb-2 block text-sm font-semibold text-(--text-secondary)">
-                            Competencia / Fuero
+                            Competencia / Fuero <span className="text-red-500">*</span>
                         </label>
                         <Select 
-                            value={competenciaId ? String(competenciaId) : undefined} 
-                            onValueChange={(val) => setCompetenciaId(val)}
+                            value={competenciaSelectValue} 
+                            onValueChange={(val) => { setCompetenciaId(val); if (fieldErrors.competenciaId) setFieldErrors(p => ({ ...p, competenciaId: undefined })); }}
                         >
-                            <SelectTrigger aria-label="Selecciona el fuero">
+                            <SelectTrigger aria-label="Selecciona el fuero" className={fieldErrors.competenciaId ? 'border-red-500 focus-visible:ring-red-500' : ''}>
                                 <div className="flex items-center gap-2">
                                     <Scale size={16} className="text-(--text-tertiary)" />
                                     <SelectValue placeholder="Selecciona el fuero" />
@@ -125,19 +148,20 @@ export default function DependenciaJudicialModal({
                                 ))}
                             </SelectContent>
                         </Select>
+                        {fieldErrors.competenciaId && <p className="mt-1.5 text-xs text-red-500">{fieldErrors.competenciaId}</p>}
                     </div>
 
                     {/* Radicación */}
                     <div>
                         <label className="mb-2 block text-sm font-semibold text-(--text-secondary)">
-                            Radicación
+                            Radicación <span className="text-red-500">*</span>
                         </label>
                         <Select 
                             value={radicacionId ? String(radicacionId) : undefined} 
-                            onValueChange={(val) => setRadicacionId(val)}
+                            onValueChange={(val) => { setRadicacionId(val); if (fieldErrors.radicacionId) setFieldErrors(p => ({ ...p, radicacionId: undefined })); }}
                             disabled={isFederal}
                         >
-                            <SelectTrigger aria-label="Selecciona la radicación">
+                            <SelectTrigger aria-label="Selecciona la radicación" className={fieldErrors.radicacionId ? 'border-red-500 focus-visible:ring-red-500' : ''}>
                                 <div className="flex items-center gap-2">
                                     <Landmark size={16} className="text-(--text-tertiary)" />
                                     <SelectValue placeholder="Selecciona la radicación" />
@@ -161,6 +185,7 @@ export default function DependenciaJudicialModal({
                                 En Jurisdicciones Federales, la radicación es automáticamente Federal.
                             </p>
                         )}
+                        {fieldErrors.radicacionId && <p className="mt-1.5 text-xs text-red-500">{fieldErrors.radicacionId}</p>}
                     </div>
                 </div>
 

@@ -17,7 +17,7 @@ export default function PeopleSectionLayout({
     trigger
 }) {
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 h-full flex flex-col p-6 overflow-hidden">
             <div className="flex justify-between items-center">
                 <div>
                     <h1 data-testid={titleTestId} className="flex items-center gap-3 text-3xl font-bold text-(--text-primary)">

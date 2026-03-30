@@ -128,10 +128,13 @@ export const CaseReportView = ({ data }) => {
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Radicación</p>
                         <p className="text-slate-700 font-medium">{caseMetadata?.radicacion || 'Sin radicación'}</p>
                     </div>
-                    <div>
-                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Jurisdicción</p>
-                        <p className="text-slate-700 font-medium">{caseMetadata?.jurisdiccion || 'Sin jurisdicción'}</p>
-                    </div>
+                    {/* Ocultar jurisdicción si la radicación es federal */}
+                    {!(caseMetadata?.radicacion?.toLowerCase().includes('federal')) && (
+                        <div>
+                            <p className="text-xs font-bold text-slate-400 uppercase mb-1">Jurisdicción</p>
+                            <p className="text-slate-700 font-medium">{caseMetadata?.jurisdiccion || 'Sin jurisdicción'}</p>
+                        </div>
+                    )}
                     <div>
                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Dependencia (Juzgado)</p>
                         <p className="text-slate-700 font-medium">{caseMetadata?.dependencia || 'Sin juzgado'}</p>

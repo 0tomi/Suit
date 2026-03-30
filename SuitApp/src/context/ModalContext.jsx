@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { AnimatePresence, LazyMotion, domAnimation, m } from 'framer-motion';
 import { useHotkeysSystem } from '../hotkeys/useHotkeysSystem.js';

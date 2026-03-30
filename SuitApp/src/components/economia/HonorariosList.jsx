@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { format, startOfMonth, endOfMonth, parseISO } from 'date-fns';
-import { getHonorariosByDateRange } from '../../services/honorarioService';
 import { Table } from '../ui/Table';
 import { Button } from '../ui/Button';
 import { DateRangePicker } from '../ui/DateRangePicker';
 import { useHonorarios } from '../../hooks/useHonorarios.js';
-import { useClients } from '../../context/ClientsContext.jsx';
-import { useCases } from '../../context/CasesContext.jsx';
 import { useModal } from '../../context/ModalContext';
 import { EntregasModal } from './EntregasModal';
 import { NewHonorarioModal } from './NewHonorarioModal';
 import { useAuth } from '../../context/AuthContext';
 import { useUsers } from '../../context/UsersContext.jsx';
+import { Pagination } from '../ui/Pagination';
+import {
+    getHonorariosListingPage,
+    invalidateEconomiaListingCache,
+} from '../../services/economiaListingBackendService.js';
 import PropTypes from 'prop-types';
 
 /** Formatea un Date a YYYY-MM-DD para la API. */
@@ -33,8 +35,6 @@ import { EconomiaFilterBar } from './EconomiaFilterBar';
 
 export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
     const { openModal } = useModal();
-    const { cases = [] } = useCases();
-    const { clients = [] } = useClients();
     const { user: currentUser } = useAuth();
     const { users = [] } = useUsers();
     const isAdmin = currentUser?.role === 'admin';
@@ -47,8 +47,15 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
         enabled: !caseId || caseCacheReady,
         skipInitialFetch: Boolean(caseId && caseCacheReady),
     });
-    const [rangeHonorarios, setRangeHonorarios] = useState([]);
-    const [rangeLoading, setRangeLoading] = useState(true);
+    const [listingState, setListingState] = useState({
+        items: [],
+        page: 1,
+        total: 0,
+        totalPages: 1,
+        perPage: 30,
+        source: 'cache',
+    });
+    const [listingLoading, setListingLoading] = useState(true);
     const [dateRange, setDateRange] = useState({
         from: startOfMonth(new Date()),
         to: endOfMonth(new Date()),
@@ -60,25 +67,32 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
     const [selectedUserId, setSelectedUserId] = useState('all');
     const [sortBy, setSortBy] = useState('created_at');
     const [sortOrder, setSortOrder] = useState('desc');
+    const [currentPage, setCurrentPage] = useState(1);
 
     const fromDate = formatDateForApi(dateRange.from);
     const toDate = formatDateForApi(dateRange.to);
-    const rawActiveHonorarios = caseId ? cachedHonorarios : rangeHonorarios;
-
-    const clientsMap = useMemo(() => new Map(
-        clients.map((client) => [String(client.id), client])
-    ), [clients]);
 
     const getClientDisplay = useCallback((honorario) => {
-        const resolvedClient = honorario.client || clientsMap.get(String(honorario.client_id));
+        const resolvedClient = honorario.client || honorario.client_name;
         if (resolvedClient) {
+            if (typeof resolvedClient === 'string') return resolvedClient;
             return `${resolvedClient.first_name || ''} ${resolvedClient.last_name || ''}`.trim() || `Cliente #${honorario.client_id}`;
         }
         return honorario.client_id ? `Cliente #${honorario.client_id}` : 'N/A';
-    }, [clientsMap]);
+    }, []);
+
+    const getCaseDisplay = useCallback((honorario) => {
+        const caseItem = honorario.suit_case || honorario.case;
+        if (caseItem?.title) return caseItem.title;
+        if (honorario.case_title) return honorario.case_title;
+        if (honorario.suit_case_title) return honorario.suit_case_title;
+        return honorario.suit_case_id ? `Caso #${honorario.suit_case_id}` : 'N/A';
+    }, []);
 
     const activeHonorarios = useMemo(() => {
-        let filtered = [...rawActiveHonorarios];
+        if (!caseId) return listingState.items;
+
+        let filtered = [...cachedHonorarios];
 
         // 1. Filtro por usuario (solo admin)
         if (isAdmin && selectedUserId !== 'all') {
@@ -117,51 +131,54 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
         });
 
         return filtered;
-    }, [isAdmin, selectedUserId, rawActiveHonorarios, searchTerm, statusFilter, sortBy, sortOrder, getClientDisplay]);
+    }, [caseId, cachedHonorarios, isAdmin, selectedUserId, searchTerm, statusFilter, sortBy, sortOrder, getClientDisplay, listingState.items]);
 
-    const activeLoading = caseId ? cachedHonorariosLoading : rangeLoading;
+    const activeLoading = caseId ? cachedHonorariosLoading : listingLoading;
 
-    /**
-     * Obtiene los honorarios por rango de fechas usando una única petición a la API.
-     * Reemplaza la lógica anterior que hacía una petición por cada caso.
-     */
-    const fetchRangeHonorarios = useCallback(async () => {
+    const fetchRangeHonorarios = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
         if (caseId) return;
 
         if (!fromDate || !toDate) {
-            setRangeHonorarios([]);
-            setRangeLoading(false);
+            setListingState((prev) => ({ ...prev, items: [], total: 0, totalPages: 1, perPage: 30 }));
+            setListingLoading(false);
             return;
         }
 
-        setRangeLoading(true);
+        setListingLoading(true);
         try {
-            /** 
-             * Obtenemos todos los honorarios del rango para permitir filtrado offline por abogado.
-             * Esto evita peticiones redundantes al cambiar de usuario en el selector.
-             */
-            const apiResult = await getHonorariosByDateRange(fromDate, toDate, null);
-            
-            // Aseguramos que cada honorario tenga su objeto suit_case para mostrar el título en la tabla
-            const enriched = apiResult.map(h => {
-                if (h.suit_case) return h;
-                const caseItem = cases.find(c => String(c.id) === String(h.suit_case_id));
-                return { ...h, suit_case: caseItem };
+            if (invalidate) {
+                await invalidateEconomiaListingCache();
+            }
+
+            const response = await getHonorariosListingPage({
+                page,
+                filters: {
+                    from: fromDate,
+                    to: toDate,
+                    userId: isAdmin && selectedUserId !== 'all' ? Number(selectedUserId) : null,
+                    searchTerm,
+                    status: statusFilter,
+                    sortBy,
+                    sortDirection: sortOrder,
+                },
             });
 
-            setRangeHonorarios(enriched);
+            setListingState(response);
+            if (response.page && response.page !== page) {
+                setCurrentPage(response.page);
+            }
         } catch (error) {
-            console.error("Error fetching honorarios range", error);
-            setRangeHonorarios([]);
+            console.error('Error fetching honorarios range', error);
+            setListingState((prev) => ({ ...prev, items: [], total: 0, totalPages: 1 }));
         } finally {
-            setRangeLoading(false);
+            setListingLoading(false);
         }
-    }, [caseId, fromDate, toDate, cases]);
+    }, [caseId, currentPage, fromDate, isAdmin, searchTerm, selectedUserId, sortBy, sortOrder, statusFilter, toDate]);
 
     useEffect(() => {
         if (caseId) return;
-        void fetchRangeHonorarios();
-    }, [caseId, fetchRangeHonorarios]);
+        void fetchRangeHonorarios({ page: currentPage });
+    }, [caseId, currentPage, fetchRangeHonorarios]);
 
     const handleOpenEntregas = (honorario) => {
         openModal(EntregasModal, { honorarioId: honorario.id, honorario });
@@ -169,7 +186,7 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
 
     const handleCreateHonorario = () => {
         openModal(NewHonorarioModal, {
-            onSuccess: caseId ? reloadHonorarios : fetchRangeHonorarios,
+            onSuccess: caseId ? reloadHonorarios : () => fetchRangeHonorarios({ invalidate: true, page: currentPage }),
             caseId,
         });
     };
@@ -192,33 +209,61 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
             {!caseId && (
                 <EconomiaFilterBar
                     searchTerm={searchTerm}
-                    onSearchChange={setSearchTerm}
+                    onSearchChange={(value) => {
+                        setSearchTerm(value);
+                        setCurrentPage(1);
+                    }}
                     dateRange={dateRange}
-                    onDateRangeChange={setDateRange}
+                    onDateRangeChange={(value) => {
+                        setDateRange(value);
+                        setCurrentPage(1);
+                    }}
                     statusFilter={statusFilter}
-                    onStatusChange={setStatusFilter}
+                    onStatusChange={(value) => {
+                        setStatusFilter(value);
+                        setCurrentPage(1);
+                    }}
                     sortBy={sortBy}
-                    onSortByChange={setSortBy}
+                    onSortByChange={(value) => {
+                        setSortBy(value);
+                        setCurrentPage(1);
+                    }}
                     sortOrder={sortOrder}
-                    onSortOrderChange={setSortOrder}
+                    onSortOrderChange={(value) => {
+                        setSortOrder(value);
+                        setCurrentPage(1);
+                    }}
                     isAdmin={isAdmin}
                     users={users}
                     selectedUserId={selectedUserId}
-                    onUserChange={setSelectedUserId}
+                    onUserChange={(value) => {
+                        setSelectedUserId(value);
+                        setCurrentPage(1);
+                    }}
                     searchPlaceholder="Buscar por caso o cliente..."
                 />
             )}
 
-            {searchTerm.trim() && (
+            {!caseId && searchTerm.trim() && (
                 <div className="text-sm text-gray-500 font-medium animate-in fade-in slide-in-from-top-1 duration-300 px-1">
-                    Mostrando {activeHonorarios.length} resultado{activeHonorarios.length !== 1 ? 's' : ''}
+                    Mostrando {listingState.total} resultado{listingState.total !== 1 ? 's' : ''}
                 </div>
+            )}
+
+            {!caseId && (
+                <Pagination
+                    totalItems={listingState.total}
+                    itemsPerPage={listingState.perPage}
+                    currentPage={currentPage}
+                    onPageChange={setCurrentPage}
+                    className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
+                />
             )}
 
             <Table
                 isEmpty={!activeLoading && activeHonorarios.length === 0}
                 emptyMessage={caseId ? "No se encontraron honorarios para este caso." : "No se encontraron honorarios con los filtros seleccionados."}
-                trigger={`${searchTerm}-${statusFilter}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}`}
+                trigger={`${searchTerm}-${statusFilter}-${selectedUserId}-${sortBy}-${sortOrder}-${fromDate}-${toDate}-${currentPage}-${listingState.source}`}
                 columns={[
                     ...(!caseId ? [{ header: 'Caso' }] : []),
                     { header: 'Cliente' },
@@ -229,8 +274,8 @@ export const HonorariosList = ({ caseId, caseCacheReady = true }) => {
                 ]}
             >
                 {activeHonorarios.map(h => (
-                    <tr key={h.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => handleOpenEntregas(h)}>
-                        {!caseId && <td className="p-4">{h.suit_case?.title || `Caso #${h.suit_case_id}` || 'N/A'}</td>}
+                    <tr key={h.id} className="hover:bg-(--bg-card-hover) transition-colors cursor-pointer" onClick={() => handleOpenEntregas(h)}>
+                        {!caseId && <td className="p-4">{getCaseDisplay(h)}</td>}
                         <td className="p-4">{getClientDisplay(h)}</td>
                         <td className="p-4">${h.monto}</td>
                         <td className="p-4">{h.pagado ? 'Sí' : 'No'}</td>

@@ -70,6 +70,7 @@ const AgendaComponent = ({
     const [agendaLoading, setAgendaLoading] = useState(false);
     const refreshRequestRef = useRef(0);
     const skippedInitialCaseRefreshRef = useRef(false);
+    const agendaCatalogForceSyncedRef = useRef(false);
 
     useEffect(() => {
         startupMarkCount('agenda:mount', 'agenda:mount:calls', {
@@ -156,6 +157,14 @@ const AgendaComponent = ({
             setAgendaLoading(false);
         }
     }, [cal.date, cal.selectedFilterAgenda, cal.view, refreshAll]);
+
+    useEffect(() => {
+        if (!caseId || !initialized) return;
+        const hasCaseAgenda = agendas.some((a) => String(a.suit_case_id) === String(caseId));
+        if (hasCaseAgenda || agendaCatalogForceSyncedRef.current) return;
+        agendaCatalogForceSyncedRef.current = true;
+        void refreshAll({ syncAgendaCatalog: true });
+    }, [agendas, caseId, initialized, refreshAll]);
 
     useEffect(() => {
         if (!initialized) return;

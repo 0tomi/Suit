@@ -18,8 +18,10 @@ export const Modal = ({
     maxWidth = 'max-w-2xl',
     maxHeight = 'max-h-[90vh]',
     bodyClassName = '',
+    bodyScrollable = true,
     noOverlay = false,
     closeOnOutsideClick = true,
+    showCloseButton = true,
 }) => {
     const { modals = [] } = useModal() || {};
     const { suspendAllHotkeysExceptEscape } = useHotkeysSystem();
@@ -77,16 +79,18 @@ export const Modal = ({
                         <p className="mt-1 text-sm text-(--text-secondary)">{subtitle}</p>
                     ) : null}
                 </div>
-                <button
-                    onClick={onClose}
-                    type="button"
-                    className="text-(--text-tertiary) hover:text-red-500 transition-colors p-1 rounded-md hover:bg-(--bg-card-hover)"
-                >
-                    <X size={20} />
-                </button>
+                {showCloseButton ? (
+                    <button
+                        onClick={onClose}
+                        type="button"
+                        className="text-(--text-tertiary) hover:text-red-500 transition-colors p-1 rounded-md hover:bg-(--bg-card-hover)"
+                    >
+                        <X size={20} />
+                    </button>
+                ) : null}
             </div>
 
-            <div className={`w-full p-6 overflow-y-auto ${bodyClassName}`.trim()}>
+            <div className={`w-full p-6 ${bodyScrollable ? 'overflow-y-auto' : 'overflow-hidden'} ${bodyClassName}`.trim()}>
                 {children}
             </div>
 

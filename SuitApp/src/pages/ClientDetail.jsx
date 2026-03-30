@@ -8,12 +8,14 @@ import ClientDetailTabs from '../components/clients/ClientDetailTabs';
 import ClientProfileTab from '../components/clients/ClientProfileTab';
 import ClientDocumentsTab from '../components/clients/ClientDocumentsTab';
 import { EditClientModal } from '../components/clients/EditClientModal';
+import { useApi } from '../context/ApiContext.jsx';
 
 const ClientDetail = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('profile');
     const [isEditOpen, setIsEditOpen] = useState(false);
+    const { connected } = useApi();
     
     // Soporte para atajos de salto de pestañas
     useEffect(() => {
@@ -23,7 +25,6 @@ const ClientDetail = () => {
                 setActiveTab(tabs[e.detail.index]);
             }
         };
-        window.dispatchEvent(new CustomEvent('app:foo', { detail: { } })); // dummy to test? no.
         window.addEventListener('app:tab-change', handler);
         return () => window.removeEventListener('app:tab-change', handler);
     }, []);
@@ -69,7 +70,7 @@ const ClientDetail = () => {
     const fullName = `${clientData.first_name || ''} ${clientData.last_name || ''}`.trim() || 'Sin nombre';
 
     return (
-        <div className="max-w-5xl mx-auto space-y-6 h-full flex flex-col pb-10">
+        <div className="w-full max-w-5xl mx-auto space-y-6 h-full flex flex-col px-1">
             <ClientDetailHeader
                 clientData={clientData}
                 fullName={fullName}
@@ -77,14 +78,18 @@ const ClientDetail = () => {
                 onEdit={() => setIsEditOpen(true)}
             />
 
-            <ClientDetailTabs activeTab={activeTab} onTabChange={setActiveTab} />
+            <ClientDetailTabs
+                activeTab={activeTab}
+                onTabChange={setActiveTab}
+                disabledTabs={connected ? [] : ['documents']}
+            />
 
-            <div className="flex-1">
+            <div className="flex-1 min-h-0 flex flex-col">
                 {activeTab === 'profile' && (
                     <ClientProfileTab clientData={clientData} fullName={fullName} />
                 )}
                 {activeTab === 'documents' && (
-                    <ClientDocumentsTab clientData={clientData} />
+                    <ClientDocumentsTab clientData={clientData} isOnline={connected} />
                 )}
             </div>
 

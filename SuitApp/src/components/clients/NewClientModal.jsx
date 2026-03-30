@@ -1,319 +1,65 @@
-import { useId, useState } from 'react';
-import { X, UserPlus } from 'lucide-react';
-import { Modal } from '../ui/Modal';
-import { Button } from '../ui/Button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/Select.jsx';
-import { createClient } from '../../services/clientService';
+import { useMemo } from 'react';
 import { useClients } from '../../context/ClientsContext';
-import { showAppToast } from '../ui/show-app-toast';
+import { createClient } from '../../services/clientService';
 import { createLogger } from '../../services/logService.js';
-import { CLIENT_GENDER_OPTIONS, DEFAULT_CLIENT_GENDER } from '../../constants/clientGender.js';
+import {
+    extractEntityFromResponse,
+    PERSON_FORM_INITIAL_VALUES,
+} from '../../services/personAdapters.js';
+import PersonFormModal from '../people/PersonFormModal.jsx';
+
 const logger = createLogger('new-client-modal');
 
-const INITIAL_FORM = {
-    first_name: '',
-    last_name: '',
-    identification_number: '',
-    email: '',
-    phone: '',
-    address: '',
-    type: 'person',
-    gender: DEFAULT_CLIENT_GENDER,
-    notes: '',
-};
-
-function extractClientFromResponse(data) {
-    if (!data || typeof data !== 'object') return null;
-
-    if (data.id) return data;
-    if (data.client && typeof data.client === 'object') return data.client;
-    if (data.data && typeof data.data === 'object') return extractClientFromResponse(data.data);
-
-    return null;
-}
-
 export const NewClientModal = ({ open = false, onClose, closeModal, onSuccess }) => {
-    const formId = useId();
     const { refreshClients, loadLocalData } = useClients();
-    const [formData, setFormData] = useState(INITIAL_FORM);
-    const [loading, setLoading] = useState(false);
-    const [fieldErrors, setFieldErrors] = useState({});
-    const isStackedModal = typeof closeModal === 'function';
-    const handleClose = closeModal || onClose;
+    const initialFormData = useMemo(() => PERSON_FORM_INITIAL_VALUES, []);
 
-    const validateForm = () => {
-        const errors = {};
-        if (!formData.first_name?.trim()) {
-            errors.first_name = 'El nombre o razón social es obligatorio.';
-        }
-        if (!formData.last_name?.trim()) {
-            errors.last_name = 'El apellido es obligatorio.';
-        }
-        if (!formData.gender) {
-            errors.gender = 'El género es obligatorio.';
-        }
-        if (formData.email?.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-            errors.email = 'El formato del email no es válido.';
-        }
-        return errors;
-    };
-
-    const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFieldErrors(prev => ({ ...prev, [name]: undefined }));
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        
-        const errors = validateForm();
-        if (Object.keys(errors).length > 0) {
-            setFieldErrors(errors);
-            const firstError = Object.values(errors)[0];
-            showAppToast({
-                title: 'Error de validación',
-                description: firstError,
-                variant: 'danger',
-            });
-            return;
+    const submitAction = async (formData) => {
+        const result = await createClient(formData);
+        if (!result.ok) {
+            return result;
         }
 
-        setLoading(true);
+        const createdClient = extractEntityFromResponse(result.data, ['client']);
+        const savedEntity = createdClient
+            ? { ...formData, ...createdClient }
+            : null;
 
         try {
-            const result = await createClient(formData);
-            if (result.ok) {
-                const createdClient = extractClientFromResponse(result.data);
-                const createdClientPayload = createdClient
-                    ? { ...formData, ...createdClient }
-                    : null;
-
-                try {
-                    await loadLocalData();
-                    void refreshClients();
-                } catch (cacheError) {
-                    void logger.warn('Local client refresh failed after create, falling back to refresh', cacheError);
-                    await refreshClients();
-                }
-
-                showAppToast({
-                    title: 'Éxito',
-                    description: 'Cliente creado correctamente.',
-                    variant: 'success',
-                });
-                setFormData(INITIAL_FORM);
-                setFieldErrors({});
-                onSuccess?.(createdClientPayload);
-                handleClose?.();
-            } else {
-                showAppToast({
-                    title: 'Error',
-                    description: result.error || 'Error al crear cliente',
-                    variant: 'danger',
-                });
-            }
-        } catch {
-            showAppToast({
-                title: 'Error',
-                description: 'Ocurrió un error al contactar al servidor',
-                variant: 'danger',
-            });
-        } finally {
-            setLoading(false);
+            await loadLocalData();
+            void refreshClients();
+        } catch (cacheError) {
+            void logger.warn('Local client refresh failed after create, falling back to refresh', cacheError);
+            await refreshClients();
         }
+
+        return {
+            ok: true,
+            savedEntity,
+        };
     };
 
-    const footer = (
-        <div className="flex w-full justify-center">
-            <Button 
-                variant="primary" 
-                onClick={handleSubmit} 
-                isLoading={loading}
-                icon={UserPlus}
-                className="px-8"
-            >
-                Crear Cliente
-            </Button>
-        </div>
-    );
-
-    const formContent = (
-        <form id="new-client-form" onSubmit={handleSubmit} className="space-y-4" noValidate>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-first-name`} className="text-sm font-medium text-(--text-secondary)">Nombre (O Razón Social) *</label>
-                    <input
-                        id={`${formId}-first-name`}
-                        name="first_name"
-                        value={formData.first_name}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 bg-(--bg-input) border rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none ${
-                            fieldErrors.first_name ? 'border-red-500 focus:ring-red-500' : 'border-(--border-default)'
-                        }`}
-                        placeholder="Ej: Juan"
-                    />
-                    {fieldErrors.first_name && <p className="text-xs text-red-500 mt-1">{fieldErrors.first_name}</p>}
-                </div>
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-last-name`} className="text-sm font-medium text-(--text-secondary)">Apellido *</label>
-                    <input
-                        id={`${formId}-last-name`}
-                        name="last_name"
-                        value={formData.last_name}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 bg-(--bg-input) border rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none ${
-                            fieldErrors.last_name ? 'border-red-500 focus:ring-red-500' : 'border-(--border-default)'
-                        }`}
-                        placeholder="Ej: Pérez"
-                    />
-                    {fieldErrors.last_name && <p className="text-xs text-red-500 mt-1">{fieldErrors.last_name}</p>}
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-identification-number`} className="text-sm font-medium text-(--text-secondary)">DNI / CUIT</label>
-                    <input
-                        id={`${formId}-identification-number`}
-                        name="identification_number"
-                        value={formData.identification_number}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
-                        placeholder="Sin puntos ni guiones"
-                    />
-                </div>
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-type`} className="text-sm font-medium text-(--text-secondary)">Tipo *</label>
-                    <select
-                        id={`${formId}-type`}
-                        required
-                        name="type"
-                        value={formData.type}
-                        onChange={handleInputChange}
-                        className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
-                    >
-                        <option value="person">Persona Física</option>
-                        <option value="company">Empresa / Persona Jurídica</option>
-                    </select>
-                </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-gender`} className="text-sm font-medium text-(--text-secondary)">Género *</label>
-                    <Select
-                        value={formData.gender}
-                        onValueChange={(value) => {
-                            setFieldErrors(prev => ({ ...prev, gender: undefined }));
-                            setFormData(prev => ({ ...prev, gender: value }));
-                        }}
-                    >
-                        <SelectTrigger id={`${formId}-gender`} aria-label="Género" className={fieldErrors.gender ? 'border-red-500 focus-visible:ring-red-500' : ''}>
-                            <SelectValue placeholder="Seleccionar género..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {CLIENT_GENDER_OPTIONS.map((option) => (
-                                <SelectItem key={option.value} value={option.value}>
-                                    {option.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    {fieldErrors.gender && <p className="text-xs text-red-500 mt-1">{fieldErrors.gender}</p>}
-                </div>
-                <div className="space-y-2">
-                    <label htmlFor={`${formId}-email`} className="text-sm font-medium text-(--text-secondary)">Email</label>
-                    <input
-                        id={`${formId}-email`}
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        className={`w-full px-3 py-2 bg-(--bg-input) border rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none ${
-                            fieldErrors.email ? 'border-red-500 focus:ring-red-500' : 'border-(--border-default)'
-                        }`}
-                        placeholder="correo@ejemplo.com"
-                    />
-                    {fieldErrors.email && <p className="text-xs text-red-500 mt-1">{fieldErrors.email}</p>}
-                </div>
-            </div>
-
-            <div className="space-y-2">
-                <label htmlFor={`${formId}-phone`} className="text-sm font-medium text-(--text-secondary)">Teléfono</label>
-                <input
-                    id={`${formId}-phone`}
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
-                    placeholder="Ej: 1123456789"
-                />
-            </div>
-
-            <div className="space-y-2">
-                <label htmlFor={`${formId}-address`} className="text-sm font-medium text-(--text-secondary)">Dirección</label>
-                <input
-                    id={`${formId}-address`}
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none"
-                    placeholder="Calle, Número, Ciudad"
-                />
-            </div>
-
-            <div className="space-y-2">
-                <label htmlFor={`${formId}-notes`} className="text-sm font-medium text-(--text-secondary)">Notas (Internas)</label>
-                <textarea
-                    id={`${formId}-notes`}
-                    name="notes"
-                    value={formData.notes}
-                    onChange={handleInputChange}
-                    rows={3}
-                    className="w-full px-3 py-2 bg-(--bg-input) border border-(--border-default) rounded-lg focus:ring-2 focus:ring-blue-500 text-(--text-primary) outline-none resize-none"
-                    placeholder="Información adicional relevante..."
-                />
-            </div>
-        </form>
-    );
-
-    if (isStackedModal) {
-        return (
-            <div className="flex max-h-[85vh] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-(--border-subtle) bg-(--bg-card) shadow-2xl">
-                <div className="flex items-center justify-between gap-4 border-b border-(--border-subtle) bg-(--bg-header) px-6 py-4">
-                    <div className="min-w-0">
-                        <h2 className="text-xl font-bold text-(--text-primary)">Nuevo Cliente</h2>
-                        <p className="mt-1 text-sm text-(--text-secondary)">Cargá el cliente sin salir del selector actual.</p>
-                    </div>
-                    <button
-                        onClick={handleClose}
-                        type="button"
-                        className="text-(--text-tertiary) hover:text-red-500 transition-colors p-1 rounded-md hover:bg-(--bg-card-hover)"
-                    >
-                        <X size={20} />
-                    </button>
-                </div>
-                <div className="flex-1 overflow-y-auto p-6">
-                    {formContent}
-                </div>
-                <div className="flex justify-center border-t border-(--border-subtle) bg-(--bg-header) px-6 py-4">
-                    {footer}
-                </div>
-            </div>
-        );
-    }
-
     return (
-        <Modal
+        <PersonFormModal
             open={open}
-            onClose={handleClose}
+            onClose={onClose}
+            closeModal={closeModal}
             title="Nuevo Cliente"
             subtitle="Cargá el cliente sin salir del selector actual."
-            maxWidth="max-w-xl"
-            footer={footer}
-        >
-            {formContent}
-        </Modal>
+            submitLabel="Crear Cliente"
+            successDescription="Cliente creado correctamente."
+            submitAction={submitAction}
+            initialFormData={initialFormData}
+            onSuccess={onSuccess}
+            confirmDialogDescription={(skipEmail, skipPhone) => (
+                <span>
+                    Estás a punto de guardar el cliente sin completar:
+                    {skipEmail && skipPhone ? <> <strong>Email</strong> y <strong>Teléfono</strong></> : skipEmail ? <> <strong>Email</strong></> : <> <strong>Teléfono</strong></>}.
+                    {' '}Podrás editarlo más adelante.
+                </span>
+            )}
+        />
     );
 };
+
+export default NewClientModal;

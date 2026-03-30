@@ -188,6 +188,25 @@ function createTables(dbInstance) {
         CREATE INDEX IF NOT EXISTS idx_document_query_cache_lookup
             ON document_query_cache (cache_key, page);
 
+        CREATE TABLE IF NOT EXISTS listing_query_cache (
+            id            TEXT PRIMARY KEY,
+            entity        TEXT NOT NULL,
+            cache_key     TEXT NOT NULL,
+            mode          TEXT NOT NULL,
+            page          INTEGER NOT NULL DEFAULT 1,
+            params_json   TEXT,
+            item_ids_json TEXT,
+            items_json    TEXT,
+            total_pages   INTEGER,
+            total_items   INTEGER,
+            per_page      INTEGER,
+            cached_at     TEXT NOT NULL,
+            synced_at     TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_listing_query_cache_lookup
+            ON listing_query_cache (entity, cache_key, page);
+
         CREATE TABLE IF NOT EXISTS clients (
             id                    INTEGER PRIMARY KEY,
             first_name            TEXT,
@@ -199,6 +218,7 @@ function createTables(dbInstance) {
             type                  TEXT DEFAULT 'person',
             gender                TEXT DEFAULT 'X',
             status                TEXT DEFAULT 'active',
+            financial_status      TEXT,
             notes                 TEXT,
             data_json             TEXT,
             synced_at             TEXT
@@ -334,14 +354,21 @@ function createTables(dbInstance) {
         );
 
         CREATE TABLE IF NOT EXISTS partes (
-            id        INTEGER PRIMARY KEY,
-            nombre    TEXT,
-            apellido  TEXT,
-            email     TEXT,
-            telefono  TEXT,
-            rol_id    INTEGER,
-            data_json TEXT,
-            synced_at TEXT
+            id             INTEGER PRIMARY KEY,
+            nombre         TEXT,
+            apellido       TEXT,
+            identificacion TEXT,
+            email          TEXT,
+            telefono       TEXT,
+            direccion      TEXT,
+            genero         TEXT,
+            estado         TEXT,
+            notas          TEXT,
+            rol_id         INTEGER,
+            created_at     TEXT,
+            updated_at     TEXT,
+            data_json      TEXT,
+            synced_at      TEXT
         );
 
         CREATE TABLE IF NOT EXISTS parte_caso (

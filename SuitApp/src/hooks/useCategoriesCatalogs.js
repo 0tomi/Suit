@@ -15,8 +15,9 @@ import { createTipoExpediente, deleteTipoExpediente, updateTipoExpediente } from
 import { createTipoPago, deleteTipoPago, updateTipoPago } from '../services/tipoPagoService.js';
 import { createGastoCatalogo, deleteGastoCatalogo, updateGastoCatalogo } from '../services/gastoCatalogoService.js';
 import { createRol, deleteRol, updateRol } from '../services/rolService.js';
-import { createRadicacion, updateRadicacion } from '../services/radicacionService.js';
+import { createRadicacion, updateRadicacion, deleteRadicacion } from '../services/radicacionService.js';
 import { createJurisdiccion, updateJurisdiccion, deleteJurisdiccion, createCompetencia, updateCompetencia, deleteCompetencia } from '../services/jurisdiccionService.js';
+import { getApiErrorMessage } from '../utils/apiErrorMessage.js';
 // No se requieren las funciones de sync directamente aquí si se usan los contextos de recarga.
 
 import JurisdiccionesCatalogSection from '../components/categories/JurisdiccionesCatalogSection.jsx';
@@ -29,9 +30,6 @@ import {
     removeRoleLocally,
 } from '../services/cache/roleCache.js';
 
-function getApiErrorMessage(result, fallbackMessage) {
-    return result?.data?.message || result?.error || fallbackMessage;
-}
 
 async function assertMutation(result, fallbackMessage) {
     if (result?.ok === false) {
@@ -65,6 +63,7 @@ function createCatalogConfig({
     onDelete,
     onRefresh,
     canEdit,
+    gender = 'm',
     component,
     componentProps,
 }) {
@@ -88,6 +87,7 @@ function createCatalogConfig({
         onDelete,
         onRefresh,
         canEdit,
+        gender,
         component,
         componentProps,
     };
@@ -206,6 +206,7 @@ export function useCategoriesCatalogs() {
                 id: item.id,
                 title: item.title || item.titulo || '',
                 details: item.details || item.detalles || '',
+                case_type_id: item.case_type_id ? String(item.case_type_id) : '',
                 caseType: caseType ? caseType.name : 'Varios / General',
             };
         }), 'title');
@@ -297,6 +298,7 @@ export function useCategoriesCatalogs() {
                         onDelete: (id) => runMutation(deleteCaseType, refreshCaseTypes, 'No se pudo eliminar el fuero.', canEditGeneral, id),
                         onRefresh: refreshCaseTypes,
                         canEdit: canEditGeneral,
+                        gender: 'm',
                     }),
                     createCatalogConfig({
                         id: 'tipos-expediente',
@@ -312,7 +314,19 @@ export function useCategoriesCatalogs() {
                         fields: [
                             { key: 'title', label: 'Título', required: true, emphasis: true, placeholder: 'Ej: Sucesión' },
                             { key: 'details', label: 'Detalles', placeholder: 'Opcional', emptyLabel: 'Sin detalles' },
-                            { key: 'caseType', label: 'Fuero', emptyLabel: 'Sin fuero' },
+                            {
+                                key: 'case_type_id',
+                                displayKey: 'caseType',
+                                label: 'Fuero',
+                                type: 'select',
+                                required: true,
+                                placeholder: 'Seleccionar fuero...',
+                                emptyLabel: 'Sin fuero',
+                                options: normalizedCaseTypes.map((item) => ({
+                                    value: String(item.id),
+                                    label: item.name,
+                                })),
+                            },
                         ],
                         items: normalizedTipoExpedientes,
                         initialized: tipoExpedientesInitialized,
@@ -325,6 +339,7 @@ export function useCategoriesCatalogs() {
                             {
                                 titulo: payload.title?.trim(),
                                 detalles: payload.details?.trim() || null,
+                                case_type_id: payload.case_type_id ? Number(payload.case_type_id) : null,
                             },
                         ),
                         onUpdate: (id, payload) => runMutation(
@@ -336,11 +351,13 @@ export function useCategoriesCatalogs() {
                             {
                                 titulo: payload.title?.trim(),
                                 detalles: payload.details?.trim() || null,
+                                case_type_id: payload.case_type_id ? Number(payload.case_type_id) : null,
                             },
                         ),
                         onDelete: (id) => runMutation(deleteTipoExpediente, refreshTipoExpedientes, 'No se pudo eliminar el tipo de expediente.', canEditGeneral, id),
                         onRefresh: refreshTipoExpedientes,
                         canEdit: canEditGeneral,
+                        gender: 'm',
                     }),
                     createCatalogConfig({
                         id: 'roles',
@@ -386,6 +403,7 @@ export function useCategoriesCatalogs() {
                         },
                         onRefresh: refreshRoles,
                         canEdit: isAdmin,
+                        gender: 'm',
                     }),
                     createCatalogConfig({
                         id: 'radicaciones',
@@ -422,8 +440,10 @@ export function useCategoriesCatalogs() {
                             id,
                             { tipo: payload.tipo?.trim() },
                         ),
+                        onDelete: (id) => runMutation(deleteRadicacion, refreshRadicaciones, 'No se pudo eliminar la radicación.', canEditJudicial, id),
                         onRefresh: refreshRadicaciones,
                         canEdit: canEditJudicial,
+                        gender: 'f',
                     }),
                     createCatalogConfig({
                         id: 'jurisdicciones',
@@ -447,6 +467,7 @@ export function useCategoriesCatalogs() {
                         onDelete: (id) => runMutation(deleteJurisdiccion, refreshJurisdicciones, 'No se pudo eliminar.', canEditJudicial, id),
                         onRefresh: refreshJurisdicciones,
                         canEdit: canEditJudicial,
+                        gender: 'f',
                         component: JurisdiccionesCatalogSection,
                     }),
                     createCatalogConfig({
@@ -474,6 +495,7 @@ export function useCategoriesCatalogs() {
                         componentProps: { 
                             CreateModal: CompetenciaModal 
                         },
+                        gender: 'f',
                     }),
                 ],
             },
@@ -506,6 +528,7 @@ export function useCategoriesCatalogs() {
                             createEventType,
                             refreshEventTypes,
                             'No se pudo crear el tipo de evento.',
+                            isAdmin,
                             {
                                 name: payload.name?.trim(),
                                 color: payload.color || '#3b82f6',
@@ -515,6 +538,7 @@ export function useCategoriesCatalogs() {
                             updateEventType,
                             refreshEventTypes,
                             'No se pudo actualizar el tipo de evento.',
+                            isAdmin,
                             id,
                             {
                                 name: payload.name?.trim(),
@@ -524,6 +548,7 @@ export function useCategoriesCatalogs() {
                         onDelete: (id) => runMutation(deleteEventType, refreshEventTypes, 'No se pudo eliminar el tipo de evento.', isAdmin, id),
                         onRefresh: refreshEventTypes,
                         canEdit: isAdmin,
+                        gender: 'm',
                     }),
                 ],
             },
@@ -556,6 +581,7 @@ export function useCategoriesCatalogs() {
                             createGastoCatalogo,
                             refreshGastosCatalogo,
                             'No se pudo crear el tipo de gasto.',
+                            isAdmin,
                             {
                                 titulo: payload.titulo?.trim(),
                                 detalles: payload.detalles?.trim() || null,
@@ -565,6 +591,7 @@ export function useCategoriesCatalogs() {
                             updateGastoCatalogo,
                             refreshGastosCatalogo,
                             'No se pudo actualizar el tipo de gasto.',
+                            isAdmin,
                             id,
                             {
                                 titulo: payload.titulo?.trim(),
@@ -574,6 +601,7 @@ export function useCategoriesCatalogs() {
                         onDelete: (id) => runMutation(deleteGastoCatalogo, refreshGastosCatalogo, 'No se pudo eliminar el tipo de gasto.', isAdmin, id),
                         onRefresh: refreshGastosCatalogo,
                         canEdit: isAdmin,
+                        gender: 'm',
                     }),
                     createCatalogConfig({
                         id: 'tipos-pago',
@@ -592,11 +620,12 @@ export function useCategoriesCatalogs() {
                         items: normalizedTipoPagos,
                         initialized: tipoPagosInitialized,
                         syncing: tipoPagosSyncing,
-                        onCreate: (payload) => runMutation(createTipoPago, refreshTipoPagos, 'No se pudo crear el tipo de pago.', { titulo: payload.name?.trim() }),
-                        onUpdate: (id, payload) => runMutation(updateTipoPago, refreshTipoPagos, 'No se pudo actualizar el tipo de pago.', id, { titulo: payload.name?.trim() }),
+                        onCreate: (payload) => runMutation(createTipoPago, refreshTipoPagos, 'No se pudo crear el tipo de pago.', isAdmin, { titulo: payload.name?.trim() }),
+                        onUpdate: (id, payload) => runMutation(updateTipoPago, refreshTipoPagos, 'No se pudo actualizar el tipo de pago.', isAdmin, id, { titulo: payload.name?.trim() }),
                         onDelete: (id) => runMutation(deleteTipoPago, refreshTipoPagos, 'No se pudo eliminar el tipo de pago.', isAdmin, id),
                         onRefresh: refreshTipoPagos,
                         canEdit: isAdmin,
+                        gender: 'm',
                     }),
                 ],
             },

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Modal } from '../../ui/Modal.jsx';
 import { Button } from '../../ui/Button.jsx';
 import { Plus } from 'lucide-react';
+import { showAppToast } from '../../ui/show-app-toast.jsx';
 
 /**
  * Modal para crear o editar una Competencia (Fuero).
@@ -10,10 +11,15 @@ import { Plus } from 'lucide-react';
 export default function CompetenciaModal({ open, onClose, onSave, initialData = null }) {
     const [fuero, setFuero] = useState(initialData?.fuero || '');
     const [saving, setSaving] = useState(false);
+    const [fieldError, setFieldError] = useState('');
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!fuero.trim()) return;
+        if (!fuero.trim()) {
+            setFieldError('El nombre de la competencia es obligatorio.');
+            showAppToast({ title: 'Campo obligatorio', description: 'Completá el nombre de la competencia.', variant: 'danger' });
+            return;
+        }
 
         setSaving(true);
         try {
@@ -36,17 +42,22 @@ export default function CompetenciaModal({ open, onClose, onSave, initialData = 
             <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                 <div>
                     <label className="mb-2 block text-sm font-semibold text-(--text-secondary)">
-                        Nombre de la Competencia / Fuero
+                        Nombre de la Competencia / Fuero <span className="text-red-500">*</span>
                     </label>
                     <input
                         autoFocus
                         type="text"
                         value={fuero}
-                        onChange={(e) => setFuero(e.target.value)}
+                        onChange={(e) => { setFuero(e.target.value); if (fieldError) setFieldError(''); }}
                         placeholder="Ej: Civil y Comercial, Laboral, Familia..."
-                        className="w-full h-11 rounded-xl border border-(--border-default) bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 focus:outline-none transition-all"
+                        className={`w-full h-11 rounded-xl border bg-(--bg-input) px-4 text-sm text-(--text-primary) shadow-sm focus:ring-2 focus:outline-none transition-all ${
+                            fieldError
+                                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                                : 'border-(--border-default) focus:border-blue-500 focus:ring-blue-500/10'
+                        }`}
                         required
                     />
+                    {fieldError && <p className="mt-1.5 text-xs text-red-500">{fieldError}</p>}
                 </div>
 
                 <Button

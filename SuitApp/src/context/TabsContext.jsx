@@ -95,14 +95,13 @@ function clearSavedTabs() {
 export const TabsProvider = ({ children }) => {
     const { user } = useAuth();
     const { restoreTabs } = useSettings();
-    const initializedRef = useRef(false);
+    const initializedRef = useRef(Boolean(user));
 
     // buildInitialState() se llama UNA sola vez en el lazy initializer.
     // restoreTabs se captura en el closure inicial; para cambios en caliente
     // el usuario tendría que cerrar sesión y volver a entrar.
     const [state, setState] = useState(() => {
         if (user) {
-            initializedRef.current = true;
             return buildInitialState(restoreTabs);
         }
         const defaultTab = makeTab('/agenda');
@@ -122,16 +121,28 @@ export const TabsProvider = ({ children }) => {
         const wasLoggedIn = !!prevUserRef.current;
         const isLoggedIn = !!user;
         prevUserRef.current = user;
+        let cancelled = false;
 
         if (!isLoggedIn && wasLoggedIn) {
             clearSavedTabs();
             const defaultTab = makeTab('/agenda');
-            setState({ tabs: [defaultTab], activeTabId: defaultTab.id });
-            initializedRef.current = false;
+            queueMicrotask(() => {
+                if (cancelled) return;
+                setState({ tabs: [defaultTab], activeTabId: defaultTab.id });
+                initializedRef.current = false;
+            });
         } else if (isLoggedIn && !wasLoggedIn && !initializedRef.current) {
-            initializedRef.current = true;
-            setState(buildInitialState(restoreTabs));
+            const nextState = buildInitialState(restoreTabs);
+            queueMicrotask(() => {
+                if (cancelled) return;
+                initializedRef.current = true;
+                setState(nextState);
+            });
         }
+
+        return () => {
+            cancelled = true;
+        };
     }, [user, restoreTabs]);
 
     /**

@@ -15,6 +15,7 @@ export function buildClientCacheRow(client) {
         type: client.type,
         gender: normalizeClientGender(client.gender),
         status: client.status,
+        financial_status: client.financial_status ?? null,
         notes: client.notes,
         data_json: JSON.stringify(client),
         synced_at: new Date().toISOString(),

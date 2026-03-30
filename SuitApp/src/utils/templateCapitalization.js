@@ -27,6 +27,22 @@ function toTitleCase(str) {
 }
 
 /**
+ * En nombres de cliente con tratamiento formal, el prefijo no debe mutar cuando
+ * el resto del valor pasa a MAYÚSCULAS. Ej: "Sr. Juan Pérez" → "Sr. JUAN PÉREZ".
+ */
+function preserveClientTreatmentInUppercase(str, type) {
+    if (type !== 'clientCompleteName' && type !== 'clientLastName') {
+        return str.toUpperCase();
+    }
+
+    const match = String(str).match(/^(Sr\.|Sra\.)(\s+)(.*)$/i);
+    if (!match) return str.toUpperCase();
+
+    const [, treatment, spacing, remainder] = match;
+    return `${treatment}${spacing}${remainder.toUpperCase()}`;
+}
+
+/**
  * Aplica la capitalización configurada a un valor resuelto del motor de plantillas.
  *
  * Solo transforma si el campo tiene habilitada la capitalización en settings.
@@ -45,7 +61,7 @@ export function applyCapitalization(value, type, capitalizationSettings) {
 
     const str = String(value);
 
-    if (mode === CAPITALIZATION_MODE.UPPER)      return str.toUpperCase();
+    if (mode === CAPITALIZATION_MODE.UPPER)      return preserveClientTreatmentInUppercase(str, type);
     if (mode === CAPITALIZATION_MODE.TITLE_CASE) return toTitleCase(str);
 
     return str;

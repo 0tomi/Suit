@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuth } from './AuthContext.jsx';
 import { useSyncStatus } from './SyncStatusContext.jsx';

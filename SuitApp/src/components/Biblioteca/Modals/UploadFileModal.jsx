@@ -63,7 +63,7 @@ export const UploadFileModal = ({
         } else if (initialFile) {
             // Validar archivo inicial (drag & drop)
             if (!ALLOWED_MIME_TYPES.includes(initialFile.type)) {
-                setError('Este formato de archivo no está permitido. Solo documentos (PDF, Word, Excel, PowerPoint, CSV, Texto).');
+                setError('Este tipo de archivo no está permitido. Solo puedes subir documentos (PDF, Word, Excel, etc.).');
                 setFile(null);
             } else {
                 setFile(initialFile);
@@ -122,7 +122,17 @@ export const UploadFileModal = ({
             await onUpload(formData, permissionsToApply);
         } catch (err) {
             console.error('Error uploading file:', err);
-            setError('Hubo un error.');
+            let message = 'No se pudo subir el archivo. Por favor, intenta de nuevo.';
+            
+            if (err.message?.includes('403')) {
+                message = 'No tienes permisos para subir archivos a este catálogo.';
+            } else if (err.message?.includes('413')) {
+                message = 'El archivo es demasiado grande para ser procesado.';
+            } else if (err.message?.includes('500')) {
+                message = 'El servidor tuvo un error al guardar el archivo. Por favor, contacta a soporte.';
+            }
+            
+            setError(message);
         }
     };
 
@@ -148,9 +158,12 @@ export const UploadFileModal = ({
             setUsedQrFlow(true);
         } catch (err) {
             console.error('Error generating QR upload link:', err);
-            const message = err.message?.includes('422') || err.message?.includes('403')
-                ? 'No tenes permisos para realizar esta accion.'
-                : 'Error al generar el código QR.';
+            let message = 'No pudimos generar el código QR de subida. Por favor, intenta de nuevo.';
+            
+            if (err.message?.includes('403')) {
+                message = 'No tienes permisos para realizar la carga de archivos vía QR.';
+            }
+
             setError(message);
         } finally {
             setIsGeneratingQr(false);
@@ -164,7 +177,7 @@ export const UploadFileModal = ({
 
             // Validación de tipo mime
             if (!ALLOWED_MIME_TYPES.includes(selectedFile.type)) {
-                setError('Este formato de archivo no está permitido. Solo documentos (PDF, Word, Excel, PowerPoint, CSV, Texto).');
+                setError('Este tipo de archivo no está permitido. Solo puedes subir documentos (PDF, Word, Excel, etc.).');
                 setFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
                 return;
@@ -198,7 +211,7 @@ export const UploadFileModal = ({
 
             // Validación de tipo mime
             if (!ALLOWED_MIME_TYPES.includes(droppedFile.type)) {
-                setError('Este formato de archivo no está permitido. Solo documentos (PDF, Word, Excel, PowerPoint, CSV, Texto).');
+                setError('Este tipo de archivo no está permitido. Solo puedes subir documentos (PDF, Word, Excel, etc.).');
                 setFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
                 return;

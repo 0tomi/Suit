@@ -4,6 +4,7 @@ const {
     updateClientInApi,
     deleteClientInApi,
     getClientsLastModifiedFromApi,
+    getClientDocumentsFromApi,
 } = require('./clientsApi.cjs');
 const {
     extractClientPayload,
@@ -247,6 +248,34 @@ async function getClientsLastModified() {
     return response.data?.last_modified || null;
 }
 
+function normalizePagingValue(value, fieldName) {
+    if (value === undefined || value === null || value === '') return 1;
+    return normalizePositiveInteger(value, fieldName);
+}
+
+async function getClientDocuments(clientId, paging = {}) {
+    const normalizedClientId = normalizePositiveInteger(clientId, 'clientId');
+    const normalizedPaging = {
+        page_personal: normalizePagingValue(paging.page_personal, 'page_personal'),
+        page_cases: normalizePagingValue(paging.page_cases, 'page_cases'),
+        page_case_docs: normalizePagingValue(paging.page_case_docs, 'page_case_docs'),
+    };
+
+    const response = await getClientDocumentsFromApi(normalizedClientId, normalizedPaging);
+    if (!response.ok) {
+        logger.error('get client documents from api failed', {
+            clientId: normalizedClientId,
+            paging: normalizedPaging,
+            status: response.status,
+            error: response.error || null,
+            data: response.data,
+        });
+        throw new Error(`No se pudo obtener la documentación del cliente ${normalizedClientId}.`);
+    }
+
+    return response.data;
+}
+
 module.exports = {
     listClients,
     getClient,
@@ -254,5 +283,6 @@ module.exports = {
     updateClient,
     deleteClient,
     getClientsLastModified,
+    getClientDocuments,
     syncClients: syncClientsCache,
 };

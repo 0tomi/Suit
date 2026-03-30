@@ -10,7 +10,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileUp, PenLine, Loader2, FileText } from 'lucide-react';
+import { FileUp, PenLine, Loader2, FileText, AlertCircle } from 'lucide-react';
 import { Modal } from '../ui/Modal.jsx';
 import { Button } from '../ui/Button.jsx';
 import { showAppToast } from '../ui/show-app-toast.jsx';
@@ -34,7 +34,9 @@ const NewTemplateModal = ({ open, onClose }) => {
     // Estado del flujo de importación
     const [keyword, setKeyword] = useState('');
     const [rememberKeyword, setRememberKeyword] = useState(false);
+    const [useKeyword, setUseKeyword] = useState(true);
     const [isConverting, setIsConverting] = useState(false);
+    const [error, setError] = useState('');
 
     // Cargar keyword guardada al abrir el modal
     useEffect(() => {
@@ -52,7 +54,9 @@ const NewTemplateModal = ({ open, onClose }) => {
         setView(null);
         setKeyword('');
         setRememberKeyword(false);
+        setUseKeyword(true);
         setIsConverting(false);
+        setError('');
         onClose();
     };
 
@@ -64,14 +68,13 @@ const NewTemplateModal = ({ open, onClose }) => {
 
     /** Abre el diálogo de archivo y ejecuta la conversión. */
     const handleSelectFile = async () => {
-        if (!keyword.trim()) {
-            showAppToast({
-                title: 'Palabra clave requerida',
-                description: 'Ingresá la palabra clave que marca los campos en el documento.',
-                variant: 'warning',
-            });
+        // Validar keyword solo si el usuario eligió usarla
+        if (useKeyword && !keyword.trim()) {
+            setError('Ingresá la palabra clave que marca los campos en el documento.');
             return;
         }
+
+        setError('');
 
         // Abrir diálogo de selección de archivo
         const dialogResult = await window.electronAPI?.dialog?.openFile({
@@ -80,16 +83,18 @@ const NewTemplateModal = ({ open, onClose }) => {
 
         if (!dialogResult || dialogResult.canceled) return;
 
-        // Persistir keyword si el usuario lo pidió
-        if (rememberKeyword && user?.id) {
+        // Persistir keyword si el usuario lo pidió y la está usando
+        if (useKeyword && rememberKeyword && user?.id) {
             localStorage.setItem(getKeywordStorageKey(user.id), keyword.trim());
-        } else if (!rememberKeyword && user?.id) {
+        } else if (user?.id && (!useKeyword || !rememberKeyword)) {
             localStorage.removeItem(getKeywordStorageKey(user.id));
         }
 
         setIsConverting(true);
         try {
-            const result = await convertDocumentToTemplate(dialogResult.filePath, keyword.trim());
+            // Si useKeyword es false, se pasa null para que el backend solo convierta sin reemplazar
+            const effectiveKeyword = useKeyword ? keyword.trim() : null;
+            const result = await convertDocumentToTemplate(dialogResult.filePath, effectiveKeyword);
 
             if (!result.ok) {
                 throw new Error(result.error || 'No se pudo convertir el documento.');
@@ -115,11 +120,7 @@ const NewTemplateModal = ({ open, onClose }) => {
                 },
             });
         } catch (error) {
-            showAppToast({
-                title: 'Error al importar',
-                description: error.message || 'No se pudo procesar el archivo.',
-                variant: 'danger',
-            });
+            setError(error.message || 'No se pudo procesar el archivo.');
         } finally {
             setIsConverting(false);
         }
@@ -151,7 +152,7 @@ const NewTemplateModal = ({ open, onClose }) => {
                             variant="primary"
                             icon={isConverting ? Loader2 : FileUp}
                             onClick={handleSelectFile}
-                            disabled={isConverting || !keyword.trim()}
+                            disabled={isConverting || (useKeyword && !keyword.trim())}
                             className={isConverting ? '[&_svg]:animate-spin' : ''}
                         >
                             {isConverting ? 'Convirtiendo...' : 'Seleccionar archivo'}
@@ -210,45 +211,78 @@ const NewTemplateModal = ({ open, onClose }) => {
             {/* Vista de importación: keyword + opciones */}
             {view === 'import' && (
                 <div className="space-y-5 py-1">
-                    <p className="text-sm text-(--text-secondary)">
-                        El programa va a buscar la palabra clave en el documento y reemplazará cada
-                        ocurrencia por un campo vacío al que podrás asignar un requisito.
-                    </p>
-
-                    <div>
-                        <label htmlFor="template-keyword" className="block text-sm font-medium text-(--text-secondary) mb-1.5">
-                            Palabra clave <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            id="template-keyword"
-                            type="text"
-                            value={keyword}
-                            onChange={(e) => setKeyword(e.target.value)}
-                            placeholder='Ej: BLANCO, CAMPO, XXX'
-                            className="w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary) placeholder-text-(--text-tertiary) focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            disabled={isConverting}
-                            autoFocus
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleSelectFile();
-                            }}
-                        />
-                        <p className="mt-1.5 text-xs text-(--text-tertiary)">
-                            La palabra clave distingue mayúsculas y minúsculas.
-                        </p>
-                    </div>
-
+                    {/* Toggle para habilitar o no el motor de palabra clave */}
                     <label className="flex items-center gap-2.5 cursor-pointer select-none">
                         <input
                             type="checkbox"
-                            checked={rememberKeyword}
-                            onChange={(e) => setRememberKeyword(e.target.checked)}
+                            checked={useKeyword}
+                            onChange={(e) => {
+                                setUseKeyword(e.target.checked);
+                                setError('');
+                            }}
                             disabled={isConverting}
                             className="h-4 w-4 rounded border-(--border-default) accent-blue-600"
                         />
-                        <span className="text-sm text-(--text-secondary)">
-                            Recordar para la próxima vez
+                        <span className="text-sm font-medium text-(--text-primary)">
+                            Utilizar palabra clave
                         </span>
                     </label>
+
+                    {useKeyword ? (
+                        <>
+                            <p className="text-sm text-(--text-secondary)">
+                                El programa va a buscar la palabra clave en el documento y reemplazará cada
+                                ocurrencia por un campo vacío al que podés asignar un requisito.
+                            </p>
+
+                            <div>
+                                <label htmlFor="template-keyword" className="block text-sm font-medium text-(--text-secondary) mb-1.5">
+                                    Palabra clave <span className="text-red-500">*</span>
+                                </label>
+                                <input
+                                    id="template-keyword"
+                                    type="text"
+                                    value={keyword}
+                                    onChange={(e) => setKeyword(e.target.value)}
+                                    placeholder='Ej: BLANCO, CAMPO, XXX'
+                                    className="w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary) placeholder-text-(--text-tertiary) focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    disabled={isConverting}
+                                    autoFocus
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') handleSelectFile();
+                                    }}
+                                />
+                                <p className="mt-1.5 text-xs text-(--text-tertiary)">
+                                    La palabra clave distingue mayúsculas y minúsculas.
+                                </p>
+                            </div>
+
+                            {error && (
+                                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-600 text-sm animate-in fade-in slide-in-from-top-1">
+                                    <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                                    <span>{error}</span>
+                                </div>
+                            )}
+
+                            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={rememberKeyword}
+                                    onChange={(e) => setRememberKeyword(e.target.checked)}
+                                    disabled={isConverting}
+                                    className="h-4 w-4 rounded border-(--border-default) accent-blue-600"
+                                />
+                                <span className="text-sm text-(--text-secondary)">
+                                    Recordar para la próxima vez
+                                </span>
+                            </label>
+                        </>
+                    ) : (
+                        <p className="text-sm text-(--text-secondary)">
+                            El documento se importará tal cual, sin detectar ni reemplazar campos.
+                            Podrás agregar los requisitos manualmente desde el editor.
+                        </p>
+                    )}
 
                     <div className="rounded-lg border border-(--border-subtle) bg-(--bg-header) px-4 py-3 flex items-start gap-3">
                         <FileText size={16} className="shrink-0 mt-0.5 text-(--text-tertiary)" />

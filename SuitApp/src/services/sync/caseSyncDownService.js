@@ -100,6 +100,7 @@ function buildClientCacheRow(client) {
         type: client.type || 'person',
         gender: client.gender || 'X',
         status: client.status || 'active',
+        financial_status: client.financial_status || null,
         notes: client.notes || null,
         data_json: JSON.stringify(client),
         synced_at: new Date().toISOString(),

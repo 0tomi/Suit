@@ -34,13 +34,17 @@ export function ContextMenu({ x, y, items, onClose }) {
     // Ajustar posición si el menú se sale de la pantalla
     useEffect(() => {
         if (!menuRef.current) return;
-        const rect = menuRef.current.getBoundingClientRect();
-        const vw = window.innerWidth;
-        const vh = window.innerHeight;
-        setPosition({
-            x: x + rect.width > vw ? vw - rect.width - 8 : x,
-            y: y + rect.height > vh ? vh - rect.height - 8 : y,
+        const frameId = window.requestAnimationFrame(() => {
+            if (!menuRef.current) return;
+            const rect = menuRef.current.getBoundingClientRect();
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            setPosition({
+                x: x + rect.width > vw ? vw - rect.width - 8 : x,
+                y: y + rect.height > vh ? vh - rect.height - 8 : y,
+            });
         });
+        return () => window.cancelAnimationFrame(frameId);
     }, [x, y]);
 
     // Cerrar al hacer clic fuera o presionar Escape

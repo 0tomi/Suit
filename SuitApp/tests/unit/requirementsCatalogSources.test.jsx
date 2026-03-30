@@ -21,14 +21,6 @@ vi.mock('../../src/context/DependenciasJudicialesContext.jsx', () => ({
     useDependenciasJudiciales: vi.fn(),
 }));
 
-vi.mock('../../src/context/EventsContext.jsx', () => ({
-    useEvents: vi.fn(),
-}));
-
-vi.mock('../../src/context/EventTypesContext.jsx', () => ({
-    useEventTypes: vi.fn(),
-}));
-
 vi.mock('../../src/components/ui/Label.jsx', () => ({
     Label: ({ children }) => <label>{children}</label>,
 }));
@@ -58,10 +50,7 @@ import { useRadicaciones } from '../../src/context/RadicacionesContext.jsx';
 import { useJurisdicciones } from '../../src/context/JurisdiccionesContext.jsx';
 import { useCompetencias } from '../../src/context/CompetenciasContext.jsx';
 import { useDependenciasJudiciales } from '../../src/context/DependenciasJudicialesContext.jsx';
-import { useEvents } from '../../src/context/EventsContext.jsx';
-import { useEventTypes } from '../../src/context/EventTypesContext.jsx';
 import { CaseSubEntitiesSearch } from '../../src/components/requirements/CaseSubEntitiesSearch.jsx';
-import { EventSearch } from '../../src/components/requirements/EventSearch.jsx';
 
 describe('requirements catalog sources', () => {
     beforeEach(() => {
@@ -70,8 +59,6 @@ describe('requirements catalog sources', () => {
         useJurisdicciones.mockReturnValue({ data: [], initialized: true });
         useCompetencias.mockReturnValue({ data: [], initialized: true });
         useDependenciasJudiciales.mockReturnValue({ data: [], initialized: true });
-        useEvents.mockReturnValue({ agendas: [], initialized: true });
-        useEventTypes.mockReturnValue({ data: [], initialized: true });
     });
 
     it('muestra juzgados desde data sin depender de una radicación seleccionada', () => {
@@ -119,28 +106,5 @@ describe('requirements catalog sources', () => {
 
         expect(screen.getByText('Federal')).toBeInTheDocument();
         expect(screen.getByText('Civil')).toBeInTheDocument();
-    });
-
-    it('usa data para poblar filtros de fuero y tipo de evento', () => {
-        useCaseTypes.mockReturnValue({
-            data: [{ id: 9, name: 'Laboral' }],
-            initialized: true,
-        });
-        useEventTypes.mockReturnValue({
-            data: [{ id: 4, name: 'Audiencia' }],
-            initialized: true,
-        });
-
-        render(
-            <EventSearch
-                value={null}
-                onChange={() => {}}
-                onFocus={() => {}}
-                onBlur={() => {}}
-            />
-        );
-
-        expect(screen.getByText('Laboral')).toBeInTheDocument();
-        expect(screen.getByText('Audiencia')).toBeInTheDocument();
     });
 });

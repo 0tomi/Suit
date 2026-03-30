@@ -53,6 +53,7 @@ const {
     getEnrichedDependencies,
     getTemplateRequirements,
     searchEvents,
+    getAgendaEventTypes,
 } = require('./database.cjs');
 const { discoverServer } = require('./discovery.cjs');
 const { performHttpRequest } = require('./httpProxy.cjs');
@@ -72,6 +73,10 @@ const {
     invalidateDocumentListingCache,
 } = require('./documentListingService.cjs');
 const {
+    getCaseListingPage,
+    invalidateCaseListingCache,
+} = require('./casesListingService.cjs');
+const {
     pathExists,
     resolveAppIconPath,
     resolveRendererEntryPath,
@@ -80,12 +85,17 @@ const qrService = require('./qrService.cjs');
 const {
     listClients,
     getClient: getClientBackend,
+    getClientDocuments: getClientDocumentsBackend,
     createClient: createClientBackend,
     updateClient: updateClientBackend,
     deleteClient: deleteClientBackend,
     getClientsLastModified: getClientsLastModifiedBackend,
     syncClients: syncClientsBackend,
 } = require('./clientsService.cjs');
+const {
+    getClientListingPage,
+    invalidateClientListingCache,
+} = require('./clientsListingService.cjs');
 const {
     listPartes: listPartesBackend,
     getParte: getParteBackend,
@@ -99,6 +109,21 @@ const {
     unlinkParteFromCase: unlinkParteFromCaseBackend,
 } = require('./partesService.cjs');
 const {
+    getParteListingPage,
+    invalidateParteListingCache,
+} = require('./partesListingService.cjs');
+const {
+    getTemplateListingPage,
+    invalidateTemplateListingCache,
+} = require('./templatesListingService.cjs');
+const {
+    getHonorariosListingPage,
+    getGastosListingPage,
+    getHonorariosStats,
+    getGastosStats,
+    invalidateEconomiaListingCache,
+} = require('./economiaListingService.cjs');
+const {
     listBitacora: listBitacoraBackend,
     clearBitacora: clearBitacoraBackend,
     cleanupBitacora: cleanupBitacoraBackend,
@@ -107,7 +132,9 @@ const {
 let mainWindow = null;
 let trayManager = null;
 let notificationSchleuder = null;
+let mainWindowZoomFactor = 1;
 const mainLogger = getLogger('main');
+const publicFilesLogger = getLogger('public-files:backend');
 const startupLogger = getLogger('startup');
 const startupStartedAt = Date.now();
 const startupMetricsEnabled = true;
@@ -155,6 +182,64 @@ function isMainWindowForeground() {
         && !mainWindow.isMinimized()
         && mainWindow.isFocused()
     );
+}
+
+function getBackendApiConfig(scope) {
+    const host = getConfig('api_host') || 'localhost';
+    const port = getConfig('api_port') || '8000';
+    const token = getConfig('auth_token');
+
+    if (!token) {
+        const error = new Error(`No hay token de autenticación disponible para ${scope}.`);
+        publicFilesLogger.error('missing auth token for backend api request', { scope, host, port });
+        throw error;
+    }
+
+    return {
+        baseUrl: `http://${host}:${port}/api`,
+        token,
+    };
+}
+
+async function requestBackendApi({ scope, path, method = 'GET', query, body, responseType = 'json' }) {
+    const { baseUrl, token } = getBackendApiConfig(scope);
+    const response = await performHttpRequest({
+        url: `${baseUrl}${path}`,
+        method,
+        query,
+        responseType,
+        headers: {
+            Accept: responseType === 'json' ? 'application/json' : '*/*',
+            Authorization: `Bearer ${token}`,
+            ...(body?.kind === 'json' ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body
+            ? {
+                body,
+            }
+            : {}),
+    });
+
+    if (!response.ok) {
+        publicFilesLogger.warn('backend api request failed', {
+            scope,
+            path,
+            method,
+            status: response.status,
+            error: response.error || null,
+            data: response.data,
+        });
+    }
+
+    return response;
+}
+
+async function requestPublicFilesApi(options) {
+    return await requestBackendApi({ scope: 'public-files', ...options });
+}
+
+async function requestPublicFileCatalogsApi(options) {
+    return await requestBackendApi({ scope: 'public-file-catalogs', ...options });
 }
 
 // La primera vez que el usuario "cierra" la ventana, la app se oculta al tray.
@@ -288,6 +373,53 @@ function configureSpellChecker(window) {
 
     ses.setSpellCheckerLanguages(languages);
     mainLogger.info('Spellchecker languages configured', { languages });
+}
+
+/**
+ * Detecta atajos nativos de zoom para bloquearlos y centralizar la escala
+ * desde la configuración de la aplicación.
+ */
+function isZoomShortcut(input) {
+    if (!input?.control && !input?.meta) return false;
+
+    const key = typeof input.key === 'string' ? input.key.toLowerCase() : '';
+    const code = typeof input.code === 'string' ? input.code : '';
+
+    return ['-', '_', '+', '=', '0'].includes(key)
+        || ['Minus', 'Equal', 'Digit0', 'NumpadAdd', 'NumpadSubtract', 'Numpad0'].includes(code);
+}
+
+/**
+ * Aplica el zoom real del BrowserWindow y lo recuerda para futuras recreaciones
+ * o intentos de zoom disparados por Chromium.
+ */
+function applyWindowZoomFactor(window, factor) {
+    if (!window || window.isDestroyed()) return;
+    if (typeof factor !== 'number' || !Number.isFinite(factor) || factor <= 0) {
+        throw new Error('Zoom factor inválido.');
+    }
+
+    mainWindowZoomFactor = factor;
+    window.webContents.setZoomFactor(factor);
+}
+
+/**
+ * Bloquea atajos nativos de zoom y revierte cualquier cambio originado fuera
+ * de la configuración centralizada del renderer.
+ */
+function attachZoomControls(window) {
+    const contents = window?.webContents;
+    if (!contents) return;
+
+    contents.on('before-input-event', (event, input) => {
+        if (isZoomShortcut(input)) {
+            event.preventDefault();
+        }
+    });
+
+    contents.on('zoom-changed', () => {
+        applyWindowZoomFactor(window, mainWindowZoomFactor);
+    });
 }
 
 function appendContextMenuItem(menu, options) {
@@ -445,6 +577,8 @@ function createWindow() {
     attachWindowDiagnostics(mainWindow);
     configureSpellChecker(mainWindow);
     attachContextMenu(mainWindow);
+    attachZoomControls(mainWindow);
+    applyWindowZoomFactor(mainWindow, mainWindowZoomFactor);
 
     // El cierre normal de la ventana se convierte en hide-to-tray.
     mainWindow.on('close', (event) => {
@@ -649,6 +783,9 @@ function registerIpcHandlers() {
     registerSafeHandle('clients:get', async (id) => {
         return await getClientBackend(id);
     });
+    registerSafeHandle('clients:getDocuments', async (clientId, paging = {}) => {
+        return await getClientDocumentsBackend(clientId, paging);
+    });
     registerSafeHandle('clients:create', async (payload) => {
         return await createClientBackend(payload);
     });
@@ -663,6 +800,12 @@ function registerIpcHandlers() {
     });
     registerSafeHandle('clients:sync', async () => {
         return await syncClientsBackend();
+    });
+    registerSafeHandle('clients:getListingPage', async (options = {}) => {
+        return await getClientListingPage(options);
+    });
+    registerSafeHandle('clients:invalidateListingCache', async () => {
+        return await invalidateClientListingCache();
     });
 
     // --- Partes Backend ---
@@ -695,6 +838,33 @@ function registerIpcHandlers() {
     });
     registerSafeHandle('partes:unlinkFromCase', async (caseId, parteId) => {
         return await unlinkParteFromCaseBackend(caseId, parteId);
+    });
+    registerSafeHandle('partes:getListingPage', async (options = {}) => {
+        return await getParteListingPage(options);
+    });
+    registerSafeHandle('partes:invalidateListingCache', async () => {
+        return await invalidateParteListingCache();
+    });
+    registerSafeHandle('templates:getListingPage', async (options = {}) => {
+        return await getTemplateListingPage(options);
+    });
+    registerSafeHandle('templates:invalidateListingCache', async () => {
+        return await invalidateTemplateListingCache();
+    });
+    registerSafeHandle('economia:getHonorariosListingPage', async (options = {}) => {
+        return await getHonorariosListingPage(options);
+    });
+    registerSafeHandle('economia:getGastosListingPage', async (options = {}) => {
+        return await getGastosListingPage(options);
+    });
+    registerSafeHandle('economia:getHonorariosStats', async (options = {}) => {
+        return await getHonorariosStats(options);
+    });
+    registerSafeHandle('economia:getGastosStats', async (options = {}) => {
+        return await getGastosStats(options);
+    });
+    registerSafeHandle('economia:invalidateListingCache', async () => {
+        return await invalidateEconomiaListingCache();
     });
 
     registerSafeHandle('dialog:openImage', async (options = {}) => {
@@ -751,6 +921,12 @@ function registerIpcHandlers() {
     registerSafeHandle('documents:invalidateListingCache', async () => {
         return await invalidateDocumentListingCache();
     });
+    registerSafeHandle('cases:getListingPage', async (options = {}) => {
+        return await getCaseListingPage(options);
+    });
+    registerSafeHandle('cases:invalidateListingCache', async () => {
+        return await invalidateCaseListingCache();
+    });
 
     // --- Bitácora Admin Backend ---
     registerSafeHandle('bitacora:list', async (options = {}) => {
@@ -796,6 +972,9 @@ function registerIpcHandlers() {
     registerSafeHandle('db:searchEvents', (options) =>
         searchEvents(options)
     );
+    registerSafeHandle('db:getAgendaEventTypes', (agendaId) =>
+        getAgendaEventTypes(agendaId)
+    );
     registerSafeHandle('db:upsertMany', (table, rows) => upsertMany(table, rows));
     registerSafeHandle('db:reconcileEventsForAgenda', (agendaId, rows) =>
         reconcileEventsForAgenda(agendaId, rows)
@@ -832,6 +1011,146 @@ function registerIpcHandlers() {
     registerSafeHandle('db:promotePendingEvent', (localEventId, remoteEventRow, options) =>
         promotePendingEvent(localEventId, remoteEventRow, options)
     );
+
+    // --- Biblioteca: backend API de archivos públicos ---
+    registerSafeHandle('publicFiles:list', async (options = {}) => {
+        return await requestPublicFilesApi({
+            path: '/public-files',
+            method: 'GET',
+            query: options,
+        });
+    });
+
+    registerSafeHandle('publicFiles:listByCatalog', async (catalogId, options = {}) => {
+        return await requestPublicFileCatalogsApi({
+            path: `/public-file-catalogs/${catalogId}/public-files`,
+            method: 'GET',
+            query: options,
+        });
+    });
+
+    registerSafeHandle('publicFiles:upload', async ({ parts = [], permissions = [] } = {}) => {
+        const response = await requestPublicFilesApi({
+            path: '/public-files',
+            method: 'POST',
+            body: {
+                kind: 'form-data',
+                parts,
+            },
+        });
+
+        if (!response.ok) {
+            return response;
+        }
+
+        if (permissions.length === 0) {
+            return response;
+        }
+
+        const createdFileId = response.data.data.id;
+        for (const permission of permissions) {
+            const permissionResponse = await requestPublicFilesApi({
+                path: `/public-files/${createdFileId}/permissions`,
+                method: 'POST',
+                body: {
+                    kind: 'json',
+                    value: permission,
+                },
+            });
+
+            if (!permissionResponse.ok) {
+                return permissionResponse;
+            }
+        }
+
+        return response;
+    });
+
+    registerSafeHandle('publicFiles:update', async (fileId, payload) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}`,
+            method: 'PUT',
+            body: {
+                kind: 'json',
+                value: payload,
+            },
+        });
+    });
+
+    registerSafeHandle('publicFiles:delete', async (fileId) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}`,
+            method: 'DELETE',
+        });
+    });
+
+    registerSafeHandle('publicFiles:getMyPermissions', async (fileId) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}/my-permissions`,
+            method: 'GET',
+        });
+    });
+
+    registerSafeHandle('publicFiles:getPermissions', async (fileId) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}/permissions`,
+            method: 'GET',
+        });
+    });
+
+    registerSafeHandle('publicFiles:setPermissions', async (fileId, payload) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}/permissions`,
+            method: 'POST',
+            body: {
+                kind: 'json',
+                value: payload,
+            },
+        });
+    });
+
+    registerSafeHandle('publicFiles:revokePermission', async (fileId, userId) => {
+        return await requestPublicFilesApi({
+            path: `/public-files/${fileId}/permissions/${userId}`,
+            method: 'DELETE',
+        });
+    });
+
+    registerSafeHandle('publicFileCatalogs:list', async () => {
+        return await requestPublicFileCatalogsApi({
+            path: '/public-file-catalogs',
+            method: 'GET',
+        });
+    });
+
+    registerSafeHandle('publicFileCatalogs:create', async (payload) => {
+        return await requestPublicFileCatalogsApi({
+            path: '/public-file-catalogs',
+            method: 'POST',
+            body: {
+                kind: 'json',
+                value: payload,
+            },
+        });
+    });
+
+    registerSafeHandle('publicFileCatalogs:update', async (catalogId, payload) => {
+        return await requestPublicFileCatalogsApi({
+            path: `/public-file-catalogs/${catalogId}`,
+            method: 'PUT',
+            body: {
+                kind: 'json',
+                value: payload,
+            },
+        });
+    });
+
+    registerSafeHandle('publicFileCatalogs:delete', async (catalogId) => {
+        return await requestPublicFileCatalogsApi({
+            path: `/public-file-catalogs/${catalogId}`,
+            method: 'DELETE',
+        });
+    });
 
     // --- Biblioteca: descarga de archivos públicos ---
     // El download se maneja enteramente en el proceso principal para evitar pasar
@@ -914,4 +1233,10 @@ function registerIpcHandlers() {
     // Usa font-list para enumerar fuentes del sistema en Linux/Windows/macOS
     // manteniendo el mismo contrato IPC para el renderer.
     registerSafeHandle('system:getFonts', async () => await listSystemFonts());
+
+    // --- Window ---
+    registerSafeHandle('window:setZoomFactor', async (factor) => {
+        applyWindowZoomFactor(mainWindow, factor);
+        return { ok: true };
+    });
 }

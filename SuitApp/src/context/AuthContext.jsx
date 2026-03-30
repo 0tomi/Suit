@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef } from 'react';
 import { login as apiLogin, logout as apiLogout, validateToken } from '../services/authService.js';
 import { clearApiRequestState, setAuthToken, subscribeApiState } from '../services/api.js';

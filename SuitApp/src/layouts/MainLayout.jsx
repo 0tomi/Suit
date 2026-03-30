@@ -51,7 +51,7 @@ const MainLayout = () => {
 
             <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
                 <TabBar />
-                <div className="p-8 flex-1 min-h-0 overflow-hidden flex flex-col">
+                <div className="px-8 pt-6 pb-6 flex-1 min-h-0 overflow-hidden flex flex-col">
                     <TabsContainer />
                 </div>
             </main>

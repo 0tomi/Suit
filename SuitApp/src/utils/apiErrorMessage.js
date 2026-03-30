@@ -12,6 +12,10 @@ const FIELD_LABELS = {
     user_tag: 'Usuario',
     permission_level: 'Nivel de permiso',
     last_updated_at: 'Última actualización',
+    tipo: 'Tipo de Radicación',
+    nombre: 'Nombre de la Jurisdicción',
+    nombre_juzgado: 'Nombre del Juzgado',
+    competencia_id: 'Fuero / Competencia',
 };
 
 function prettifyFieldName(fieldName) {
@@ -27,6 +31,43 @@ function prettifyFieldName(fieldName) {
         .filter(Boolean)
         .map((chunk, index) => index === 0 ? chunk.charAt(0).toUpperCase() + chunk.slice(1) : chunk)
         .join(' ');
+}
+
+export function translateTechnicalErrorMessage(message) {
+    const source = typeof message === 'string' && message.trim() ? message.trim() : '';
+    if (!source) return '';
+
+    const normalized = source.toLowerCase();
+
+    // Errores de red y conexión
+    if (normalized.includes('failed to fetch') || normalized.includes('network error')) {
+        return 'Error de red: No se pudo conectar con el servidor. Verifique su conexión.';
+    }
+    if (normalized.includes('timeout') || normalized.includes('timed out')) {
+        return 'La operación tardó demasiado y fue cancelada por tiempo de espera.';
+    }
+
+    // Errores de motor JavaScript (comunes en bugs de desarrollo)
+    if (normalized.includes('is not a function')) {
+        return `Error del sistema: Se intentó ejecutar una función que no existe (${source}).`;
+    }
+    if (normalized.includes('cannot read property') || normalized.includes('reading \'')) {
+        return `Error de lectura: No se pudo acceder a un dato necesario (${source}).`;
+    }
+    if (normalized.includes('is not defined')) {
+        return `Error interno: Una referencia requerida no está definida (${source}).`;
+    }
+    if (normalized.includes('unexpected token')) {
+        return `Error de formato: El servidor respondió con datos irreconocibles (${source}).`;
+    }
+
+    // Si ya parece estar en español (tiene tildes comunes o palabras clave), lo dejamos pasar
+    if (/[áéíóúüñ]/i.test(source) || normalized.includes('error') || normalized.includes('no se pudo')) {
+        return source;
+    }
+
+    // Fallback para mensajes en inglés no mapeados (le damos un contexto)
+    return `Error detectado: ${source}`;
 }
 
 export function translateApiErrorMessage(message, fallback = 'Ocurrió un error inesperado.') {
@@ -67,6 +108,10 @@ export function translateApiErrorMessage(message, fallback = 'Ocurrió un error 
             format: ([, field, values]) => `El campo ${prettifyFieldName(field)} debe ser uno de estos valores: ${values}.`,
         },
         {
+            regex: /^The identification[_ ]number( field)? has already been taken\.?$/i,
+            format: () => 'Ya existe un cliente o parte con ese DNI/CUIT/CUIL.',
+        },
+        {
             regex: /^The (.+?) has already been taken\.?$/i,
             format: ([, field]) => `El valor de ${prettifyFieldName(field)} ya está en uso.`,
         },
@@ -79,7 +124,8 @@ export function translateApiErrorMessage(message, fallback = 'Ocurrió un error 
         }
     }
 
-    return source;
+    // Si no es un error de validación de Laravel, chequeamos si es un error técnico en inglés
+    return translateTechnicalErrorMessage(source) || source;
 }
 
 /**
@@ -101,5 +147,8 @@ export function getApiErrorMessage(result, fallback = 'Ocurrió un error inesper
         return translateApiErrorMessage(firstError, fallback);
     }
 
-    return translateApiErrorMessage(result?.data?.message || result?.error, fallback);
+    // Priorizamos el mensaje de la API si existe, sino el error de red/fetch
+    const rawMessage = result?.data?.message || result?.error;
+    
+    return translateApiErrorMessage(rawMessage, fallback);
 }

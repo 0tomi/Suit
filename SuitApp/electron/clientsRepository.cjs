@@ -68,6 +68,7 @@ function buildClientCacheRow(client, existingClient = null) {
         type: merged.type ?? 'person',
         gender: merged.gender ?? 'X',
         status: merged.status ?? 'active',
+        financial_status: merged.financial_status ?? null,
         notes: merged.notes ?? null,
         data_json: JSON.stringify(merged),
         synced_at: new Date().toISOString(),

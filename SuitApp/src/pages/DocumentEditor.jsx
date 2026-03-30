@@ -156,6 +156,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
         loadVersionSuccess, loadVersionFail,
         startVersionLoad, clearVersionMeta, clearDirty,
     } = useDocumentEditorUIState();
+    const [settingsError, setSettingsError] = useState(null);
 
     const {
         title,
@@ -217,13 +218,14 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
 
     useEffect(() => {
         if (!saveMessage?.text) return;
+        if (settingsOpen) return;
 
         showAppToast({
             title: getEditorToastTitle(saveMessage),
             description: saveMessage.text,
             variant: saveMessage.type === 'success' ? 'success' : 'danger',
         });
-    }, [saveMessage]);
+    }, [saveMessage, settingsOpen]);
 
     useEffect(() => {
         if (!id || !versionId) {
@@ -618,12 +620,12 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
 
         const normalizedTitle = title.trim();
         if (!normalizedTitle) {
-            setSaveMessage({ type: 'error', text: 'El documento necesita un título.' });
+            setSettingsError('El documento necesita un título.');
             return;
         }
 
         setIsSaving(true);
-        setSaveMessage(null);
+        setSettingsError(null);
         try {
             const normalizedCaseId = Number(docMeta?.suit_case_id ?? initialCaseId ?? null);
             const suitCaseId = Number.isFinite(normalizedCaseId) && normalizedCaseId > 0
@@ -645,7 +647,11 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                     setIsDirty(false);
                 });
                 setSettingsOpen(false);
-                setSaveMessage({ type: 'success', text: 'Documento creado correctamente.' });
+                showAppToast({
+                    title: 'Documento creado',
+                    description: 'Documento creado correctamente.',
+                    variant: 'success',
+                });
                 await invalidateDocumentListingCache();
                 await refreshAll();
 
@@ -657,7 +663,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                     message: failureMessage,
                     title: normalizedTitle,
                 });
-                setSaveMessage({ type: 'error', text: failureMessage });
+                setSettingsError(failureMessage);
             }
         } catch (error) {
             const failureMessage = `Error de red: ${error.message}`;
@@ -665,7 +671,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                 error: error.message,
                 title: normalizedTitle,
             });
-            setSaveMessage({ type: 'error', text: failureMessage });
+            setSettingsError(failureMessage);
         } finally {
             setIsSaving(false);
         }
@@ -795,7 +801,10 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
 
             <DocumentSettingsModal
                 isOpen={settingsOpen}
-                onClose={() => setSettingsOpen(false)}
+                onClose={() => {
+                    setSettingsOpen(false);
+                    setSettingsError(null);
+                }}
                 documentData={id
                     ? (docMeta || { name: title, suit_case_id: null })
                     : { name: title, suit_case_id: docMeta?.suit_case_id ?? initialCaseId ?? null }}
@@ -815,7 +824,10 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                         void upsertDocumentCache(Number(id), content, sanitized);
                     }
                 }}
-                onTitleChange={!id ? setTitle : undefined}
+                onTitleChange={!id ? (newTitle) => {
+                    setTitle(newTitle);
+                    if (settingsError) setSettingsError(null);
+                } : undefined}
                 onConfirmCreate={!id ? handleCreateDocument : undefined}
                 creating={!id ? isSaving : false}
                 allowCaseAssociationEdit={!id}
@@ -824,6 +836,7 @@ function DocumentEditorContent({ id, db, templateId, versionId, versionNumberPar
                 deleteDisabledReason="No se puede eliminar un documento bloqueado."
                 onDelete={requestDeleteDocument}
                 deleting={deleteDialogProps.loading}
+                error={settingsError}
             />
             {unsavedDialogProps.open && <ConfirmDialog {...unsavedDialogProps} />}
             <ConfirmDialog {...deleteDialogProps} />

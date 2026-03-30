@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useReducer, useEffect, useCallback, useMemo, useRef } from 'react';
 import { setApiBase, probeServer } from '../services/api.js';
 import { isElectron } from '../utils/platform.js';

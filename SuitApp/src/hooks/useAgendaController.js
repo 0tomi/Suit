@@ -10,6 +10,7 @@ export function useAgendaController({
     agendas,
     cases = [],
     caseId = null,
+    preferredAgendaId = null,
     createEventEntry = async () => ({ ok: false, error: 'createEventEntry no configurado' }),
     updateEventEntry = async () => ({ ok: false, error: 'updateEventEntry no configurado' }),
     deleteEventEntry = async () => ({ ok: false, error: 'deleteEventEntry no configurado' }),
@@ -87,6 +88,7 @@ export function useAgendaController({
     } = useAgendaCrudActions({
         agendas,
         caseId,
+        preferredAgendaId,
         currentUserId,
         modal,
         dispatchModal,

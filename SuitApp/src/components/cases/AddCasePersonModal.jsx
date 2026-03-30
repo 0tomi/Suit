@@ -26,6 +26,7 @@ export default function AddCasePersonModal({
     noOverlay = false,
     multiSelect = false,
     confirmText = 'Vincular seleccionados',
+    onConfirmSelection,
 }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedItems, setSelectedItems] = useState([]);
@@ -58,12 +59,19 @@ export default function AddCasePersonModal({
         });
     }, [linkingId, multiSelect, onSelect]);
 
-    const handleConfirm = useCallback(() => {
-        selectedItems.forEach(item => {
-            onSelect?.(item.data || item);
+    const handleConfirm = useCallback(async () => {
+        const normalizedSelection = selectedItems.map((item) => item.data || item);
+
+        if (onConfirmSelection) {
+            await onConfirmSelection(normalizedSelection);
+            return;
+        }
+
+        normalizedSelection.forEach((item) => {
+            onSelect?.(item);
         });
         onClose();
-    }, [onSelect, selectedItems, onClose]);
+    }, [onConfirmSelection, onSelect, onClose, selectedItems]);
 
     const footer = (
         <div className="flex w-full items-center justify-center gap-4">
@@ -79,7 +87,7 @@ export default function AddCasePersonModal({
                     </Button>
                     <Button 
                         variant="primary" 
-                        onClick={handleConfirm}
+                        onClick={() => void handleConfirm()}
                         disabled={selectedItems.length === 0 || !!linkingId}
                         icon={Plus}
                         className="min-w-[200px]"

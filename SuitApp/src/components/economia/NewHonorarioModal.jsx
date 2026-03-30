@@ -142,7 +142,7 @@ export function NewHonorarioModal({ closeModal, onSuccess, caseId }) {
                 {formError ? (
                     <div
                         data-testid="new-honorario-error-banner"
-                        className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700"
+                        className="rounded-lg border border-(--border-danger) bg-(--bg-danger-subtle) px-4 py-3 text-sm text-(--text-danger)"
                     >
                         {formError}
                     </div>
@@ -200,6 +200,7 @@ export function NewHonorarioModal({ closeModal, onSuccess, caseId }) {
                         step="0.01"
                         value={form.monto}
                         onChange={handleFieldChange('monto')}
+                        onKeyDown={(e) => ['e', 'E'].includes(e.key) && e.preventDefault()}
                         aria-invalid={Boolean(fieldErrors.monto)}
                         className={fieldErrors.monto ? 'border-red-300 focus:ring-red-500' : ''}
                         required

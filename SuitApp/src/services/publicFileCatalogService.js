@@ -1,42 +1,48 @@
 /**
- * publicFileCatalogService.js — CRUD de catálogos de archivos públicos.
- * Solo el administrador puede crear, editar o eliminar catálogos.
- * El catálogo "General" está protegido en la API (devuelve 403 ante modificaciones).
+ * publicFileCatalogService.js — CRUD de catálogos de Biblioteca via Electron IPC.
  */
-import { apiGet, apiRequest } from './api.js';
+import { createLogger } from './logService.js';
 
-/**
- * Lista todos los catálogos disponibles en el sistema.
- */
-export async function getCatalogs() {
-    const result = await apiGet('/public-file-catalogs');
-    return result.ok ? result.data : [];
+const logger = createLogger('public-file-catalog-service');
+
+function getPublicFileCatalogsApi() {
+    const api = window.electronAPI?.publicFileCatalogs;
+    if (!api) {
+        const error = new Error('electronAPI.publicFileCatalogs no está disponible.');
+        void logger.error('publicFileCatalogs bridge unavailable');
+        throw error;
+    }
+    return api;
 }
 
 /**
- * Crea un nuevo catálogo (requiere rol Admin).
+ * Lista todos los catálogos disponibles.
+ */
+export async function getCatalogs() {
+    return await getPublicFileCatalogsApi().list();
+}
+
+/**
+ * Crea un catálogo.
  * @param {{ name: string, description?: string }} data
  */
 export async function createCatalog(data) {
-    return await apiRequest('/public-file-catalogs', { method: 'POST', body: data });
+    return await getPublicFileCatalogsApi().create(data);
 }
 
 /**
- * Actualiza un catálogo existente (requiere rol Admin).
- * El catálogo General siempre devuelve 403.
+ * Actualiza un catálogo existente.
  * @param {number} id
  * @param {{ name?: string, description?: string }} data
  */
 export async function updateCatalog(id, data) {
-    return await apiRequest(`/public-file-catalogs/${id}`, { method: 'PUT', body: data });
+    return await getPublicFileCatalogsApi().update(id, data);
 }
 
 /**
- * Elimina un catálogo (requiere rol Admin).
- * Los archivos huérfanos se reasignan automáticamente al catálogo General.
- * El catálogo General siempre devuelve 403.
+ * Elimina un catálogo existente.
  * @param {number} id
  */
 export async function deleteCatalog(id) {
-    return await apiRequest(`/public-file-catalogs/${id}`, { method: 'DELETE' });
+    return await getPublicFileCatalogsApi().delete(id);
 }

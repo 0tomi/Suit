@@ -15,36 +15,41 @@ export default function DocumentPreviewModal({
     document = null,
     onClose,
 }) {
-    const [content, setContent] = useState(null);
-    const [loading, setLoading] = useState(false);
+    const [previewState, setPreviewState] = useState({
+        documentId: null,
+        content: null,
+    });
 
     // Fetch del contenido HTML al abrir el modal o cambiar de documento
     useEffect(() => {
-        if (!open || !document?.id) {
-            setContent(null);
-            setLoading(false);
-            return;
-        }
+        if (!open || !document?.id || document.content) return;
 
         // Si el documento ya trae contenido (ej: tests o caché manual), usarlo directamente
-        if (document.content) {
-            setContent(document.content);
-            return;
-        }
-
         let cancelled = false;
-        setLoading(true);
-        setContent(null);
 
         fetchDocumentContent(document.id).then((html) => {
             if (!cancelled) {
-                setContent(html);
-                setLoading(false);
+                setPreviewState({
+                    documentId: document.id,
+                    content: html,
+                });
+            }
+        }).catch(() => {
+            if (!cancelled) {
+                setPreviewState({
+                    documentId: document.id,
+                    content: null,
+                });
             }
         });
 
         return () => { cancelled = true; };
-    }, [open, document?.id]);
+    }, [open, document?.content, document?.id]);
+
+    const content = typeof document?.content === 'string'
+        ? document.content
+        : (previewState.documentId === document?.id ? previewState.content : null);
+    const loading = Boolean(open && document?.id && !document?.content && previewState.documentId !== document?.id);
 
     const hasContent = typeof content === 'string' && content.trim().length > 0;
 

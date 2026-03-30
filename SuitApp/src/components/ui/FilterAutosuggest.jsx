@@ -35,18 +35,24 @@ const FilterAutosuggest = ({
     );
 
     const filteredOptions = useMemo(() => {
+        const sliceWithSelected = (items) => {
+            if (!selectedOption?.value) return items;
+            if (items.some((option) => option.value === selectedOption.value)) return items;
+            return [selectedOption, ...items].slice(0, maxResults);
+        };
+
         if (onQueryChange) {
-            return options.slice(0, maxResults);
+            return sliceWithSelected(options.slice(0, maxResults));
         }
         // Al abrir con una opción ya seleccionada, mostramos el listado completo
         // en lugar de filtrar por la etiqueta visible del valor actual.
         const effectiveQuery = deferredQuery === normalizedSelectedLabel ? '' : deferredQuery;
-        if (!effectiveQuery) return options.slice(0, maxResults);
+        if (!effectiveQuery) return sliceWithSelected(options.slice(0, maxResults));
 
-        return options
+        return sliceWithSelected(options
             .filter((option) => option.label.toLowerCase().includes(effectiveQuery))
-            .slice(0, maxResults);
-    }, [deferredQuery, normalizedSelectedLabel, options, onQueryChange, maxResults]);
+            .slice(0, maxResults));
+    }, [deferredQuery, maxResults, normalizedSelectedLabel, onQueryChange, options, selectedOption]);
 
     const resetToSelection = () => {
         setQuery(selectedOption?.label ?? '');

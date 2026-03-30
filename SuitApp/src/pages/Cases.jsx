@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useCallback } from 'react';
+import { useMemo, useEffect, useCallback, useState, useRef } from 'react';
 import { parseISO, formatISO } from 'date-fns';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useHotkeyAction } from '../hotkeys/useHotkeysSystem';
@@ -6,10 +6,10 @@ import { HOTKEY_ACTIONS } from '../hotkeys/hotkeys';
 import { Plus, Printer, FileText, Briefcase } from 'lucide-react';
 // import html2pdf from 'html2pdf.js'; // ELIMINADO: Usamos API nativa de Electron
 import { getReportStyles } from '../utils/pdf/pdfStyleHelper';
-import { useCases } from '../context/CasesContext';
 import { useCaseTypes } from '../context/CaseTypesContext';
 import { useEvents } from '../context/EventsContext.jsx';
-import { closeCase, getClosedCases } from '../services/caseService.js';
+import { closeCase } from '../services/caseService.js';
+import { getCasesListingPage, invalidateCasesListingCache } from '../services/casesListingBackendService.js';
 import { getCaseReportData } from '../services/caseDetailService.js';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { useConfirmDialog } from '../hooks/useConfirmDialog.js';
@@ -19,6 +19,7 @@ import { Modal } from '../components/ui/Modal';
 import { PrimaryActionButton } from '../components/ui/PrimaryActionButton';
 import { SectionTutorialTrigger } from '../components/ui/SectionTutorialTrigger.jsx';
 import { showAppToast } from '../components/ui/show-app-toast.jsx';
+import { Pagination } from '../components/ui/Pagination';
 import NewCaseForm from '../components/cases/NewCaseForm';
 import CasesFilterBar from '../components/cases/CasesFilterBar';
 import CasesTable from '../components/cases/CasesTable';
@@ -26,9 +27,7 @@ import { CaseReportView } from '../components/cases/CaseReportView';
 import { casosSteps } from '../constants/tutorialSteps.js';
 import { buildCaseCacheRow } from '../services/cache/caseCacheRow.js';
 import { createLogger } from '../services/logService.js';
-import { getCaseStatusLabel } from '../utils/caseStatus.js';
 import { usePageFocus } from '../hooks/usePageFocus.js';
-import caseSyncService from '../services/sync/caseSyncService.js';
 
 // ─── Persistencia de filtros en localStorage ─────────────────────────────────
 const FILTER_STORAGE_KEY = 'cases-filter-state';
@@ -116,13 +115,6 @@ async function cacheCreatedResources(payload) {
     return true;
 }
 
-async function refreshLocalResources(loadCases, loadEvents) {
-    await Promise.allSettled([
-        loadCases(),
-        loadEvents(),
-    ]);
-}
-
 // ─── Helpers de ordenamiento ──────────────────────────────────────────────────
 function sortCases(list, sortBy, sortOrder) {
     return [...list].sort((a, b) => {
@@ -139,19 +131,52 @@ const DEFAULT_FILTERS = {
     typeFilter: 'all',
     sortBy: 'updated_at',
     sortOrder: 'desc',
-    showFinished: false,
 };
+
+const INITIAL_LISTING_STATE = {
+    items: [],
+    page: 1,
+    total: 0,
+    totalPages: 1,
+    perPage: 40,
+    source: 'cache',
+    appliedLocalFilters: false,
+};
+
+function toBackendStatus(statusFilter) {
+    if (statusFilter === 'Finalizado') return 'closed';
+    if (statusFilter === 'Activo') return 'active';
+    return 'all';
+}
+
+function normalizeCasesListingResponse(response) {
+    const payload = response && typeof response === 'object' ? response : {};
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    const total = Number(payload.total ?? payload.totalDocuments ?? items.length) || 0;
+    const totalPages = Number(payload.totalPages ?? 1) || 1;
+    const perPage = Number(payload.perPage ?? 40) || 40;
+
+    return {
+        items,
+        page: Number(payload.page ?? 1) || 1,
+        total,
+        totalPages: Math.max(1, totalPages),
+        perPage: Math.max(1, perPage),
+        source: payload.source || 'cache',
+        appliedLocalFilters: Boolean(payload.appliedLocalFilters),
+    };
+}
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 const Cases = () => {
-    // Sincronizar al volver a la pestaña
-    usePageFocus({ onFocus: caseSyncService.syncCases });
-
     const navigate = useNavigate();
     const location = useLocation();
-    const { cases, refreshCases: refreshAll, loadLocalData: loadLocalCases } = useCases();
     const { case_types: caseTypes = [] } = useCaseTypes();
     const { loadLocalData: loadLocalEvents } = useEvents();
+    const listingRequestIdRef = useRef(0);
+    const [listingState, setListingState] = useState(INITIAL_LISTING_STATE);
+    const [listingLoading, setListingLoading] = useState(true);
+    const [currentPage, setCurrentPage] = useState(1);
 
     // Restaurar filtros desde localStorage + todo el estado local de la página
     const savedFilters = loadFilterState() || {};
@@ -161,18 +186,12 @@ const Cases = () => {
         typeFilter, setTypeFilter,
         sortBy, setSortBy,
         sortOrder, setSortOrder,
-        closedCases, setClosedCases,
-        loadingClosed, setLoadingClosed,
-        closedLoaded, setClosedLoaded,
         isModalOpen, setIsModalOpen,
         reportModalOpen, setReportModalOpen,
         reportData, setReportData,
         activeReportCase, setActiveReportCase,
         isDownloading, setIsDownloading,
     } = useCasesPageState(savedFilters);
-
-    // showFinished: derivado del filtro de estado
-    const showFinished = statusFilter === 'Finalizado' || statusFilter === 'all';
 
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
 
@@ -190,10 +209,6 @@ const Cases = () => {
         }
     }, [location.state, navigate, location.pathname, setIsModalOpen]);
 
-    // Hotkeys contextuales
-    useHotkeyAction(HOTKEY_ACTIONS.NEW_CASE, () => setIsModalOpen(true));
-    useHotkeyAction(HOTKEY_ACTIONS.REFRESH_MODULE, () => refreshAll());
-
     // Tipos disponibles desde CaseTypesContext (nombre de cada tipo)
     const caseTypeNames = useMemo(() => caseTypes.map(ct => ct.name).sort(), [caseTypes]);
 
@@ -203,91 +218,86 @@ const Cases = () => {
         for (const ct of caseTypes) map[ct.name] = String(ct.id);
         return map;
     }, [caseTypes]);
+    const backendListingFilters = useMemo(() => ({
+        status: toBackendStatus(statusFilter),
+        caseTypeId: typeFilter === 'all' ? null : Number(caseTypeIdByName[typeFilter] || 0) || null,
+        sortBy,
+        sortDirection: sortOrder,
+    }), [caseTypeIdByName, sortBy, sortOrder, statusFilter, typeFilter]);
+    const listingFiltersKey = useMemo(() => JSON.stringify(backendListingFilters), [backendListingFilters]);
+    const listingFiltersKeyRef = useRef(listingFiltersKey);
 
-    // Carga de casos cerrados (lazy, con fallback offline desde caché)
-    const loadClosedCases = useCallback(async () => {
-        setLoadingClosed(true);
-        setClosedLoaded(false);
+    const refreshCasesListing = useCallback(async ({ invalidate = false, page = currentPage } = {}) => {
+        const requestId = ++listingRequestIdRef.current;
+        setListingLoading(true);
+
         try {
-            const result = await getClosedCases();
-            if (result.ok && Array.isArray(result.data)) {
-                setClosedCases(result.data);
-                // Cachear en SQLite para fallback offline
-                if (window.electronAPI && result.data.length > 0) {
-                    const rows = result.data.map(buildCaseCacheRow).filter(Boolean);
-                    await window.electronAPI.db.upsertMany('cases', rows);
-                }
-            } else {
-                // Fallback offline: cargar cerrados que ya estén en caché
-                if (window.electronAPI) {
-                    const allLocal = await window.electronAPI.db.getAll('cases');
-                    const closedLocal = (allLocal || []).filter(
-                        c => c.status === 'closed' || c.end_date
-                    );
-                    setClosedCases(closedLocal);
-                }
+            if (invalidate) {
+                await invalidateCasesListingCache();
+            }
+
+            const response = await getCasesListingPage({
+                page,
+                filters: backendListingFilters,
+            });
+
+            if (listingRequestIdRef.current !== requestId) return;
+
+            const normalized = normalizeCasesListingResponse(response);
+            setListingState(normalized);
+            if (normalized.page !== page) {
+                setCurrentPage(normalized.page);
             }
         } catch (error) {
-            void logger.warn('Fallo la carga remota de casos cerrados; usando cache local', error);
-            // Fallback offline
-            if (window.electronAPI) {
-                const allLocal = await window.electronAPI.db.getAll('cases');
-                const closedLocal = (allLocal || []).filter(
-                    c => c.status === 'closed' || c.end_date
-                );
-                setClosedCases(closedLocal);
-            }
+            if (listingRequestIdRef.current !== requestId) return;
+            void logger.error('No se pudo cargar el listado de casos', {
+                error: error?.message || String(error),
+                page,
+                filters: backendListingFilters,
+            });
         } finally {
-            setLoadingClosed(false);
-            setClosedLoaded(true);
+            if (listingRequestIdRef.current === requestId) {
+                setListingLoading(false);
+            }
         }
-    }, [setClosedCases, setClosedLoaded, setLoadingClosed]);
+    }, [backendListingFilters, currentPage]);
 
-    // Si el toggle arranca con showFinished=true (restaurado de localStorage), cargar automáticamente
+    usePageFocus({
+        onFocus: () => {
+            void refreshCasesListing({ page: currentPage });
+        },
+    });
+
+    // Hotkeys contextuales
+    useHotkeyAction(HOTKEY_ACTIONS.NEW_CASE, () => setIsModalOpen(true));
+    useHotkeyAction(HOTKEY_ACTIONS.REFRESH_MODULE, () => {
+        void refreshCasesListing({ invalidate: true, page: currentPage });
+    });
+
     useEffect(() => {
-        if (showFinished && !closedLoaded) {
-            loadClosedCases();
+        if (listingFiltersKeyRef.current !== listingFiltersKey) {
+            listingFiltersKeyRef.current = listingFiltersKey;
+            if (currentPage !== 1) {
+                setCurrentPage(1);
+                return;
+            }
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Solo al montar
 
-    const handleStatusChange = useCallback((value) => {
-        setStatusFilter(value);
-        const needsClosed = value === 'Finalizado' || value === 'all';
-        if (needsClosed && !closedLoaded) {
-            loadClosedCases();
-        }
-    }, [closedLoaded, loadClosedCases, setStatusFilter]);
+        void refreshCasesListing({ page: currentPage });
+    }, [currentPage, listingFiltersKey, refreshCasesListing]);
 
-    // Combinar activos + cerrados (evitar duplicados por ID)
-    const allDisplayedCases = useMemo(() => {
-        if (!showFinished) return cases;
-        const activeIds = new Set(cases.map(c => c.id));
-        const uniqueClosed = closedCases.filter(c => !activeIds.has(c.id));
-        return [...cases, ...uniqueClosed];
-    }, [cases, closedCases, showFinished]);
-
-    const filteredAndSortedCases = useMemo(() => {
-        const filtered = allDisplayedCases.filter(c => {
-            const title = c.title || '';
-            const ownerTag = c.owner_tag || '';
-            const matchesSearch = title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                ownerTag.toLowerCase().includes(searchTerm.toLowerCase());
-
-            const statusLabel = getCaseStatusLabel(c);
-            const matchesStatus = statusFilter === 'all' || statusLabel === statusFilter;
-
-            // Comparar por case_type_id (número) usando el mapa de nombre → id
-            const matchesType = typeFilter === 'all'
-                || String(c.case_type_id || '') === caseTypeIdByName[typeFilter];
-
-            const matchesFinished = showFinished || statusLabel !== 'Finalizado';
-
-            return matchesSearch && matchesStatus && matchesType && matchesFinished;
-        });
+    const visibleCases = useMemo(() => {
+        const search = searchTerm.trim().toLowerCase();
+        const filtered = search
+            ? listingState.items.filter((caseItem) => {
+                const title = String(caseItem?.title || '').toLowerCase();
+                const ownerTag = String(caseItem?.owner_tag || '').toLowerCase();
+                return title.includes(search) || ownerTag.includes(search);
+            })
+            : listingState.items;
 
         return sortCases(filtered, sortBy, sortOrder);
-    }, [allDisplayedCases, searchTerm, statusFilter, typeFilter, caseTypeIdByName, showFinished, sortBy, sortOrder]);
+    }, [listingState.items, searchTerm, sortBy, sortOrder]);
 
     const handleClose = (caseItem, e) => {
         e.stopPropagation();
@@ -302,11 +312,7 @@ const Cases = () => {
                     const result = await closeCase(caseItem.id);
                     if (!result.ok) throw new Error(result.error || 'Error al cerrar caso.');
 
-                    await refreshAll();
-                    // Si tenemos casos cerrados cargados, también los refrescamos
-                    if (closedLoaded) {
-                        await loadClosedCases();
-                    }
+                    await refreshCasesListing({ invalidate: true, page: currentPage });
                     showAppToast({
                         title: 'Caso archivado correctamente',
                         description: caseItem.title || `Caso #${caseItem.id}`,
@@ -323,8 +329,10 @@ const Cases = () => {
                         confirmText: 'Aceptar',
                         onConfirm: closeDialog,
                     });
+                } finally {
+                    setDialogLoading(false);
                 }
-            }
+            },
         });
     };
 
@@ -337,7 +345,7 @@ const Cases = () => {
         const createdCaseId = createdCase?.id ?? null;
 
         if (!window.electronAPI) {
-            await refreshAll();
+            await refreshCasesListing({ invalidate: true, page: currentPage });
             showAppToast({ title: toastTitle, description: toastDescription, variant: toastVariant });
             if (partialFailure && createdCaseId) {
                 navigate(`/cases/${createdCaseId}`, { state: { caseData: createdCase || createdPayload } });
@@ -348,7 +356,7 @@ const Cases = () => {
         try {
             const cacheUpdated = await cacheCreatedResources(createdPayload);
             if (!cacheUpdated) {
-                await refreshAll();
+                await refreshCasesListing({ invalidate: true, page: currentPage });
                 await loadLocalEvents();
                 showAppToast({ title: toastTitle, description: toastDescription, variant: toastVariant });
                 if (partialFailure && createdCaseId) {
@@ -357,14 +365,15 @@ const Cases = () => {
                 return;
             }
 
-            await refreshLocalResources(loadLocalCases, loadLocalEvents);
+            await refreshCasesListing({ invalidate: true, page: currentPage });
+            await loadLocalEvents();
             showAppToast({ title: toastTitle, description: toastDescription, variant: toastVariant });
             if (partialFailure && createdCaseId) {
                 navigate(`/cases/${createdCaseId}`, { state: { caseData: createdCase || createdPayload } });
             }
         } catch (err) {
             void logger.error('Error caching created case locally', err);
-            await refreshAll();
+            await refreshCasesListing({ invalidate: true, page: currentPage });
             await loadLocalEvents();
             showAppToast({ title: toastTitle, description: toastDescription, variant: toastVariant });
             if (partialFailure && createdCaseId) {
@@ -375,7 +384,7 @@ const Cases = () => {
 
     const handleGenerateReport = async (caseId, e) => {
         if (e) e.stopPropagation();
-        const fullCaseData = allDisplayedCases.find(c => c.id === caseId);
+        const fullCaseData = visibleCases.find((c) => c.id === caseId);
         setActiveReportCase(fullCaseData);
         try {
             const data = await getCaseReportData(caseId);
@@ -533,28 +542,48 @@ const Cases = () => {
                 <CaseReportView data={reportData} />
             </Modal>
 
-            <CasesFilterBar
+                <CasesFilterBar
                 searchTerm={searchTerm}
                 onSearchChange={setSearchTerm}
                 statusFilter={statusFilter}
-                onStatusChange={handleStatusChange}
+                onStatusChange={(value) => {
+                    setStatusFilter(value);
+                    setCurrentPage(1);
+                }}
                 typeFilter={typeFilter}
-                onTypeChange={setTypeFilter}
+                onTypeChange={(value) => {
+                    setTypeFilter(value);
+                    setCurrentPage(1);
+                }}
                 sortBy={sortBy}
-                onSortByChange={setSortBy}
+                onSortByChange={(value) => {
+                    setSortBy(value);
+                    setCurrentPage(1);
+                }}
                 sortOrder={sortOrder}
-                onSortOrderChange={setSortOrder}
+                onSortOrderChange={(value) => {
+                    setSortOrder(value);
+                    setCurrentPage(1);
+                }}
                 caseTypes={caseTypeNames}
-                resultCount={searchTerm.length > 0 ? filteredAndSortedCases.length : undefined}
+                resultCount={searchTerm.length > 0 ? visibleCases.length : undefined}
+            />
+
+            <Pagination
+                totalItems={listingState.total}
+                itemsPerPage={listingState.perPage}
+                currentPage={currentPage}
+                onPageChange={setCurrentPage}
+                className="rounded-xl border border-(--border-subtle) shadow-sm border-t-0"
             />
 
             <CasesTable
-                cases={filteredAndSortedCases}
+                cases={visibleCases}
                 onNavigate={(c) => navigate(`/cases/${c.id}`, { state: { caseData: c } })}
                 onClose={handleClose}
                 onGenerateReport={handleGenerateReport}
-                isLoading={loadingClosed}
-                trigger={`${searchTerm}-${statusFilter}-${typeFilter}-${sortBy}-${sortOrder}`}
+                isLoading={listingLoading}
+                trigger={`${searchTerm}-${statusFilter}-${typeFilter}-${sortBy}-${sortOrder}-${currentPage}-${listingState.source}`}
             />
 
             <ConfirmDialog {...dialogProps} />

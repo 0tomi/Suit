@@ -1,4 +1,3 @@
-/* eslint-disable react-refresh/only-export-components */
 import { syncDocuments } from '../services/sync/documentSyncService.js';
 import { createResourceContext } from './createResourceContext.jsx';
 

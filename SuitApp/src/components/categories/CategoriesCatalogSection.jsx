@@ -6,6 +6,7 @@ import { ConfirmDialog } from '../ui/ConfirmDialog.jsx';
 import { EmptyState } from '../ui/EmptyState.jsx';
 import { showAppToast } from '../ui/show-app-toast.jsx';
 import { useConfirmDialog } from '../../hooks/useConfirmDialog.js';
+import { translateTechnicalErrorMessage } from '../../utils/apiErrorMessage.js';
 
 function createEmptyState(fields) {
     return fields.reduce((acc, field) => {
@@ -22,7 +23,7 @@ function toInputValue(value, type) {
 function getFieldText(item, fields) {
     return fields
         .filter((field) => field.type !== 'color')
-        .map((field) => String(item[field.key] ?? ''))
+        .map((field) => String(item[field.displayKey || field.key] ?? ''))
         .join(' ')
         .toLowerCase();
 }
@@ -79,6 +80,17 @@ function InlineEditableRow({ item, fields, canEdit, isAdmin, onSave, onDelete })
                                     {editState[field.key]}
                                 </span>
                             </div>
+                        ) : field.type === 'select' ? (
+                            <select
+                                value={editState[field.key] ?? ''}
+                                onChange={(event) => setEditState((current) => ({ ...current, [field.key]: event.target.value }))}
+                                className="w-full rounded-lg border border-(--border-default) bg-(--bg-input) px-3 py-2 text-sm text-(--text-primary)"
+                            >
+                                <option value="">{field.emptyLabel || '— Sin seleccionar —'}</option>
+                                {(field.options || []).map((opt) => (
+                                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                            </select>
                         ) : (
                             <input
                                 type="text"
@@ -116,7 +128,7 @@ function InlineEditableRow({ item, fields, canEdit, isAdmin, onSave, onDelete })
                         </div>
                     ) : (
                         <span className={field.emphasis ? 'font-semibold text-(--text-primary)' : 'text-(--text-secondary)'}>
-                            {item[field.key] || field.emptyLabel || '—'}
+                            {item[field.displayKey || field.key] || field.emptyLabel || '—'}
                         </span>
                     )}
                 </td>
@@ -149,6 +161,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
     const [query, setQuery] = useState('');
     const deferredQuery = useDeferredValue(query.trim().toLowerCase());
     const [formState, setFormState] = useState(() => createEmptyState(catalog.fields));
+    const [fieldErrors, setFieldErrors] = useState({});
     const { dialogProps, openDialog, closeDialog, setDialogLoading } = useConfirmDialog();
 
     // Sincronizar con la API al entrar al tab
@@ -169,10 +182,30 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
 
     const resetForm = () => {
         setFormState(createEmptyState(catalog.fields));
+        setFieldErrors({});
     };
 
     const handleCreate = async (event) => {
         event.preventDefault();
+
+        const errors = {};
+        catalog.fields
+            .filter((f) => f.required && f.type !== 'color')
+            .forEach((f) => {
+                if (!formState[f.key]?.trim()) {
+                    errors[f.key] = `El campo "${f.label}" es obligatorio.`;
+                }
+            });
+        if (Object.keys(errors).length > 0) {
+            setFieldErrors(errors);
+            showAppToast({
+                title: 'Campos obligatorios',
+                description: Object.values(errors).join(' '),
+                variant: 'danger',
+            });
+            return;
+        }
+        setFieldErrors({});
 
         try {
             await catalog.onCreate(formState);
@@ -185,7 +218,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
         } catch (error) {
             showAppToast({
                 title: `Error al crear ${catalog.singularLabel.toLowerCase()}`,
-                description: error.message || 'No se pudo completar la operación.',
+                description: translateTechnicalErrorMessage(error.message) || 'No se pudo completar la operación.',
                 variant: 'danger',
             });
         }
@@ -202,7 +235,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
         } catch (error) {
             showAppToast({
                 title: `Error al actualizar ${catalog.singularLabel.toLowerCase()}`,
-                description: error.message || 'No se pudo guardar la edición.',
+                description: translateTechnicalErrorMessage(error.message) || 'No se pudo guardar la edición.',
                 variant: 'danger',
             });
             throw error;
@@ -229,7 +262,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                     setDialogLoading(false);
                     openDialog({
                         title: 'Error al eliminar',
-                        desc: error.message || 'No se pudo eliminar el elemento seleccionado.',
+                        desc: translateTechnicalErrorMessage(error.message) || 'No se pudo eliminar el elemento seleccionado.',
                         type: 'danger',
                         confirmText: 'Aceptar',
                         onConfirm: closeDialog,
@@ -241,8 +274,8 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
 
     return (
         <>
-            <section data-testid={`categories-section-${catalog.testId}`} className="rounded-2xl border border-(--border-default) bg-(--bg-card) shadow-sm">
-                <header className="border-b border-(--border-subtle) bg-(--bg-card-hover) px-6 py-5">
+            <div data-testid={`categories-section-${catalog.testId}`} className="flex flex-col gap-6 h-full p-6 animate-in fade-in duration-500">
+                <header className="rounded-2xl border border-(--border-subtle) bg-(--bg-card-hover) px-8 py-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-6">
                     <div className="flex flex-col gap-6">
                         <div>
                             <div className="flex items-center gap-3">
@@ -253,7 +286,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                             </div>
                             <p className="mt-1 text-sm text-(--text-secondary)">{catalog.description}</p>
                         </div>
-                        <div className="w-full xl:max-w-md">
+                        <div className="w-full lg:max-w-sm">
                             <SearchBar
                                 value={query}
                                 onChange={(event) => setQuery(event.target.value)}
@@ -263,6 +296,8 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                         </div>
                     </div>
                 </header>
+
+                <div className="flex-1 min-h-0 rounded-2xl border border-(--border-default) bg-(--bg-card) shadow-sm flex flex-col overflow-hidden">
 
                 {canEdit && (
                     <div data-testid={`categories-create-area-${catalog.testId}`} className="border-b border-(--border-subtle) overflow-hidden transition-all duration-300">
@@ -275,15 +310,15 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                                         setIsCreating(true);
                                     }
                                 }}
-                                className="flex w-full items-center justify-between px-6 py-4 text-blue-600 transition-all hover:bg-blue-50/30 group"
+                                className="flex w-full items-center justify-between px-6 py-4 text-blue-600 transition-all hover:bg-blue-500/5 group"
                             >
                                 <div className="flex items-center gap-3 font-semibold">
                                     <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/10 transition-colors group-hover:bg-blue-500/20">
                                         <Plus className="h-4 w-4" />
                                     </div>
-                                    <span>Cargar un nuevo {catalog.singularLabel.toLowerCase()}</span>
+                                    <span>Cargar {catalog.gender === 'f' ? 'una nueva' : 'un nuevo'} {catalog.singularLabel.toLowerCase()}</span>
                                 </div>
-                                <span className="rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-500 opacity-0 transition-opacity group-hover:opacity-100">
+                                <span className="rounded-lg border border-blue-500/20 bg-(--bg-card) px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-500 opacity-0 transition-opacity group-hover:opacity-100 shadow-sm shadow-blue-500/5">
                                     {CreateModal ? 'Abrir modal' : 'Abrir formulario'}
                                 </span>
                             </button>
@@ -293,7 +328,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                                     <div className="flex items-center gap-2">
                                         <div className="h-2 w-2 rounded-full bg-blue-500" />
                                         <h4 className="text-xs font-bold uppercase tracking-wider text-(--text-primary)">
-                                            Nuevo {catalog.singularLabel}
+                                            {catalog.gender === 'f' ? 'Nueva' : 'Nuevo'} {catalog.singularLabel}
                                         </h4>
                                     </div>
                                     <button
@@ -310,17 +345,49 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                                         {catalog.fields.filter(f => f.type !== 'color').map((field) => (
                                             <div key={field.key} className="min-w-0">
                                                 <label htmlFor={`${catalog.id}-${field.key}`} className="mb-2 block text-sm font-semibold tracking-tight text-(--text-secondary)">
-                                                    {field.label}
+                                                    {field.label}{field.required && <span className="ml-0.5 text-red-500"> *</span>}
                                                 </label>
-                                                <input
-                                                    id={`${catalog.id}-${field.key}`}
-                                                    type="text"
-                                                    required={field.required}
-                                                    value={toInputValue(formState[field.key], field.type)}
-                                                    placeholder={field.placeholder || ''}
-                                                    onChange={(event) => setFormState((current) => ({ ...current, [field.key]: event.target.value }))}
-                                                    className="w-full h-[46px] rounded-xl border border-(--border-default) bg-(--bg-input) px-4 py-2.5 text-sm text-(--text-primary) shadow-sm transition-all focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/10"
-                                                />
+                                                {field.type === 'select' ? (
+                                                    <select
+                                                        id={`${catalog.id}-${field.key}`}
+                                                        required={field.required}
+                                                        value={formState[field.key] ?? ''}
+                                                        onChange={(event) => {
+                                                            setFormState((current) => ({ ...current, [field.key]: event.target.value }));
+                                                            if (fieldErrors[field.key]) setFieldErrors((prev) => ({ ...prev, [field.key]: undefined }));
+                                                        }}
+                                                        className={`w-full h-[46px] rounded-xl border bg-(--bg-input) px-4 py-2.5 text-sm text-(--text-primary) shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                                                            fieldErrors[field.key]
+                                                                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                                                                : 'border-(--border-default) focus:border-blue-500 focus:ring-blue-500/10'
+                                                        }`}
+                                                    >
+                                                        <option value="">— {field.placeholder || 'Seleccionar...'} —</option>
+                                                        {(field.options || []).map((opt) => (
+                                                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                                        ))}
+                                                    </select>
+                                                ) : (
+                                                    <input
+                                                        id={`${catalog.id}-${field.key}`}
+                                                        type="text"
+                                                        required={field.required}
+                                                        value={toInputValue(formState[field.key], field.type)}
+                                                        placeholder={field.placeholder || ''}
+                                                        onChange={(event) => {
+                                                            setFormState((current) => ({ ...current, [field.key]: event.target.value }));
+                                                            if (fieldErrors[field.key]) setFieldErrors((prev) => ({ ...prev, [field.key]: undefined }));
+                                                        }}
+                                                        className={`w-full h-[46px] rounded-xl border bg-(--bg-input) px-4 py-2.5 text-sm text-(--text-primary) shadow-sm transition-all focus:outline-none focus:ring-2 ${
+                                                            fieldErrors[field.key]
+                                                                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/10'
+                                                                : 'border-(--border-default) focus:border-blue-500 focus:ring-blue-500/10'
+                                                        }`}
+                                                    />
+                                                )}
+                                                {fieldErrors[field.key] && (
+                                                    <p className="mt-1 text-xs text-red-500">{fieldErrors[field.key]}</p>
+                                                )}
                                             </div>
                                         ))}
                                     </div>
@@ -368,7 +435,7 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                     </div>
                 )}
 
-                <div className="px-6 py-5">
+                    <div className="px-6 py-5 flex-1 min-h-0 overflow-y-auto custom-scrollbar">
                     {isEmpty ? (
                         <EmptyState
                             icon={catalog.emptyIcon}
@@ -422,8 +489,9 @@ export default function CategoriesCatalogSection({ catalog, isAdmin, canEdit, Cr
                             </table>
                         </div>
                     )}
+                    </div>
                 </div>
-            </section>
+            </div>
 
             {CreateModal && (
                 <CreateModal

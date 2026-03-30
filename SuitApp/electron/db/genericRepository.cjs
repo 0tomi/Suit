@@ -202,6 +202,7 @@ function clearAllResourceTables(dbInstance) {
         'documents',
         'document_versions',
         'document_query_cache',
+        'listing_query_cache',
         'clients',
         'agendas',
         'deadlines',

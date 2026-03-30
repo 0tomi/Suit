@@ -116,6 +116,7 @@ export default function NotificationConfigSection({
                                 disabled={disabled}
                                 value={customAmount}
                                 onChange={(event) => onCustomAmountChange?.(event.target.value)}
+                                onKeyDown={(e) => ['e', 'E', '+', '-', '.'].includes(e.key) && e.preventDefault()}
                                 className="w-28 px-3 py-2 border border-(--border-default) rounded-lg bg-(--bg-input) text-(--text-primary) text-sm focus:ring-2 focus:ring-blue-500 outline-none disabled:opacity-60"
                                 placeholder="Valor"
                             />

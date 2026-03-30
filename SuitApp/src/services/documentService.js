@@ -309,8 +309,7 @@ export async function getDocumentVersionContent(docId, versionId) {
  * Obtiene los clientes asociados a un documento específico.
  */
 export async function getDocumentClients(docId) {
-    const result = await apiGet(`/documents/${docId}/clients`);
-    return result.ok ? (result.data?.data || result.data || []) : [];
+    return await apiGet(`/documents/${docId}/clients`);
 }
 
 /**

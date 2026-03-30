@@ -83,8 +83,12 @@ function validatePartePayload(parteData = {}) {
     const payload = {
         nombre: normalizeRequiredText(parteData.nombre, 'nombre', failures),
         apellido: normalizeRequiredText(parteData.apellido, 'apellido', failures),
+        identificacion: normalizeOptionalText(parteData.identificacion, 'identificacion', failures),
         email: normalizeOptionalEmail(parteData.email, 'email', failures),
         telefono: normalizeOptionalText(parteData.telefono, 'telefono', failures),
+        direccion: normalizeOptionalText(parteData.direccion, 'direccion', failures),
+        genero: normalizeOptionalText(parteData.genero, 'genero', failures)?.toUpperCase(),
+        notas: normalizeOptionalText(parteData.notas, 'notas', failures),
         rol_id: (() => {
             try {
                 return normalizePositiveInteger(parteData.rol_id, 'rol_id');
