@@ -175,28 +175,6 @@ SuitApiLauncher/SuitAPI.pro
 5. Instalar en la máquina servidor.
 6. Conectar clientes desde **SuitApp**.
 
-## Estructura del repositorio
-
-```text
-Suit/
-├── SuitAPI/
-│   ├── SuitAPI/
-│   ├── docs/
-│   └── SuitLogo.png
-├── SuitApiLauncher/
-│   ├── docs/
-│   ├── SuitAPI.pro
-│   └── *.cpp / *.h / *.ui
-├── SuitApp/
-│   ├── electron/
-│   ├── src/
-│   ├── tests/
-│   └── package.json
-├── docs/
-├── LICENSE
-└── README.md
-```
-
 ## Licencia
 
 Este proyecto se distribuye bajo licencia **MIT**.
