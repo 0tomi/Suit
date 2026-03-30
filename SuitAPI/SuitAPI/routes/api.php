@@ -109,6 +109,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/cases/open', [\App\Http\Controllers\CaseController::class, 'openCases']); // DOCUMENTADA
     Route::get('/cases/closed', [\App\Http\Controllers\CaseController::class, 'closedCases']); // DOCUMENTADA
+    Route::get('/cases/search', [\App\Http\Controllers\CaseController::class, 'search']); // DOCUMENTADA
     Route::apiResource('cases', \App\Http\Controllers\CaseController::class); // DOCUMENTADA
     Route::post('/cases/{id}/participants', [\App\Http\Controllers\CaseController::class, 'addParticipant']); // DOCUMENTADA
     Route::delete('/cases/{id}/participants/{user_id}', [\App\Http\Controllers\CaseController::class, 'removeParticipant']); // DOCUMENTADA
@@ -169,13 +170,16 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cases/{case}/clients', [\App\Http\Controllers\ClientController::class, 'attachCase']);
     Route::delete('/cases/{case}/clients/{client}', [\App\Http\Controllers\ClientController::class, 'detachCase']);
     Route::post('/documents/{document}/clients', [\App\Http\Controllers\ClientController::class, 'attachDocument']);
+    Route::get('/documents/{document}/clients', [\App\Http\Controllers\ClientController::class, 'getClients']);
     Route::delete('/documents/{document}/clients/{client}', [\App\Http\Controllers\ClientController::class, 'detachDocument']);
+    Route::get('/clients/{client}/documents', [\App\Http\Controllers\ClientController::class, 'getDocuments']);
 
     // Template Categories
     Route::apiResource('template-categories', \App\Http\Controllers\TemplateCategoryController::class); // DOCUMENTADA
     Route::get('/template-categories/{templateCategory}/templates-list', [\App\Http\Controllers\TemplateCategoryController::class, 'templatesList']);
 
     // Templates
+    Route::get('/templates/search', [\App\Http\Controllers\TemplateController::class, 'search']);
     Route::apiResource('templates', \App\Http\Controllers\TemplateController::class);
     Route::get('/templates/{template}/requirements/last-modified', [\App\Http\Controllers\RequisitoController::class, 'templateRequirementsLastModified']);
 
@@ -197,6 +201,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/files/{file}', [\App\Http\Controllers\FileController::class, 'destroy']);
 
     // Honorarios
+    Route::get('/honorarios/stats', [\App\Http\Controllers\HonorarioController::class, 'stats']); // DOCUMENTADA
     Route::get('/honorarios/by-date-range', [\App\Http\Controllers\HonorarioController::class, 'byDateRange']); // DOCUMENTADA
     Route::get('/suit-cases/{suit_case}/honorarios', [\App\Http\Controllers\HonorarioController::class, 'indexByCase']); // DOCUMENTADA
     Route::post('/suit-cases/{suit_case}/honorarios', [\App\Http\Controllers\HonorarioController::class, 'store']); // DOCUMENTADA
@@ -213,6 +218,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/entregas/{entrega}', [\App\Http\Controllers\EntregaController::class, 'destroy']); // DOCUMENTADA
 
     // Gastos y GastoSuitCase
+    Route::get('/gasto-suit-cases/stats', [\App\Http\Controllers\GastoSuitCaseController::class, 'stats']); // DOCUMENTADA
     Route::get('/gasto-suit-cases/by-date-range', [\App\Http\Controllers\GastoSuitCaseController::class, 'byDateRange']); // DOCUMENTADA
     Route::get('/suit-cases/{suit_case}/gastos', [\App\Http\Controllers\GastoSuitCaseController::class, 'indexByCase']); // DOCUMENTADA
     Route::post('/suit-cases/{suit_case}/gastos', [\App\Http\Controllers\GastoSuitCaseController::class, 'store']); // DOCUMENTADA
@@ -262,6 +268,19 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/settings', [\App\Http\Controllers\SettingController::class, 'index']);
     Route::put('/settings/{key}', [\App\Http\Controllers\SettingController::class, 'update']);
 
+    // Configuración AI y Auditoría (Admin only)
+    Route::get('/ai/settings', [\App\Http\Controllers\AiSettingController::class, 'show']);
+    Route::put('/ai/settings', [\App\Http\Controllers\AiSettingController::class, 'update']);
+    Route::get('/chatbot/admin/conversations', [\App\Http\Controllers\AiAuditController::class, 'index']);
+    Route::get('/chatbot/admin/conversations/{conversation}', [\App\Http\Controllers\AiAuditController::class, 'show']);
+
+    // Chatbot del Usuario
+    Route::get('/chatbot/conversations', [\App\Http\Controllers\ChatbotController::class, 'index']);
+    Route::get('/chatbot/conversations/{conversation}', [\App\Http\Controllers\ChatbotController::class, 'show']);
+    Route::post('/chatbot/conversations', [\App\Http\Controllers\ChatbotController::class, 'start']);
+    Route::post('/chatbot/conversations/{conversation}/reply', [\App\Http\Controllers\ChatbotController::class, 'reply']);
+    Route::delete('/chatbot/conversations/{conversation}', [\App\Http\Controllers\ChatbotController::class, 'destroy']);
+
     // Public Files
     Route::get('/public-files/last-modified', [\App\Http\Controllers\PublicFileController::class, 'lastModified']);
     Route::get('/public-files/sync', [\App\Http\Controllers\PublicFileController::class, 'syncDown']);
@@ -271,7 +290,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/public-file-catalogs/{catalog_id}/public-files', [\App\Http\Controllers\PublicFileController::class, 'indexByCatalog']);
     Route::apiResource('/public-files', \App\Http\Controllers\PublicFileController::class)->parameters([
         'public-files' => 'id',
-    ])->except(['index']);
+    ]);
 
     // Public File Catalogs
     Route::apiResource('/public-file-catalogs', \App\Http\Controllers\PublicFileCatalogController::class)->parameters([

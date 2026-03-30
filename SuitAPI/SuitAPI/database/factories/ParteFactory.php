@@ -16,11 +16,8 @@ class ParteFactory extends Factory
     public function definition(): array
     {
         return [
-            'nombre' => $this->faker->firstName(),
-            'apellido' => $this->faker->lastName(),
-            'email' => $this->faker->unique()->safeEmail(),
-            'telefono' => $this->faker->phoneNumber(),
             'rol_id' => Rol::factory(),
+            'persona_id' => \App\Models\Persona::factory(),
         ];
     }
 }

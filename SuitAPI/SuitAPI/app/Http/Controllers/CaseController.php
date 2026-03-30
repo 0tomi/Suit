@@ -3,7 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Http\Concerns\ChecksForConflict;
+use App\Http\Resources\ClientResource;
+use App\Http\Resources\DocumentResource;
+use App\Http\Resources\EventResource;
+use App\Http\Resources\FileResource;
+use App\Http\Resources\GastoSuitCaseResource;
+use App\Http\Resources\HonorarioResource;
+use App\Http\Resources\MultimediaResource;
+use App\Http\Resources\ParteResource;
 use App\Http\Resources\SuitCaseResource;
+use App\Http\Resources\TipoExpedienteResource;
+use App\Http\Resources\UserResource;
 use App\Models\Agenda;
 use App\Models\SuitCase;
 use App\Models\User;
@@ -18,15 +28,19 @@ class CaseController extends Controller
 
     public function __construct(protected BitacoraService $bitacora) {}
 
-    public function index()
+    public function index(Request $request)
     {
         $this->authorize('viewAny', SuitCase::class);
 
         $user = Auth::user();
         // Return cases where user is creator or participant
-        $cases = SuitCase::getForUser($user, null);
+        $query = SuitCase::with('creator')->accessibleBy($user);
 
-        return response()->json($cases);
+        $this->applyFilters($query, $request);
+        $paginated = $query->paginate(40);
+        $paginated->setCollection($paginated->getCollection()->map(fn ($case) => new SuitCaseResource($case)));
+
+        return response()->json($paginated);
     }
 
     /**
@@ -79,22 +93,42 @@ class CaseController extends Controller
         }
 
         return response()->json([
-            'partes' => $case->partes()->withTrashed()->where(function ($q) use ($since) {
-                $q->where('partes.updated_at', '>=', $since)
-                    ->orWhere('parte_caso.updated_at', '>=', $since);
-            })->get(),
-            'gastos' => $case->gastos()->withTrashed()->where('updated_at', '>=', $since)->get(),
-            'honorarios' => $case->honorarios()->withTrashed()->where('updated_at', '>=', $since)->get(),
-            'documentos' => $case->documents()->withTrashed()->where('updated_at', '>=', $since)->get(),
-            'eventos' => $case->events()->where('updated_at', '>=', $since)->get(),
-            'clientes' => $case->clients()->withTrashed()->where(function ($q) use ($since) {
-                $q->where('clients.updated_at', '>=', $since)
-                    ->orWhere('case_client.updated_at', '>=', $since);
-            })->get(),
-            'multimedia' => $case->multimedia()->withTrashed()->where('updated_at', '>=', $since)->get(),
-            'archivos' => $case->files()->withTrashed()->where('updated_at', '>=', $since)->get(),
-            'tipo_expedientes' => $case->tipoExpedientes()->where('suit_case_tipo_expediente.updated_at', '>=', $since)->get(),
-            'participants' => $case->participants()->where('case_permissions.updated_at', '>=', $since)->get(),
+            'partes' => ParteResource::collection(
+                $case->partes()->withTrashed()->with(['persona', 'rol'])->where(function ($q) use ($since) {
+                    $q->where('partes.updated_at', '>=', $since)
+                        ->orWhere('parte_caso.updated_at', '>=', $since);
+                })->get()
+            ),
+            'gastos' => GastoSuitCaseResource::collection(
+                $case->gastos()->withTrashed()->with('type')->where('updated_at', '>=', $since)->get()
+            ),
+            'honorarios' => HonorarioResource::collection(
+                $case->honorarios()->withTrashed()->where('updated_at', '>=', $since)->get()
+            ),
+            'documentos' => DocumentResource::collection(
+                $case->documents()->withTrashed()->with(['latestVersion.creator', 'locker'])->where('updated_at', '>=', $since)->get()
+            ),
+            'eventos' => EventResource::collection(
+                $case->events()->where('updated_at', '>=', $since)->get()
+            ),
+            'clientes' => ClientResource::collection(
+                $case->clients()->withTrashed()->with('persona')->where(function ($q) use ($since) {
+                    $q->where('clients.updated_at', '>=', $since)
+                        ->orWhere('case_client.updated_at', '>=', $since);
+                })->get()
+            ),
+            'multimedia' => MultimediaResource::collection(
+                $case->multimedia()->withTrashed()->where('updated_at', '>=', $since)->get()
+            ),
+            'archivos' => FileResource::collection(
+                $case->files()->withTrashed()->where('updated_at', '>=', $since)->get()
+            ),
+            'tipo_expedientes' => TipoExpedienteResource::collection(
+                $case->tipoExpedientes()->where('suit_case_tipo_expediente.updated_at', '>=', $since)->get()
+            ),
+            'participants' => UserResource::collection(
+                $case->participants()->where('case_permissions.updated_at', '>=', $since)->get()
+            ),
         ]);
     }
 
@@ -123,7 +157,7 @@ class CaseController extends Controller
                 $radicacion = \App\Models\Radicacion::findOrFail($caseData['radicacion_id']);
                 if ($radicacion->tipo === 'Federal') {
                     if (! isset($caseData['dependencia_id']) || ! $caseData['dependencia_id']) {
-                        continue; // Skip or handle error. During syncUp, we skip invalid ones.
+                        continue;
                     }
                     $dependencia = \App\Models\DependenciaJudicial::findOrFail($caseData['dependencia_id']);
                     if ($dependencia->jurisdiccion->nombre !== 'Federal') {
@@ -174,24 +208,74 @@ class CaseController extends Controller
         ]);
     }
 
-    public function openCases()
+    public function openCases(Request $request)
     {
         $this->authorize('viewAny', SuitCase::class);
 
         $user = Auth::user();
-        $cases = SuitCase::getForUser($user, 'active');
+        $query = SuitCase::with('creator')->accessibleBy($user)->ofStatus('active');
 
-        return response()->json($cases);
+        $this->applyFilters($query, $request);
+        $paginated = $query->paginate(40);
+        $paginated->setCollection($paginated->getCollection()->map(fn ($case) => new SuitCaseResource($case)));
+
+        return response()->json($paginated);
     }
 
-    public function closedCases()
+    public function closedCases(Request $request)
     {
         $this->authorize('viewAny', SuitCase::class);
 
         $user = Auth::user();
-        $cases = SuitCase::getForUser($user, 'closed');
+        $query = SuitCase::with('creator')->accessibleBy($user)->ofStatus('closed');
 
-        return response()->json($cases);
+        $this->applyFilters($query, $request);
+        $paginated = $query->paginate(40);
+        $paginated->setCollection($paginated->getCollection()->map(fn ($case) => new SuitCaseResource($case)));
+
+        return response()->json($paginated);
+    }
+
+    protected function applyFilters($query, Request $request)
+    {
+        if ($request->has('search')) {
+            $query->where('title', 'like', '%'.$request->search.'%');
+        }
+
+        if ($request->has('case_type_id')) {
+            $query->where('case_type_id', $request->input('case_type_id'));
+        }
+        if ($request->has('radicacion_id')) {
+            $query->where('radicacion_id', $request->input('radicacion_id'));
+        }
+        if ($request->has('dependencia_id')) {
+            $query->where('dependencia_id', $request->input('dependencia_id'));
+        }
+        if ($request->has('owner_id')) {
+            $query->where('lawyer_id', $request->input('owner_id'));
+        }
+        if ($request->has('participant_id')) {
+            $query->whereHas('participants', function ($q) use ($request) {
+                $q->where('users.id', $request->input('participant_id'));
+            });
+        }
+        if ($request->has('start_date_from')) {
+            $query->whereDate('start_date', '>=', $request->input('start_date_from'));
+        }
+        if ($request->has('start_date_to')) {
+            $query->whereDate('start_date', '<=', $request->input('start_date_to'));
+        }
+        if ($request->has('end_date_from')) {
+            $query->whereDate('end_date', '>=', $request->input('end_date_from'));
+        }
+        if ($request->has('end_date_to')) {
+            $query->whereDate('end_date', '<=', $request->input('end_date_to'));
+        }
+        if ($request->has('status')) {
+            $query->ofStatus($request->input('status'));
+        }
+
+        return $query;
     }
 
     public function store(Request $request)
@@ -235,7 +319,6 @@ class CaseController extends Controller
         ]);
 
         // Create Agenda for Case
-        // User ID is the creator (lawyer)
         $agenda = Agenda::create([
             'name' => 'Agenda: '.$case->title,
             'user_id' => $user->id,
@@ -258,20 +341,19 @@ class CaseController extends Controller
 
         $this->bitacora->record('created', $case);
 
-        return response()->json([
-            'case' => $case,
-            'agenda' => $agenda,
-            'cases_last_modified' => $casesLastModified ? Carbon::parse($casesLastModified) : null,
-            'agendas_last_modified' => $agendasLastModified?->format('Y-m-d H:i:s'),
-        ], 201);
+        return (new SuitCaseResource($case->load('agenda')))
+            ->additional([
+                'cases_last_modified' => $casesLastModified ? Carbon::parse($casesLastModified) : null,
+                'agendas_last_modified' => $agendasLastModified?->format('Y-m-d H:i:s'),
+            ]);
     }
 
     public function show($id)
     {
-        $case = SuitCase::findOrFail($id);
+        $case = SuitCase::with(['creator', 'type', 'radicacion', 'dependenciaJudicial'])->findOrFail($id);
         $this->authorize('view', $case);
 
-        return response()->json($case);
+        return new SuitCaseResource($case);
     }
 
     public function update(Request $request, $id)
@@ -311,7 +393,7 @@ class CaseController extends Controller
 
         $this->bitacora->record('updated', $case);
 
-        return response()->json($case);
+        return new SuitCaseResource($case->load(['creator', 'type', 'radicacion', 'dependenciaJudicial']));
     }
 
     public function close($id)
@@ -326,6 +408,9 @@ class CaseController extends Controller
 
         $this->bitacora->record('closed', $case);
 
+        // Recalcular estado de los clientes asociados
+        $case->recalculateClientsStatus();
+
         return response()->json($case);
     }
 
@@ -336,10 +421,13 @@ class CaseController extends Controller
 
         $case->update([
             'end_date' => null,
-            'status' => 'active', // o 'open'
+            'status' => 'active',
         ]);
 
         $this->bitacora->record('reopened', $case);
+
+        // Recalcular estado de los clientes asociados
+        $case->recalculateClientsStatus();
 
         return response()->json($case);
     }
@@ -418,6 +506,26 @@ class CaseController extends Controller
 
         $case->delete();
 
+        // Recalcular estado de los clientes asociados (después de eliminar el caso)
+        $case->recalculateClientsStatus();
+
         return response()->json(null, 204);
+    }
+
+    /**
+     * Search for cases by title. Returns the first 20 matches.
+     */
+    public function search(Request $request)
+    {
+        $this->authorize('viewAny', SuitCase::class);
+
+        $user = Auth::user();
+        $query = SuitCase::with('creator')->accessibleBy($user);
+
+        $this->applyFilters($query, $request);
+
+        $cases = $query->limit(20)->get();
+
+        return SuitCaseResource::collection($cases);
     }
 }

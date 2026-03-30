@@ -13,15 +13,9 @@ return new class extends Migration
     {
         Schema::create('clients', function (Blueprint $table) {
             $table->id();
-            $table->string('first_name');
-            $table->string('last_name');
-            $table->string('identification_number')->nullable()->unique();
-            $table->string('email')->nullable();
-            $table->string('phone')->nullable();
-            $table->string('address')->nullable();
-            $table->enum('type', ['person', 'company'])->default('person');
-            $table->enum('status', ['active', 'inactive', 'debtor'])->default('active');
-            $table->text('notes')->nullable();
+            $table->foreignId('persona_id')->constrained('personas')->cascadeOnDelete();
+            $table->string('type')->default('person');
+            $table->string('financial_status')->default('no deudor');
             $table->timestamps();
             $table->softDeletes();
         });

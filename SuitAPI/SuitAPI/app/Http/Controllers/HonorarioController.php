@@ -12,24 +12,57 @@ use App\Models\SuitCase;
 use App\Services\BitacoraService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 
 class HonorarioController extends Controller
 {
     public function __construct(protected BitacoraService $bitacora) {}
 
+    public function stats(Request $request)
+    {
+        Gate::authorize('viewAny', Honorario::class);
+
+        $request->validate([
+            'from' => 'required|date',
+            'to' => 'required|date',
+        ]);
+
+        $query = Honorario::query()
+            ->whereBetween('created_at', [Carbon::parse($request->from)->startOfDay(), Carbon::parse($request->to)->endOfDay()])
+            ->when(auth()->user()->role !== 'admin', function ($q) {
+                $q->where('user_id', auth()->id());
+            });
+
+        $honorarios = $query->get();
+
+        $stats = $honorarios->groupBy(function ($item) {
+            return $item->created_at->format('Y-m');
+        })->map(function ($monthGroup, $month) {
+            return [
+                'month' => $month,
+                'count' => $monthGroup->count(),
+                'total_amount' => round($monthGroup->sum('monto'), 2),
+                'total_paid' => round($monthGroup->where('pagado', true)->sum('monto'), 2),
+                'total_unpaid' => round($monthGroup->where('pagado', false)->sum('monto'), 2),
+            ];
+        })->values()->sortBy('month')->values();
+
+        return response()->json($stats);
+    }
+
     public function byDateRange(HonorariosByDateRangeRequest $request)
     {
         Gate::authorize('viewAny', Honorario::class);
 
-        $honorarios = Honorario::getByDateRange(
+        $query = Honorario::getByDateRange(
             auth()->user(),
             $request->from,
             $request->to,
             $request->query('user_id')
         );
 
-        return HonorarioResource::collection($honorarios);
+        return HonorarioResource::collection($query->paginate(30));
     }
 
     public function indexByCase(Request $request, SuitCase $suitCase)
@@ -82,6 +115,8 @@ class HonorarioController extends Controller
         $honorario = Honorario::create($data);
         $honorario->load(['client', 'entregas']);
 
+        $honorario->client->recalculateFinancialStatus();
+
         $this->bitacora->record('created', $honorario);
 
         return new HonorarioResource($honorario);
@@ -103,6 +138,8 @@ class HonorarioController extends Controller
         $honorario->update($request->validated());
         $honorario->load(['client', 'entregas']);
 
+        $honorario->client->recalculateFinancialStatus();
+
         $this->bitacora->record('updated', $honorario);
 
         return new HonorarioResource($honorario);
@@ -112,7 +149,10 @@ class HonorarioController extends Controller
     {
         Gate::authorize('delete', $honorario);
 
+        $client = $honorario->client;
         $honorario->delete();
+
+        $client->recalculateFinancialStatus();
 
         $this->bitacora->record('deleted', $honorario);
 

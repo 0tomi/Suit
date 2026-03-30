@@ -49,17 +49,19 @@ class GastoSuitCase extends Model
     }
 
     /** Retorna todos los gastos creados entre dos fechas (inclusivo). */
-    public static function getByDateRange(mixed $user, string $from, string $to): \Illuminate\Database\Eloquent\Collection
+    public static function getByDateRange(mixed $user, string $from, string $to, ?int $targetUserId = null): \Illuminate\Database\Eloquent\Builder
     {
         return static::query()
             ->with(['type', 'clients'])
             ->whereBetween('created_at', [
-                \Carbon\Carbon::parse($from)->startOfDay(),
-                \Carbon\Carbon::parse($to)->endOfDay(),
+                \Illuminate\Support\Carbon::parse($from)->startOfDay(),
+                \Illuminate\Support\Carbon::parse($to)->endOfDay(),
             ])
             ->when($user->role !== 'admin', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
             })
-            ->get();
+            ->when($user->role === 'admin' && $targetUserId, function ($query) use ($targetUserId) {
+                $query->where('user_id', $targetUserId);
+            });
     }
 }

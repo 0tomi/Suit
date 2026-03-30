@@ -25,6 +25,21 @@ class TemplateController extends Controller
     }
 
     /**
+     * Search for templates by title or content.
+     */
+    public function search(Request $request): \Illuminate\Http\Resources\Json\AnonymousResourceCollection
+    {
+        $request->validate(['q' => 'required|string|min:1']);
+        $search = $request->query('q');
+
+        $templates = Template::search($search)
+            ->latest()
+            ->paginate(10);
+
+        return TemplateResource::collection($templates);
+    }
+
+    /**
      * Return templates modified after `since` plus IDs of templates deleted since then.
      * Used by the offline client to download catalog changes incrementally.
      */

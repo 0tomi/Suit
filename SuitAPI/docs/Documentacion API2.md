@@ -33,7 +33,7 @@ Esta documentación cubre las rutas esenciales de la API de SuitAPI, incluyendo 
 ## 1.1. Listar Documentos
 `GET /api/documents`
 
-Lista los documentos accesibles para el usuario (paginado, 15 por página). Incluye la última versión y el usuario que tiene el bloqueo activo si lo hay. Soporta ordenamiento personalizado.
+Lista los documentos accesibles para el usuario (paginado, 40 por página). Incluye la última versión y el usuario que tiene el bloqueo activo si lo hay. Soporta ordenamiento personalizado.
 
 - **Query Params:**
   - `sort_by` (string, opcional): Campo por el cual ordenar. Valores permitidos: `updated_at`, `created_at`, `name`. Por defecto `updated_at`.
@@ -89,7 +89,7 @@ Lista de hasta 10 objetos `Document`.
 ## 1.5. Listar Documentos con Filtros (Paginado)
 `GET /api/documents/paged-filtered`
 
-Lista los documentos accesibles aplicando los mismos filtros que el endpoint de búsqueda, pero con soporte para paginación estándar (15 por página) y ordenamiento.
+Lista los documentos accesibles aplicando los mismos filtros que el endpoint de búsqueda, pero con soporte para paginación estándar (40 por página) y ordenamiento.
 
 - **Query Params:**
   - `page` (integer, opcional): Número de página.
@@ -362,29 +362,140 @@ Retorna el timestamp de actualización de un documento mediante su ID.
 
 ## Índice de Sección Plantillas
 
-2.1. [Última Modificación Global de Plantillas](#2.1.-ultima-modificacion-global-de-plantillas) - `GET /api/templates/last-modified`
-2.2. [Última Modificación Global de Categorías de Plantillas](#2.2.-ultima-modificacion-global-de-categorias-de-plantillas) - `GET /api/template-categories/last-modified`
-2.3. [Listar Categorías de Plantillas](#2.3.-listar-categorias-de-plantillas) - `GET /api/template-categories`
-2.4. [Listado de Requisitos](#2.4.-listado-de-requisitos) - `GET /api/requisitos`
-2.5. [Sincronización de Plantillas y Categorías](#2.5.-sincronizacion-de-plantillas-y-categorias)
+2.1. [Listar Plantillas (Paginado)](#2.1.-listar-plantillas-(paginado)) - `GET /api/templates`
+2.2. [Buscar Plantillas (Paginado)](#2.2.-buscar-plantillas-(paginado)) - `GET /api/templates/search`
+2.3. [Listar Plantillas por Categoría](#2.3.-listar-plantillas-por-categoría) - `GET /api/template-categories/{id}/templates-list`
+2.4. [Crear una Plantilla](#2.4.-crear-una-plantilla) - `POST /api/templates`
+2.5. [Ver Detalle de una Plantilla](#2.5.-ver-detalle-de-una-plantilla) - `GET /api/templates/{template}`
+2.6. [Actualizar una Plantilla](#2.6.-actualizar-una-plantilla) - `PUT /api/templates/{template}`
+2.7. [Eliminar una Plantilla](#2.7.-eliminar-una-plantilla) - `DELETE /api/templates/{template}`
+2.8. [Listar Categorías de Plantillas](#2.8.-listar-categorías-de-plantillas) - `GET /api/template-categories`
+2.9. [Listado de Requisitos](#2.9.-listado-de-requisitos) - `GET /api/requisitos`
+2.10. [Sincronización de Plantillas (Sync Down/Up)](#2.10.-sincronización-de-plantillas-(sync-down/up))
+2.11. [Última Modificación Global](#2.11.-última-modificación-global)
 
 ---
 
-## 2.1. Última Modificación Global de Plantillas
-`GET /api/templates/last-modified`
+## 2.1. Listar Plantillas (Paginado)
+`GET /api/templates`
 
-Retorna el timestamp de la última modificación en la tabla de plantillas de documentos.
-
----
-
-## 2.2. Última Modificación Global de Categorías de Plantillas
-`GET /api/template-categories/last-modified`
-
-Retorna el timestamp de la última modificación en las categorías de plantillas.
+Retorna una lista paginada (40 por página) de plantillas de forma "lightweight" (solo `id`, `title` y `template_category_id`), ordenadas por las más recientes primero. Esto es ideal para mostrar un catálogo sin sobrecargar la red con el contenido HTML de cada plantilla.
 
 ---
 
-## 2.3. Listar Categorías de Plantillas
+## 2.2. Buscar Plantillas (Paginado)
+`GET /api/templates/search`
+
+Busca plantillas que coincidan con un término de búsqueda en el título o contenido. Retorna una lista paginada de 10 resultados por página, ordenados por las más recientes primero.
+
+- **Query Params:**
+  - `q` (string, requerido): Término de búsqueda (mínimo 1 carácter).
+
+**Respuesta Exitosa (200 OK):**
+Objeto de paginación de Laravel conteniendo la lista de plantillas en formato "lightweight".
+
+- **Respuesta Exitosa (200 OK):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "title": "Escrito de Inicio",
+      "template_category_id": 2
+    },
+    {
+      "id": 2,
+      "title": "Contrato de Locación",
+      "template_category_id": 1
+    }
+  ],
+  "links": { "first": "...", "last": "...", "prev": null, "next": "..." },
+  "meta": { "current_page": 1, "from": 1, "last_page": 1, "per_page": 40, "to": 2, "total": 2 }
+}
+```
+
+---
+
+## 2.2. Listar Plantillas por Categoría
+`GET /api/template-categories/{id}/templates-list`
+
+Idéntico al listado general pero filtrado por una categoría específica. Retorna los objetos en formato "lightweight".
+
+---
+
+## 2.3. Crear una Plantilla
+`POST /api/templates`
+
+Crea una nueva plantilla de documento, opcionalmente asociando requisitos de autocompletado.
+
+- **Body (JSON):**
+  - `title` (string, requerido): Título de la plantilla.
+  - `content` (string, requerido): Contenido HTML con placeholders (si aplica).
+  - `template_category_id` (integer, opcional): ID de la categoría. Si se omite, se asigna a la categoría por defecto.
+  - `requirements` (array, opcional): Lista de requisitos.
+    - `id_requisito` (integer, requerido): ID del requisito (ver 2.8).
+    - `id_campo` (integer, requerido): ID del campo en el editor/frontend.
+    - `NEntidad` (integer, requerido): Índice de entidad (ej: 1 para primer cliente, 2 para segundo).
+    - `note` (string, opcional): Nota aclaratoria.
+
+**Ejemplo de uso:**
+```json
+{
+  "title": "Cédula de Notificación",
+  "content": "<h1>Notificación...</h1><p>Se notifica a {{clientCompleteName}}...</p>",
+  "template_category_id": null,
+  "requirements": [
+    {
+      "id_requisito": 14,
+      "id_campo": 105,
+      "NEntidad": 1,
+      "note": "Nombre del cliente principal"
+    }
+  ]
+}
+```
+
+---
+
+## 2.4. Ver Detalle de una Plantilla
+`GET /api/templates/{template}`
+
+Retorna el objeto completo de la plantilla, incluyendo el campo `content` (HTML) y sus `requirements` cargados.
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "id": 1,
+  "title": "Cédula de Notificación",
+  "content": "<h1>Notificación...</h1><p>Se notifica a {{clientCompleteName}}...</p>",
+  "template_category_id": 1,
+  "category": { "id": 1, "name": "General" },
+  "requirements": [ { "id": 14, "name": "clientCompleteName", "pivot": { "id_campo": 105, "NEntidad": 1 } } ],
+  "created_at": "...",
+  "updated_at": "..."
+}
+```
+
+---
+
+## 2.5. Actualizar una Plantilla
+`PUT /api/templates/{template}`
+
+Actualiza los datos de una plantilla. Incluye soporte para detección de conflictos mediante `last_updated_at`.
+
+- **Body:** Los mismos campos que en la creación (opcionales).
+- **Control de Conflictos:** Si se envía `last_updated_at` y el registro fue modificado posteriormente en el servidor, retornará un error `409 Conflict`.
+
+---
+
+## 2.6. Eliminar una Plantilla
+`DELETE /api/templates/{template}`
+
+Realiza la eliminación física de la plantilla y registra un **Tombstone** para la sincronización offline.
+
+---
+
+## 2.7. Listar Categorías de Plantillas
 `GET /api/template-categories`
 
 Retorna el catálogo completo de categorías disponibles para organizar plantillas de documentos.
@@ -409,18 +520,40 @@ Retorna el catálogo completo de categorías disponibles para organizar plantill
 
 ---
 
-## 2.4. Listado de Requisitos
+## 2.8. Listado de Requisitos
 `GET /api/requisitos`
 
 Retorna todos los campos de requerimiento (requisitos) definidos para ser usados en plantillas.
 
+- **Tipos de Requisitos Disponibles:**
+    - **Generales:** `role`, `text`, `number`, `date`, `dateTime`.
+    - **Caso:** `caseTitle`, `caseNumber`, `caseType`, `caseExpedientType`, `radicacion`, `jurisdiccion`, `competencia`, `dependencia`, `caseStartDate`, `caseEndDate`.
+    - **Cliente:** `clientCompleteName`, `clientFirstName`, `clientLastName`, `clientIdentification`, `clientAddress`, `clientEmail`, `clientPhone`.
+    - **Abogado:** `userCompleteName`, `userName`, `userLastName`, `userEmail`, `userRegistration`, `userCuit`.
+    - **Otros:** `amount`, `paymentType`, `city`, `province`, `address`, `anioNombrado`, `mesNombrado`, `diaNombrado`, `anioNumero`, `mesNumero`, `diaNumero`, `fechaConMesNombrado`, `eventType`, `eventName`, `eventDate`, `custom`.
+
 ---
 
-## 2.5. Sincronización de Plantillas y Categorías
-- `GET /api/templates/sync?since={ts}`
-- `GET /api/template-categories/sync?since={ts}`
+## 2.9. Sincronización de Plantillas (Sync Down/Up)
 
-Retornan los registros (incluyendo borrados si aplica) modificados desde el timestamp proporcionado.
+### Sincronización Descendente (Sync Down)
+- `GET /api/templates/sync?since={timestamp}`
+- `GET /api/template-categories/sync?since={timestamp}`
+
+Retornan los registros modificados después del timestamp, incluyendo una lista de `deleted_ids` extraídos de los Tombstones para que el cliente limpie su caché local.
+
+### Sincronización Ascendente (Sync Up)
+- `POST /api/templates/sync`: Envía un array de `templates` para creación/actualización masiva.
+- `POST /api/template-categories/sync`: Envía un array de `categories` para creación/actualización masiva.
+
+---
+
+## 2.10. Última Modificación Global
+- `GET /api/templates/last-modified`
+- `GET /api/template-categories/last-modified`
+
+Retornan el timestamp de la última modificación en sus respectivas tablas. Útil para invalidación de caché.
+
 
 ---
 
@@ -544,33 +677,43 @@ Elimina registros más antiguos a N días. **Solo accesible para administradores
 ## Índice de Sección Casos
 
 4.1. [Listar Casos](#4.1.-listar-casos) - `GET /api/cases`
-4.2. [Crear un Caso](#4.2.-crear-un-caso) - `POST /api/cases`
-4.3. [Ver Detalle de un Caso](#4.3.-ver-detalle-de-un-caso) - `GET /api/cases/{case}`
-4.4. [Actualizar un Caso](#4.4.-actualizar-un-caso) - `PUT /api/cases/{case}`
-4.5. [Eliminar un Caso](#4.5.-eliminar-un-caso) - `DELETE /api/cases/{case}`
-4.6. [Listar Casos Abiertos / Cerrados](#4.6.-listar-casos-abiertos-/-cerrados)
-4.7. [Cerrar / Reabrir un Caso](#4.7.-cerrar-/-reabrir-un-caso)
-4.8. [Última Modificación Global de Casos](#4.8.-última-modificación-global-de-casos) - `GET /api/cases/last-modified`
-4.9. [Última Modificación de un Caso Específico](#4.9.-última-modificación-de-un-caso-específico) - `GET /api/cases/{case}/last-modified`
-4.10. [Sincronización Global de Casos (Sync Down)](#4.10.-sincronización-global-de-casos-(sync-down)) - `GET /api/suit-cases/sync`
-4.11. [Sincronización Ascendente (Sync Up)](#4.11.-sincronización-ascendente-(sync-up)) - `POST /api/suit-cases/sync`
-4.12. [Sincronización Detallada (Sync Down Específico)](#4.12.-sincronización-detallada-(sync-down-específico)) - `GET /api/cases/{case}/syncDown/{date}`
-4.13. [Clientes de un Caso](#4.13.-clientes-de-un-caso)
-4.14. [Participantes de un Caso](#4.14.-participantes-de-un-caso)
-4.15. [Agenda de un Caso](#4.15.-agenda-de-un-caso)
-4.16. [Generación de Enlaces (QR)](#4.16.-generación-de-enlaces-(qr)) - `POST /api/suit-cases/{id}/generate-link`
-4.17. [Tipos de Expediente de un Caso](#4.17.-tipos-de-expediente-de-un-caso)
-4.18. [Gastos de un Caso](#4.18.-gastos-de-un-caso)
-4.19. [Partes de un Caso](#4.19.-partes-de-un-caso)
-4.20. [Reglas de Negocio Federal](#4.20.-reglas-de-negocio-federal)
-4.21. [Workflow de Sincronización y Caché](#4.21.-workflow-de-sincronización-y-caché)
+4.2. [Buscar Casos](#4.2.-buscar-casos) - `GET /api/cases/search`
+4.3. [Crear un Caso](#4.3.-crear-un-caso) - `POST /api/cases`
+4.4. [Ver Detalle de un Caso](#4.4.-ver-detalle-de-un-caso) - `GET /api/cases/{case}`
+4.5. [Actualizar un Caso](#4.5.-actualizar-un-caso) - `PUT /api/cases/{case}`
+4.6. [Eliminar un Caso](#4.6.-eliminar-un-caso) - `DELETE /api/cases/{case}`
+4.7. [Listar Casos Abiertos / Cerrados](#4.7.-listar-casos-abiertos-/-cerrados)
+4.8. [Cerrar / Reabrir un Caso](#4.8.-cerrar-/-reabrir-un-caso)
+4.9. [Última Modificación Global de Casos](#4.9.-última-modificación-global-de-casos) - `GET /api/cases/last-modified`
+4.10. [Última Modificación de un Caso Específico](#4.10.-última-modificación-de-un-caso-específico) - `GET /api/cases/{case}/last-modified`
+4.11. [Sincronización Global de Casos (Sync Down)](#4.11.-sincronización-global-de-casos-(sync-down)) - `GET /api/suit-cases/sync`
+4.12. [Sincronización Ascendente (Sync Up)](#4.12.-sincronización-ascendente-(sync-up)) - `POST /api/suit-cases/sync`
+4.13. [Sincronización Detallada (Sync Down Específico)](#4.13.-sincronización-detallada-(sync-down-específico)) - `GET /api/cases/{case}/syncDown/{date}`
+4.14. [Clientes de un Caso](#4.14.-clientes-de-un-caso)
+4.15. [Participantes de un Caso](#4.15.-participantes-de-un-caso)
+4.16. [Agenda de un Caso](#4.16.-agenda-de-un-caso)
+4.17. [Generación de Enlaces (QR)](#4.17.-generación-de-enlaces-(qr)) - `POST /api/suit-cases/{id}/generate-link`
+4.18. [Tipos de Expediente de un Caso](#4.18.-tipos-de-expediente-de-un-caso)
+4.19. [Gastos de un Caso](#4.19.-gastos-de-un-caso)
+4.20. [Partes de un Caso](#4.20.-partes-de-un-caso)
+4.21. [Reglas de Negocio Federal](#4.21.-reglas-de-negocio-federal)
+4.22. [Workflow de Sincronización y Caché](#4.22.-workflow-de-sincronización-y-caché)
 
 ---
 
 ## 4.1. Listar Casos
 `GET /api/cases`
 
-Retorna una lista de todos los casos en los que el usuario es el creador (abogado) o un participante.
+Retorna de forma paginada (40 por página) los casos en los que el usuario es el creador (abogado) o un participante. Se pueden aplicar filtros avanzados:
+
+- **Query Params:**
+  - `case_type_id` (integer, opcional): Filtra por tipo de caso.
+  - `radicacion_id` (integer, opcional): Filtra por radicación judicial.
+  - `dependencia_id` (integer, opcional): Filtra por dependencia judicial específica.
+  - `start_date_from` / `start_date_to` (date, opcional): Rango de fechas de inicio.
+  - `end_date_from` / `end_date_to` (date, opcional): Rango de fechas de cierre.
+  - `owner_id` (integer, opcional): Filtra casos cuyo creador sea un abogado en específico. Si eres usuario normal, este filtro seguirá respetando la regla global de solo mostrar los casos donde también apareces como participante. Los administradores pueden ver todos.
+  - `participant_id` (integer, opcional): Filtra casos que contienen a este participante, con el mismo nivel de seguridad mencionado para `owner_id`.
 
 **Respuesta Exitosa (200 OK):**
 ```json
@@ -593,9 +736,28 @@ Retorna una lista de todos los casos en los que el usuario es el creador (abogad
 ]
 ```
 
+## 4.2. Buscar Casos
+`GET /api/cases/search`
+
+Busca casos que coincidan con un término de búsqueda en el título. Retorna los primeros 20 resultados. Permite aplicar los mismos filtros avanzados que el listado general.
+
+- **Query Params:**
+  - `search` (string, opcional): Término de búsqueda para el título del caso.
+  - `case_type_id` (integer, opcional): Filtrar por tipo de caso.
+  - `status` (string, opcional): `active` o `closed`.
+  - `radicacion_id` (integer, opcional): Filtrar por radicación.
+  - `dependencia_id` (integer, opcional): Filtrar por dependencia.
+  - `owner_id` (integer, opcional): Filtrar por creador (abogado).
+  - `participant_id` (integer, opcional): Filtrar por participante.
+  - `start_date_from` / `start_date_to` (date, opcional): Rango de fechas de inicio.
+  - `end_date_from` / `end_date_to` (date, opcional): Rango de fechas de cierre.
+
+**Respuesta Exitosa (200 OK):**
+Lista de hasta 20 objetos `SuitCaseResource`.
+
 ---
 
-## 4.2. Crear un Caso
+## 4.3. Crear un Caso
 `POST /api/cases`
 
 Crea un nuevo caso legal y su agenda asociada.
@@ -641,7 +803,7 @@ Crea un nuevo caso legal y su agenda asociada.
 
 ---
 
-## 4.3. Ver Detalle de un Caso
+## 4.4. Ver Detalle de un Caso
 `GET /api/cases/{case}`
 
 Retorna la información detallada de un caso específico.
@@ -651,7 +813,7 @@ Objeto completo del modelo `SuitCase`.
 
 ---
 
-## 4.4. Actualizar un Caso
+## 4.5. Actualizar un Caso
 `PUT /api/cases/{case}`
 
 Actualiza la información de un caso existente. Soporta detección de conflictos mediante `last_updated_at`.
@@ -675,26 +837,28 @@ Retorna el objeto del caso actualizado.
 
 ---
 
-## 4.5. Eliminar un Caso
+## 4.6. Eliminar un Caso
 `DELETE /api/cases/{case}`
 
 Realiza un borrado lógico (soft delete) del caso.
 
 ---
 
-## 4.6. Listar Casos Abiertos / Cerrados
+## 4.7. Listar Casos Abiertos / Cerrados
 - `GET /api/cases/open`: Retorna únicamente los casos con estado activo.
 - `GET /api/cases/closed`: Retorna únicamente los casos cerrados.
 
----
-
-## 4.7. Cerrar / Reabrir un Caso
-- `POST /api/cases/{id}/close`: Finaliza un caso, estableciendo la fecha de cierre (`end_date`) al momento actual y el estado a `closed`.
-- `POST /api/cases/{id}/reopen`: Cambia el estado de `closed` a `active` y limpia la `end_date`.
+*Ambos endpoints devuelven datos paginados de a 40 elementos, y soportan todos los **Query Params de filtrado avanzado** definidos en la sección 4.1.*
 
 ---
 
-## 4.8. Última Modificación Global de Casos
+## 4.8. Cerrar / Reabrir un Caso
+- **POST /api/cases/{id}/close**: Finaliza un caso, estableciendo la fecha de cierre (`end_date`) al momento actual y el estado a `closed`. Esto disparará automáticamente la actualización de estado de todos los clientes asociados a `inactivo`, a menos que participen en otros casos activos.
+- **POST /api/cases/{id}/reopen**: Cambia el estado de `closed` a `active` y limpia la `end_date`. Esto marcará automáticamente a los clientes asociados como `activo`.
+
+---
+
+## 4.9. Última Modificación Global de Casos
 `GET /api/cases/last-modified`
 
 Retorna la fecha y hora de la última modificación ocurrida en cualquier caso accesible por el usuario. Es el punto de entrada recomendado para el workflow de sincronización incremental.
@@ -710,7 +874,7 @@ Retorna la fecha y hora de la última modificación ocurrida en cualquier caso a
 
 ---
 
-## 4.9. Última Modificación de un Caso Específico
+## 4.10. Última Modificación de un Caso Específico
 `GET /api/cases/{case}/last-modified`
 
 Retorna un reporte detallado de las últimas modificaciones dentro de un caso y sus entidades relacionadas. Útil para saber qué sección específica del caso (ej. Gastos) requiere ser actualizada sin sincronizar todo el caso.
@@ -735,7 +899,7 @@ Retorna un reporte detallado de las últimas modificaciones dentro de un caso y 
 
 ---
 
-## 4.10. Sincronización Global de Casos (Sync Down)
+## 4.11. Sincronización Global de Casos (Sync Down)
 `GET /api/suit-cases/sync?since={timestamp}`
 
 Retorna todos los casos (incluyendo los eliminados lógicamente) modificados después de una fecha. Este endpoint permite al cliente mantener la lista de casos actualizada y detectar bajas remotas.
@@ -768,7 +932,7 @@ Retorna todos los casos (incluyendo los eliminados lógicamente) modificados des
 
 ---
 
-## 4.11. Sincronización Ascendente (Sync Up)
+## 4.12. Sincronización Ascendente (Sync Up)
 `POST /api/suit-cases/sync`
 
 Permite enviar múltiples casos desde un cliente para creación (sin `id`) o actualización masiva. Utiliza detección de conflictos mediante `last_updated_at`.
@@ -789,7 +953,7 @@ Permite enviar múltiples casos desde un cliente para creación (sin `id`) o act
 
 ---
 
-## 4.12. Sincronización Detallada (Sync Down Específico)
+## 4.13. Sincronización Detallada (Sync Down Específico)
 `GET /api/cases/{case}/syncDown/{date}`
 
 Retorna todos los relacionados (partes, gastos, documentos, etc.) de un caso específico que hayan sido modificados después de la fecha proporcionada.
@@ -818,28 +982,28 @@ Retorna todos los relacionados (partes, gastos, documentos, etc.) de un caso esp
 
 ---
 
-## 4.13. Clientes de un Caso
+## 4.14. Clientes de un Caso
 - `GET /api/cases/{case}/clients`: Retorna la lista de clientes asociados a un caso.
-- `POST /api/cases/{case}/clients`: Asocia clientes existentes (`client_ids` array).
-- `DELETE /api/cases/{case}/clients/{client}`: Desasocia un cliente del caso.
+- `POST /api/cases/{case}/clients`: Asocia clientes existentes (`client_ids` array). Al asociarse a un caso `active`, el cliente pasa automáticamente a estado `activo`.
+- `DELETE /api/cases/{case}/clients/{client}`: Desasocia un cliente del caso. Al desasociarse, se recalcula su estado. Si no le quedan casos activos, pasa a `inactivo`.
 
 ---
 
-## 4.14. Participantes de un Caso
+## 4.15. Participantes de un Caso
 - `GET /api/cases/{id}/participants`: Retorna todos los usuarios que participan en el caso.
 - `POST /api/cases/{id}/participants`: Agrega un colaborador (`user_tag`, `permission_level`).
 - `DELETE /api/cases/{id}/participants/{user_id}`: Quita un participante.
 
 ---
 
-## 4.15. Agenda de un Caso
+## 4.16. Agenda de un Caso
 `GET /api/cases/{id}/agenda`
 
 Obtiene la agenda asociada a un caso con todos sus eventos.
 
 ---
 
-## 4.16. Generación de Enlaces (QR)
+## 4.17. Generación de Enlaces (QR)
 `POST /api/suit-cases/{id}/generate-link`
 
 Genera enlaces temporales firmados para descarga (`download_url`) o carga (`upload_url`) de archivos asociados al caso.
@@ -854,26 +1018,26 @@ Genera enlaces temporales firmados para descarga (`download_url`) o carga (`uplo
 
 ---
 
-## 4.17. Tipos de Expediente de un Caso
+## 4.18. Tipos de Expediente de un Caso
 - `GET /api/suit-cases/{suit_case}/tipo-expedientes`: Lista los tipos de expediente asociados.
 - `POST /api/suit-cases/{suit_case}/tipo-expedientes`: Sincroniza masivamente (`tipo_expediente_ids` array).
 
 ---
 
-## 4.18. Gastos de un Caso
+## 4.19. Gastos de un Caso
 - `GET /api/suit-cases/{suit_case}/gastos`: Lista todos los gastos del caso.
 - `POST /api/suit-cases/{suit_case}/gastos`: Registra un nuevo gasto (`gasto_type_id`, `monto`, `fecha`).
 
 ---
 
-## 4.19. Partes de un Caso
+## 4.20. Partes de un Caso
 - `GET /api/suit-cases/{suit_case}/partes`: Lista las partes (Actor, Demandado, etc.).
 - `POST /api/suit-cases/{suit_case}/partes`: Asocia una parte existente.
 - `DELETE /api/suit-cases/{suit_case}/partes/{parte}`: Desasocia una parte.
 
 ---
 
-## 4.20. Reglas de Negocio Federal
+## 4.21. Reglas de Negocio Federal
 
 Los registros de **Jurisdicción** y **Radicación** con el nombre o tipo **\"Federal\"** son inmutables. 
 
@@ -883,7 +1047,7 @@ Si se selecciona una **Radicación** de tipo **Federal** en un caso:
 
 ---
 
-## 4.21. Workflow de Sincronización y Caché (Check-then-Fetch)
+## 4.22. Workflow de Sincronización y Caché (Check-then-Fetch)
 
 Para asegurar una experiencia offline fluida y minimizar el consumo de datos en la aplicación móvil/escritorio, se recomienda seguir este flujo:
 
@@ -1006,39 +1170,204 @@ Carga una imagen (jpg, jpeg o png) para el perfil del usuario.
 
 6.1. [Listar Clientes](#6.1.-listar-clientes) - `GET /api/clients`
 6.2. [Crear un Cliente](#6.2.-crear-un-cliente) - `POST /api/clients`
-6.3. [Sincronización Descendente / Ascendente](#6.3.-sincronización-descendente-/-ascendente)
-6.4. [Última Modificación Global](#6.4.-última-modificación-global) - `GET /api/clients/last-modified`
-6.5. [Última Modificación Específica](#6.5.-última-modificación-específica) - `GET /api/clients/{client}/last-modified`
+6.3. [Ver Detalle de un Cliente](#6.3.-ver-detalle-de-un-cliente) - `GET /api/clients/{client}`
+6.4. [Actualizar un Cliente](#6.4.-actualizar-un-cliente) - `PUT /api/clients/{client}`
+6.5. [Eliminar un Cliente](#6.5.-eliminar-un-cliente) - `DELETE /api/clients/{client}`
+6.6. [Sincronización (Sync Down/Up)](#6.6.-sincronizacion-(sync-down/up))
+6.7. [Última Modificación Global](#6.7.-última-modificación-global) - `GET /api/clients/last-modified`
+6.8. [Última Modificación Específica](#6.8.-última-modificación-específica) - `GET /api/clients/{client}/last-modified`
 
 ---
 
 ## 6.1. Listar Clientes
 `GET /api/clients`
 
-Retorna un listado paginado de clientes. Soporta búsqueda por nombre e identificación.
+Retorna un listado paginado (30 por página) de clientes. Incluye la información de la persona asociada.
+
+- **Query Params:**
+  - `search` (string, opcional): Busca por nombre, apellido, DNI o email de la persona.
+  - `type` (string, opcional): Filtra por tipo (`person`, `company`).
+  - `status` (string, opcional): Filtra por estado operativo (`activo` o `inactivo`).
+  - `financial_status` (string, opcional): Filtra por estado financiero (`no deudor`, `deudor` o `moroso`).
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "first_name": "Juan",
+      "last_name": "Pérez",
+      "identification_number": "20123456",
+      "email": "juan@example.com",
+      "status": "activo",
+      "financial_status": "no deudor",
+      "type": "person"
+    }
+  ],
+  "meta": { "current_page": 1, "total": 45 }
+}
+```
 
 ---
 
 ## 6.2. Crear un Cliente
 `POST /api/clients`
 
-Crea un nuevo registro de cliente (persona física o jurídica). Requiere `first_name`, `last_name`, `gender`.
+Crea un nuevo cliente. Internamente crea o asocia una **Persona** centralizada para gestionar datos de identidad comunes.
+
+- **Body (JSON):**
+  - `first_name` (string, requerido): Nombre.
+  - `last_name` (string, requerido): Apellido.
+  - `gender` (string, requerido): `M`, `F` o `X`.
+  - `identification_number` (string, opcional): DNI/CUIT.
+  - `email`, `phone`, `address`, `notes` (opcionales).
+  - `type` (string, opcional): `person` o `company`.
+
+- **Atributos de estado (Automáticos):**
+  - **`status`**: `activo` (tiene casos abiertos) o `inactivo` (no tiene casos o todos están cerrados).
+  - **`financial_status`**: `no deudor` (sin deudas), `deudor` (honorarios pendientes < N días) o `moroso` (honorarios pendientes >= N días). *(El umbral de días es de 30 por defecto y es configurable en la sección 12).*
 
 ---
 
-## 6.3. Sincronización Descendente / Ascendente
-- `GET /api/clients/sync?since={ts}`: Obtiene el delta de clientes.
-- `POST /api/clients/sync`: Crea o actualiza múltiples clientes desde offline.
+## 6.3. Ver Detalle de un Cliente
+`GET /api/clients/{client}`
+
+Retorna la información completa del cliente, incluyendo sus datos personales (Persona), sus casos asociados y sus documentos.
 
 ---
 
-## 6.4. Última Modificación Global
+## 6.4. Actualizar un Cliente
+`PUT /api/clients/{client}`
+
+Actualiza los datos del cliente y de su Persona asociada.
+
+- **Control de Conflictos:** Soporta `last_updated_at` para evitar sobreescrituras concurrentes.
+
+---
+
+## 6.5. Eliminar un Cliente
+`DELETE /api/clients/{client}`
+
+Realiza la baja lógica (Soft Delete) del cliente. No elimina la Persona asociada.
+
+---
+
+## 6.6. Sincronización (Sync Down/Up)
+
+### Sincronización Descendente (Sync Down)
+`GET /api/clients/sync?since={timestamp}`
+
+Obtiene el delta de clientes modificados o creados después del timestamp.
+
+### Sincronización Ascendente (Sync Up)
+`POST /api/clients/sync`
+
+Recibe un array de objetos `clients` para creación o actualización masiva desde el cliente offline.
+
+---
+
+## 6.7. Última Modificación Global
 `GET /api/clients/last-modified`
 
 ---
 
-## 6.5. Última Modificación Específica
+## 6.8. Última Modificación Específica
 `GET /api/clients/{client}/last-modified`
+
+---
+---
+
+## 6.9. Consultar Documentación del Cliente
+`GET /api/clients/{client}/documents`
+
+Retorna de forma estructurada toda la documentación vinculada a un cliente, separando los documentos sin caso ("personales") de aquellos que pertenecen a expedientes donde el cliente participa.
+
+El endpoint soporta **triple paginación simultánea** para manejar grandes volúmenes de datos sin saturar la respuesta.
+
+- **Reglas de Acceso:**
+  - **Administradores:** Ven todos los documentos y casos del cliente, sin importar quién los haya creado.
+  - **Abogados:** Solo ven documentos personales de su propiedad y documentos de casos donde sean dueños o participantes.
+
+- **Query Params:**
+  - `page_personal` (default 1): Página para el bloque de 15 documentos personales.
+  - `page_cases` (default 1): Página para el bloque de 5 casos integrales.
+  - `page_case_docs` (default 1): Página para los 5 documentos dentro de cada uno de los casos listados.
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "personales": {
+    "data": [ { "id": 1, "name": "Documento Personal.html", ... } ],
+    "links": { ... },
+    "meta": { "total": 20, "per_page": 15, ... }
+  },
+  "por_casos": {
+    "data": [
+      {
+        "id": 10,
+        "nombre": "Sucesión Pérez",
+        "estado": "active",
+        "fuero": "Civil y Comercial",
+        "documentos": {
+          "data": [ { "id": 105, "name": "Escrito Inicial.html", ... } ],
+          "links": { ... },
+          "meta": { "total": 50, "per_page": 5, ... }
+        }
+      }
+    ],
+    "links": { ... },
+    "meta": { "total": 8, "per_page": 5, "current_page": 1 }
+  }
+}
+```
+
+---
+
+## 6.10. Asociar Clientes a Documentos
+Permite vincular o desvincular un listado de clientes a un documento específico. Esto habilita que los documentos aparezcan en la vista de "personales" del cliente.
+
+### 6.10.1. Listar clientes vinculados
+`GET /api/documents/{document}/clients`
+
+- **Reglas de Acceso:** Requiere permiso de lectura (`view`) sobre el documento.
+
+**Respuesta Exitosa (200 OK):**
+```json
+[
+  { "id": 1, "first_name": "Juan", "last_name": "Perez", ... }
+]
+```
+
+### 6.10.2. Asociar uno o más clientes
+`POST /api/documents/{document}/clients`
+
+- **Reglas de Acceso:** Requiere permiso de edición (`update`) sobre el documento.
+- **Body (JSON):**
+```json
+{
+  "client_ids": [1, 2, 5]
+}
+```
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "message": "Clients attached to document successfully"
+}
+```
+
+### 6.10.2. Desvincular un cliente
+`DELETE /api/documents/{document}/clients/{client}`
+
+- **Reglas de Acceso:** Requiere permiso de edición (`update`) sobre el documento.
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "message": "Client detached from document successfully"
+}
+```
 
 ---
 
@@ -1089,67 +1418,184 @@ Retorna Agenda Personal y Agendas de Casos accesibles.
 
 ---
 
-# 8. Gastos y Honorarios
+# 8. Economía (Honorarios y Gastos)
+
+Esta sección cubre la gestión financiera de los casos, incluyendo el registro de honorarios profesionales, las entregas de dinero (pagos) y los gastos/costas incurridos durante el proceso judicial.
 
 ## Índice de Sección Finanzas
 
-8.1. [Honorarios por Rango de Fecha](#8.1.-honorarios-por-rango-de-fecha) - `GET /api/honorarios/by-date-range`
-8.2. [Honorarios de un Caso / Cliente](#8.2.-honorarios-de-un-caso-/-cliente)
-8.3. [Gestión de Honorarios (Monto/Eliminar)](#8.3.-gestión-de-honorarios-(monto/eliminar))
-8.4. [Entregas de Honorarios (Pagos)](#8.4.-entregas-de-honorarios-(pagos))
-8.5. [Gastos por Rango de Fecha](#8.5.-gastos-por-rango-de-fecha) - `GET /api/gasto-suit-cases/by-date-range`
-8.6. [Catálogos de Gastos](#8.6.-catálogos-de-gastos)
+8.1. [Honorarios: Listados y Filtros](#8.1.-honorarios:-listados-y-filtros)
+8.2. [Honorarios: Estadísticas](#8.2.-honorarios:-estadísticas)
+8.3. [Honorarios: Operaciones CRUD](#8.3.-honorarios:-operaciones-crud)
+8.4. [Entregas (Pagos de Honorarios)](#8.4.-entregas-(pagos-de-honorarios))
+8.5. [Gastos del Caso (Operaciones)](#8.5.-gastos-del-caso-(operaciones))
+8.6. [Gastos: Estadísticas](#8.6.-gastos:-estadísticas)
+8.7. [Catálogos de Gastos (Tipos)](#8.7.-catálogos-de-gastos-(tipos))
 
 ---
 
-## 8.1. Honorarios por Rango de Fecha
-`GET /api/honorarios/by-date-range?from=...&to=...`
+## 8.1. Honorarios: Listados y Filtros
+Existen varios endpoints para listar honorarios dependiendo del contexto. Actualmente estos listados retornan la colección completa (consultar si se requiere paginación).
 
-Retorna honorarios profesionales en un periodo dado.
+### Por Rango de Fechas
+`GET /api/honorarios/by-date-range`
 
-**Ejemplo de respuesta:**
+- **Query Params:**
+  - `from` (date, requerido): Fecha de inicio (YYYY-MM-DD).
+  - `to` (date, requerido): Fecha de fin (YYYY-MM-DD).
+  - `user_id` (integer, opcional): Filtrar por un abogado específico (Requiere rol Admin).
+
+### Por Caso
+`GET /api/suit-cases/{suit_case}/honorarios`
+
+### Por Cliente
+`GET /api/clients/{client}/honorarios`
+
+---
+
+## 8.2. Honorarios: Estadísticas
+`GET /api/honorarios/stats`
+
+Genera un resumen mensual de la facturación en el período indicado.
+
+- **Query Params:**
+  - `from` (date, requerido): Fecha de inicio.
+  - `to` (date, requerido): Fecha de fin.
+  - `user_id` (integer, opcional): Ver estadísticas de un abogado específico (Solo Admin).
+
+**Respuesta Exitosa (200 OK):**
 ```json
-{
-  "data": [
-    {
-      "id": 1,
-      "monto": 50000.00,
-      "detalles": "Honorarios por defensa...",
-      "pagado": 20000.00,
-      "total_entregas": 20000.00,
-      ...
-    }
-  ]
-}
+[
+  {
+    "month": "2026-03",
+    "total_honorarios": 5,
+    "monto_total": 250000.00,
+    "pagado_total": 120000.00,
+    "pendiente_total": 130000.00
+  }
+]
 ```
 
 ---
 
-## 8.2. Honorarios de un Caso / Cliente
-- `GET /api/suit-cases/{suit_case}/honorarios`: Honorarios asociados a un caso.
-- `GET /api/clients/{client}/honorarios`: Honorarios donde el cliente es deudor.
+## 8.3. Honorarios: Operaciones CRUD
+
+### Registrar Honorario
+`POST /api/suit-cases/{suit_case}/honorarios`
+
+Registra una deuda de honorarios para un cliente dentro de un caso específico.
+
+- **Restricciones:** 
+  - El usuario debe tener permiso de escritura en el caso.
+  - El `client_id` enviado debe pertenecer obligatoriamente al caso.
+- **Body (JSON):**
+  - `client_id` (integer, requerido).
+  - `monto` (decimal, requerido).
+  - `detalles` (string, requerido).
+
+**Ejemplo de Respuesta (201 Created):**
+```json
+{
+  "id": 14,
+  "monto": 50000.00,
+  "detalles": "Honorarios por demanda de daños",
+  "pagado": false,
+  "total_entregas": 0.00,
+  "client_name": "Juan Pérez",
+  "suit_case_id": 5,
+  "created_at": "2026-03-28T18:00:00Z"
+}
+```
+
+### Ver Honorario
+`GET /api/honorarios/{honorario}`
+
+### Actualizar Honorario
+`PUT /api/honorarios/{honorario}`
+Permite editar el monto o los detalles siempre que el usuario tenga privilegios sobre el registro.
+
+### Eliminar Honorario
+`DELETE /api/honorarios/{honorario}`
+**Restricción:** No se puede eliminar un honorario que ya tenga entregas (pagos) registradas para mantener la integridad contable.
 
 ---
 
-## 8.3. Gestión de Honorarios (Monto/Eliminar)
-- `PUT /api/honorarios/{honorario}`: Modifica monto o detalles.
-- `DELETE /api/honorarios/{honorario}`: Elimina registro si no tiene pagos.
+## 8.4. Entregas (Pagos de Honorarios)
+Las entregas representan abonos que el cliente realiza sobre un honorario.
+
+### Listar Entregas
+`GET /api/honorarios/{honorario}/entregas`
+
+### Registrar Entrega
+`POST /api/honorarios/{honorario}/entregas`
+
+- **Body (JSON):**
+  - `monto` (decimal, requerido).
+  - `metodo_pago` (string, opcional): Ej. "Transferencia", "Efectivo".
+  - `detalles` (string, opcional).
+
+**Lógica de Negocio:** 
+1. El sistema suma las entregas y actualiza el campo `pagado` del honorario padre automáticamente.
+2. Se dispara el recalculo del estado financiero del cliente (deudor/no deudor).
+
+### Eliminar Entrega
+`DELETE /api/entregas/{entrega}`
+Elimina registro de pago, recalcula el saldo del honorario y actualiza el estado financiero del cliente.
 
 ---
 
-## 8.4. Entregas de Honorarios (Pagos)
-- `GET /api/honorarios/{honorario}/entregas`: Historial de pagos realizados.
-- `POST /api/honorarios/{honorario}/entregas`: Registra nuevo pago total o parcial.
-- `DELETE /api/entregas/{entrega}`: Elimina registro de pago y recalcula saldo.
+## 8.5. Gastos del Caso (Operaciones)
+
+### Listar Gastos por Caso
+`GET /api/suit-cases/{suit_case}/gastos`
+
+### Registrar Gasto
+`POST /api/suit-cases/{suit_case}/gastos`
+
+- **Body (JSON):**
+  - `gasto_id` (integer, requerido): ID del tipo de gasto del catálogo.
+  - `monto` (decimal, requerido).
+  - `client_ids` (array, opcional): IDs de clientes a los que se imputa el gasto.
+  - `client_id` (integer, opcional): Alias para asignar a un único cliente.
+
+**Restricción de Asignación:** Si el caso tiene múltiples clientes, es obligatorio enviar `client_ids` o `client_id`. Si tiene uno solo, el sistema lo asigna automáticamente si se omite.
+
+### Listar Gastos (Filtrado por Fecha)
+`GET /api/gasto-suit-cases/by-date-range`
+
+Retorna los gastos registrados en un período, con soporte para filtrado por abogado y paginación (30 por página).
+
+- **Query Params:**
+  - `from` (date, requerido): Fecha de inicio (YYYY-MM-DD).
+  - `to` (date, requerido): Fecha de fin (YYYY-MM-DD).
+  - `user_id` (integer, opcional): Filtrar por un abogado específico (Solo Admin).
 
 ---
 
-## 8.5. Gastos por Rango de Fecha
-`GET /api/gasto-suit-cases/by-date-range?from=...&to=...`
+## 8.6. Gastos: Estadísticas
+`GET /api/gasto-suit-cases/stats`
+
+Genera un resumen mensual de los gastos incurridos en el período indicado.
+
+- **Query Params:**
+  - `from` (date, requerido): Fecha de inicio.
+  - `to` (date, requerido): Fecha de fin.
+  - `user_id` (integer, opcional): Ver estadísticas de un abogado específico (Solo Admin).
+
+**Respuesta Exitosa (200 OK):**
+```json
+[
+  {
+    "month": "2026-03",
+    "count": 12,
+    "total_amount": 45600.50
+  }
+]
+```
 
 ---
 
-## 8.6. Catálogos de Gastos
+## 8.7. Catálogos de Gastos (Tipos)
 - `GET /api/gastos`: Retorna tipos de gastos (Tasa, Fotocopias, etc.).
 - `GET /api/gastos/last-modified`: Último cambio global en el catálogo.
 
@@ -1203,6 +1649,44 @@ Tipos de radicación (Provincial, Federal, etc.). Soporta `last-modified` y `syn
 
 ## 9.6. Partes e Involucrados
 - `GET /api/partes`: Listado de personas/partes globales.
+**Respuesta Exitosa (200 OK):**
+```json
+[
+  {
+    "id": 1,
+    "nombre": "Juan",
+    "apellido": "Pérez",
+    "email": "juan@perez.com",
+    "telefono": "12345678",
+    "identificacion": "20-12345678-9",
+    "direccion": "Calle Falsa 123",
+    "genero": "M",
+    "estado": "activo",
+    "notas": "Cliente prioritario",
+    "rol_id": 1,
+    "rol": {
+      "id": 1,
+      "name": "Actor"
+    },
+    "created_at": "2026-03-29T18:00:00Z",
+    "updated_at": "2026-03-29T18:05:00Z"
+  }
+]
+```
+- `POST /api/partes`: Crea una nueva persona y su registro como Parte.
+  - **Body (JSON):**
+    - `nombre` (string, requerido): Nombre de la persona.
+    - `apellido` (string, requerido): Apellido de la persona.
+    - `rol_id` (integer, requerido): ID del rol asociado (ej: Actor, Demandado).
+    - `email` (string, opcional).
+    - `telefono` (string, opcional).
+    - `identificacion` (string, opcional): DNI, CUIT o similar.
+    - `direccion` (string, opcional): Dirección física.
+    - `genero` (string, opcional): Género de la persona.
+    - `estado` (string, opcional): `activo` o `inactivo`.
+    - `notas` (text, opcional): Observaciones adicionales.
+- `PUT /api/partes/{parte}`: Actualiza los datos de una parte existente.
+  - **Body (JSON):** Los mismos campos que en la creación, pero todos opcionales (`sometimes`).
 - `GET /api/partes/last-modified`: Última modificación en tabla de partes.
 
 ---
@@ -1218,9 +1702,14 @@ Tipos de radicación (Provincial, Federal, etc.). Soporta `last-modified` y `syn
 ---
 
 ## 10.1. Archivos Públicos (Biblioteca)
-- `GET /api/public-file-catalogs/{catalog_id}/public-files`: Archivos por catálogo.
-- `POST /api/public-files`: Sube un archivo público (Máx 100MB).
-- `GET /api/public-files/{id}/generate-link`: Enlace de descarga firmado.
+- `GET /api/public-files`: Lista todos los archivos públicos de forma paginada (15 por página) ordenados por los más recientes.
+  - **Query Params:**
+    - `public_file_catalog_id` (integer, opcional): Filtra los archivos por el ID del catálogo seleccionado.
+- `GET /api/public-file-catalogs/{catalog_id}/public-files`: Endpoint específico para obtener archivos filtrados por un catálogo obligatorio en la URL.
+- `POST /api/public-files`: Sube un archivo público a la biblioteca.
+- `GET /api/public-files/{id}/generate-link`: Genera un enlace de descarga firmado y temporal para el archivo.
+- `GET /api/public-files/last-modified`: Timestamp de la última modificación en la biblioteca pública.
+- `GET /api/public-files/sync`: Sincronización descendente (delta) de archivos públicos.
 
 ---
 
@@ -1271,3 +1760,162 @@ Retorna alertas programadas no procesadas para el usuario.
 ## 11.3. Configuración por Evento
 - `POST /api/events/{event}/notification`: Crea alerta (`notify_at`).
 - `DELETE /api/events/{event}/notification`: Elimina alerta programada.
+---
+
+# 12. Configuraciones del Sistema
+
+## Índice de Sección Configuraciones
+
+12.1. [Listar Configuraciones](#12.1.-listar-configuraciones) - `GET /api/settings`
+12.2. [Actualizar una Configuración](#12.2.-actualizar-una-configuración) - `PUT /api/settings/{key}`
+
+---
+
+## 12.1. Listar Configuraciones
+`GET /api/settings`
+
+Retorna todas las configuraciones globales del sistema. **Solo accesible para administradores.**
+
+**Respuesta Exitosa (200 OK):**
+```json
+[
+  {
+    "key": "client_moroso_threshold_days",
+    "value": "30",
+    "description": "Días de deuda para considerar a un cliente como moroso"
+  },
+  {
+    "key": "deadline_urgency_days",
+    "value": "3",
+    "description": "Antelación para marcar un vencimiento como urgente"
+  }
+]
+```
+
+---
+
+## 12.2. Actualizar una Configuración
+`PUT /api/settings/{key}`
+
+Actualiza el valor de una configuración existente. **Solo accesible para administradores.**
+
+- **Body (JSON):**
+  - `value` (string, requerido): Nuevo valor para la configuración (debe enviarse como string).
+
+**Ejemplo de uso:**
+Para cambiar el umbral de morosidad de clientes a 45 días:
+`PUT /api/settings/client_moroso_threshold_days`
+```json
+{
+  "value": "45"
+}
+```
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "key": "client_moroso_threshold_days",
+  "value": "45"
+}
+```
+
+---
+
+---
+
+# 13. Chatbot e Inteligencia Artificial (Módulo Mike)
+
+Esta sección describe la integración del asistente de IA "Mike", diseñado para ayudar en la creación de plantillas jurídicas, y las herramientas administrativas para gestionar proveedores de IA.
+
+## Índice de Sección IA
+
+13.1. [Configuración de IA (Solo Admin)](#13.1.-configuración-de-ia-(solo-admin)) - `GET|PUT /api/ai/settings`
+13.2. [Auditoría de Conversaciones (Solo Admin)](#13.2.-auditoría-de-conversaciones-(solo-admin)) - `GET /api/chatbot/admin/conversations`
+13.3. [Listar mis Conversaciones](#13.3.-listar-mis-conversaciones) - `GET /api/chatbot/conversations`
+13.4. [Iniciar Chat de Plantilla (Streaming)](#13.4.-iniciar-chat-de-plantilla-(streaming)) - `POST /api/chatbot/conversations`
+13.5. [Continuar Conversación (Streaming)](#13.5.-continuar-conversación-(streaming)) - `POST /api/chatbot/conversations/{id}/reply`
+13.6. [Eliminar Conversación](#13.6.-eliminar-conversación) - `DELETE /api/chatbot/conversations/{id}`
+
+---
+
+## 13.1. Configuración de IA (Solo Admin)
+
+### Consultar Estado
+`GET /api/ai/settings`
+
+Retorna el proveedor activo, el modelo y si las API keys correspondientes están configuradas (sin mostrar el valor de la clave).
+
+**Respuesta Exitosa (200 OK):**
+```json
+{
+  "active_provider": "gemini",
+  "active_model": "gemini-2.0-flash",
+  "has_openai_key": true,
+  "has_gemini_key": true,
+  "has_anthropic_key": false,
+  "has_deepseek_key": false
+}
+```
+
+### Actualizar Configuración
+`PUT /api/ai/settings`
+
+Permite definir el proveedor activo y/o guardar nuevas API keys. Las claves se almacenan **encriptadas** en el servidor.
+
+- **Body (JSON):**
+  - `active_provider` (string): `openai`, `gemini`, `anthropic`.
+  - `active_model` (string): Nombre del modelo (ej. `gpt-4o`).
+  - `{provider}_key` (string): La API key del proveedor específico.
+
+---
+
+## 13.2. Auditoría de Conversaciones (Solo Admin)
+
+### Listar todas las conversaciones
+`GET /api/chatbot/admin/conversations`
+
+Permite a los administradores monitorear el uso del chatbot por parte de los abogados. Retorna un listado paginado (30) con un resumen del primer mensaje.
+
+### Ver mensajes de una conversación
+`GET /api/chatbot/admin/conversations/{id}`
+
+Muestra el historial completo de mensajes entre el usuario y el asistente Mike.
+
+---
+
+## 13.3. Listar mis Conversaciones
+`GET /api/chatbot/conversations`
+
+Retorna las conversaciones iniciadas por el usuario actual (Paginado 15).
+
+---
+
+## 13.4. Iniciar Chat de Plantilla (Streaming)
+`POST /api/chatbot/conversations`
+
+Crea una conversación y comienza el streaming SSE del asistente Mike.
+
+- **Body (JSON):**
+  - `prompt` (string, requerido): Consulta inicial o descripción del documento.
+  - `html_content` (string, opcional): Contenido de un documento existente para que Mike lo analice y convierta en plantilla.
+
+- **Mecánica de Respuesta (Server-Sent Events):**
+  - La respuesta usa `Content-Type: text/event-stream`.
+  - **Header `X-Conversation-Id`**: Contiene el UUID de la conversación creada. Debe guardarse en el frontend para continuar el chat.
+
+---
+
+## 13.5. Continuar Conversación (Streaming)
+`POST /api/chatbot/conversations/{id}/reply`
+
+Envía un nuevo mensaje a una conversación existente y recibe la respuesta vía SSE.
+
+- **Parámetros:** `id` (UUID de la conversación).
+- **Body (JSON):** `prompt` (string).
+
+---
+
+## 13.6. Eliminar Conversación
+`DELETE /api/chatbot/conversations/{id}`
+
+Realiza el borrado físico de la conversación y todos sus mensajes asociados.

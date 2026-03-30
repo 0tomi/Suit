@@ -16,18 +16,21 @@ class JudicialParanaDiamanteSeeder extends Seeder
     public function run(): void
     {
         // 1. Asegurar Jurisdicciones (Paraná y Diamante)
-        $jurisParana = Jurisdiccion::updateOrCreate(
+        $jurisParana = Jurisdiccion::withTrashed()->updateOrCreate(
             ['nombre' => 'Paraná'],
             ['updated_at' => now()]
         );
+        if ($jurisParana->trashed()) $jurisParana->restore();
 
-        $jurisDiamante = Jurisdiccion::updateOrCreate(
+        $jurisDiamante = Jurisdiccion::withTrashed()->updateOrCreate(
             ['nombre' => 'Diamante'],
             ['updated_at' => now()]
         );
+        if ($jurisDiamante->trashed()) $jurisDiamante->restore();
 
         // 2. Asegurar Radicación Provincial
-        $radProvincial = Radicacion::firstOrCreate(['tipo' => 'Provincial']);
+        $radProvincial = Radicacion::withTrashed()->firstOrCreate(['tipo' => 'Provincial']);
+        if ($radProvincial->trashed()) $radProvincial->restore();
 
         // 3. Asegurar Competencias (Fueros)
         // Agregamos las que falten según el análisis del listado
@@ -44,18 +47,19 @@ class JudicialParanaDiamanteSeeder extends Seeder
         ];
 
         foreach ($fueros as $fuero) {
-            Competencia::firstOrCreate(['fuero' => $fuero]);
+            $f = Competencia::withTrashed()->firstOrCreate(['fuero' => $fuero]);
+            if ($f->trashed()) $f->restore();
         }
 
-        $compCivil = Competencia::where('fuero', 'Civil y Comercial')->first();
-        $compLaboral = Competencia::where('fuero', 'Laboral')->first();
-        $compFamilia = Competencia::where('fuero', 'Familia y Niñez')->first();
-        $compPenal = Competencia::where('fuero', 'Penal')->first();
-        $compCA = Competencia::where('fuero', 'Contencioso Administrativo')->first();
-        $compEjec = Competencia::where('fuero', 'Ejecuciones')->first();
-        $compPaz = Competencia::where('fuero', 'Paz')->first();
-        $compMP = Competencia::where('fuero', 'Ministerio Público')->first();
-        $compMed = Competencia::where('fuero', 'Médico / Pericial')->first();
+        $compCivil = Competencia::withTrashed()->where('fuero', 'Civil y Comercial')->first();
+        $compLaboral = Competencia::withTrashed()->where('fuero', 'Laboral')->first();
+        $compFamilia = Competencia::withTrashed()->where('fuero', 'Familia y Niñez')->first();
+        $compPenal = Competencia::withTrashed()->where('fuero', 'Penal')->first();
+        $compCA = Competencia::withTrashed()->where('fuero', 'Contencioso Administrativo')->first();
+        $compEjec = Competencia::withTrashed()->where('fuero', 'Ejecuciones')->first();
+        $compPaz = Competencia::withTrashed()->where('fuero', 'Paz')->first();
+        $compMP = Competencia::withTrashed()->where('fuero', 'Ministerio Público')->first();
+        $compMed = Competencia::withTrashed()->where('fuero', 'Médico / Pericial')->first();
 
         // 4. Dependencias de Paraná
         $paranaDeps = [
@@ -69,7 +73,7 @@ class JudicialParanaDiamanteSeeder extends Seeder
             ['nombre' => 'Oficina de Medios Alternativos (OMA)', 'comp' => $compPenal],
             ['nombre' => 'Cámara Segunda Civil y Comercial', 'comp' => $compCivil],
             ['nombre' => 'Cámara Tercera Laboral', 'comp' => $compLaboral],
-            ['nombre' => 'Cámara en lo Contencioso Administrativo', 'comp' => $compCA],
+            ['nombre' => 'Cámara en lo Contencioso Administrativo N.º 1 de Paraná', 'comp' => $compCA],
             ['nombre' => 'Juzgado en lo Civil y Comercial N° 1', 'comp' => $compCivil],
             ['nombre' => 'Juzgado en lo Civil y Comercial N° 2', 'comp' => $compCivil],
             ['nombre' => 'Juzgado en lo Civil y Comercial N° 3', 'comp' => $compCivil],
@@ -107,12 +111,17 @@ class JudicialParanaDiamanteSeeder extends Seeder
         ];
 
         foreach ($paranaDeps as $dep) {
-            DependenciaJudicial::firstOrCreate([
-                'nombre_juzgado' => $dep['nombre'],
-                'jurisdiccion_id' => $jurisParana->id,
-                'radicacion_id' => $radProvincial->id,
-                'competencia_id' => $dep['comp']->id,
-            ]);
+            $d = DependenciaJudicial::withTrashed()->updateOrCreate(
+                [
+                    'nombre_juzgado' => $dep['nombre'],
+                    'jurisdiccion_id' => $jurisParana->id,
+                ],
+                [
+                    'radicacion_id' => $radProvincial->id,
+                    'competencia_id' => $dep['comp']->id,
+                ]
+            );
+            if ($d->trashed()) $d->restore();
         }
 
         // 5. Dependencias de Diamante
@@ -130,12 +139,17 @@ class JudicialParanaDiamanteSeeder extends Seeder
         ];
 
         foreach ($diamanteDeps as $dep) {
-            DependenciaJudicial::firstOrCreate([
-                'nombre_juzgado' => $dep['nombre'],
-                'jurisdiccion_id' => $jurisDiamante->id,
-                'radicacion_id' => $radProvincial->id,
-                'competencia_id' => $dep['comp']->id,
-            ]);
+            $d = DependenciaJudicial::withTrashed()->updateOrCreate(
+                [
+                    'nombre_juzgado' => $dep['nombre'],
+                    'jurisdiccion_id' => $jurisDiamante->id,
+                ],
+                [
+                    'radicacion_id' => $radProvincial->id,
+                    'competencia_id' => $dep['comp']->id,
+                ]
+            );
+            if ($d->trashed()) $d->restore();
         }
     }
 }

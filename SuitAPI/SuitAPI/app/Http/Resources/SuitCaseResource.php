@@ -7,6 +7,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class SuitCaseResource extends JsonResource
 {
+    /** @var string|null Disable the 'data' wrapper to match the rest of the API responses. */
+    public static $wrap = null;
+
     /**
      * Transform the resource into an array.
      *
@@ -35,6 +38,8 @@ class SuitCaseResource extends JsonResource
             'creator' => new UserResource($this->whenLoaded('creator')),
             'participants' => UserResource::collection($this->whenLoaded('participants')),
             'tipo_expedientes' => TipoExpedienteResource::collection($this->whenLoaded('tipoExpedientes')),
+            'clientes' => ClientResource::collection($this->whenLoaded('clients')),
+            'partes' => ParteResource::collection($this->whenLoaded('partes')),
         ];
     }
 }

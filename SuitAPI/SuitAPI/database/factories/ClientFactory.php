@@ -17,16 +17,9 @@ class ClientFactory extends Factory
     public function definition(): array
     {
         return [
-            'first_name' => $this->faker->firstName,
-            'last_name' => $this->faker->lastName,
-            'identification_number' => $this->faker->unique()->numerify('########'),
-            'email' => $this->faker->unique()->safeEmail,
-            'phone' => $this->faker->phoneNumber,
-            'address' => $this->faker->address,
             'type' => $this->faker->randomElement(['person', 'company']),
-            'status' => $this->faker->randomElement(['active', 'inactive', 'debtor']),
-            'notes' => $this->faker->sentence,
-            'gender' => $this->faker->randomElement(['M', 'F', 'X']),
+            'financial_status' => $this->faker->randomElement(['no deudor', 'deudor', 'moroso']),
+            'persona_id' => \App\Models\Persona::factory(),
         ];
     }
 }

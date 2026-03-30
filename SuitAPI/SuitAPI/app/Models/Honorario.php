@@ -40,7 +40,7 @@ class Honorario extends Model
     }
 
     /** Retorna los honorarios creados entre dos fechas (inclusivo), filtrando por usuario salvo que sea admin o se especifique un user_id (para admins). */
-    public static function getByDateRange(User $user, string $from, string $to, ?int $targetUserId = null): \Illuminate\Database\Eloquent\Collection
+    public static function getByDateRange(User $user, string $from, string $to, ?int $targetUserId = null): \Illuminate\Database\Eloquent\Builder
     {
         return static::query()
             ->with(['client', 'entregas', 'suitCase'])
@@ -53,8 +53,7 @@ class Honorario extends Model
             })
             ->when($user->role !== 'admin', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
-            })
-            ->get();
+            });
     }
 
     public function suitCase(): BelongsTo

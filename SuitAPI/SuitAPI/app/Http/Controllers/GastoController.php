@@ -18,7 +18,7 @@ class GastoController extends Controller
     {
         Gate::authorize('viewAny', Gasto::class);
 
-        return GastoResource::collection(Gasto::all());
+        return GastoResource::collection(Gasto::paginate(30));
     }
 
     public function store(StoreGastoRequest $request)

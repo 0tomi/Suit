@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\PublicFile\StorePublicFileRequest;
 use App\Http\Resources\PublicFileResource;
 use App\Models\PublicFile;
+use App\Models\User;
+use App\Services\BitacoraService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -15,6 +17,26 @@ use Illuminate\Support\Str;
 class PublicFileController extends Controller
 {
     use \App\Traits\HandlesManualSignatures, AuthorizesRequests;
+
+    public function __construct(protected BitacoraService $bitacora) {}
+
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request): JsonResource
+    {
+        $this->authorize('viewAny', PublicFile::class);
+
+        $query = PublicFile::query()->latest();
+
+        if ($request->has('public_file_catalog_id')) {
+            $query->where('public_file_catalog_id', $request->input('public_file_catalog_id'));
+        }
+
+        $files = $query->paginate(15);
+
+        return PublicFileResource::collection($files);
+    }
 
     /**
      * Display a listing of the resource by catalog.
@@ -39,6 +61,9 @@ class PublicFileController extends Controller
         $file = $request->file('file');
         $uuid = Str::uuid();
         $filename = $uuid.'.'.$file->extension();
+
+        // Calculate hash from realPath before storing (more efficient)
+        $hash = hash_file('sha256', $file->getRealPath());
         $path = $file->storeAs('/', $filename, 'public_files');
 
         $publicFile = PublicFile::create([
@@ -49,8 +74,10 @@ class PublicFileController extends Controller
             'path' => $path,
             'mime_type' => $file->getMimeType(),
             'size' => $file->getSize(),
-            'hash' => hash_file('sha256', Storage::disk('public_files')->path($path)),
+            'hash' => $hash,
         ]);
+
+        $this->bitacora->record('uploaded', $publicFile);
 
         return new PublicFileResource($publicFile);
     }
@@ -85,7 +112,7 @@ class PublicFileController extends Controller
         $this->authorize('download', $publicFile);
 
         if (! Storage::disk('public_files')->exists($publicFile->path)) {
-            abort(404, 'File not found on disk.');
+            abort(404, 'Archivo no encontrado en el disco.');
         }
 
         return response()->download(Storage::disk('public_files')->path($publicFile->path), $publicFile->name);
@@ -187,7 +214,7 @@ class PublicFileController extends Controller
         }
 
         if (! Storage::disk('public_files')->exists($publicFile->path)) {
-            abort(404, 'File not found on disk.');
+            abort(404, 'Archivo no encontrado en el disco.');
         }
 
         return response()->download(Storage::disk('public_files')->path($publicFile->path), $publicFile->name);
@@ -250,24 +277,27 @@ class PublicFileController extends Controller
             ],
         ]);
 
-        $createdFiles = [];
         $files = $request->file('files');
+        $user = User::findOrFail($request->input('generator_id'));
 
         foreach ($files as $file) {
             $uuid = Str::uuid();
             $filename = $uuid.'.'.$file->extension();
+            $hash = hash_file('sha256', $file->getRealPath());
             $path = $file->storeAs('/', $filename, 'public_files');
 
             $publicFile = PublicFile::create([
                 'uuid' => $uuid,
-                'user_id' => $request->input('generator_id'),
+                'user_id' => $user->id,
                 'public_file_catalog_id' => $request->input('public_file_catalog_id') ?: null,
                 'name' => $file->getClientOriginalName(),
                 'path' => $path,
                 'mime_type' => $file->getMimeType(),
                 'size' => $file->getSize(),
-                'hash' => hash_file('sha256', Storage::disk('public_files')->path($path)),
+                'hash' => $hash,
             ]);
+
+            $this->bitacora->record('uploaded', $publicFile, $user);
 
             // Apply permissions if provided
             if ($request->has('permissions_json') && $request->input('permissions_json')) {

@@ -59,6 +59,12 @@ it('allows uploading a file via a signed link and applies catalog and permission
         'user_id' => $this->user->id, // attributed to the generator
     ]);
 
+    assertDatabaseHas('bitacoras', [
+        'action' => 'uploaded',
+        'entity_type' => 'public_file',
+        'user_id' => $this->user->id,
+    ]);
+
     $publicFile = PublicFile::where('name', 'shared.txt')->first();
 
     assertDatabaseHas('public_file_permissions', [

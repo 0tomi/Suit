@@ -7,6 +7,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class ClientResource extends JsonResource
 {
+    /** @var string|null Disable the 'data' wrapper to match the rest of the API responses. */
+    public static $wrap = null;
+
     /**
      * Transform the resource into an array.
      *
@@ -16,16 +19,17 @@ class ClientResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'first_name' => $this->first_name,
-            'last_name' => $this->last_name,
-            'identification_number' => $this->identification_number,
-            'email' => $this->email,
-            'phone' => $this->phone,
-            'address' => $this->address,
+            'first_name' => $this->persona?->first_name,
+            'last_name' => $this->persona?->last_name,
+            'identification_number' => $this->persona?->identification_number,
+            'email' => $this->persona?->email,
+            'phone' => $this->persona?->phone,
+            'address' => $this->persona?->address,
             'type' => $this->type,
-            'status' => $this->status,
-            'notes' => $this->notes,
-            'gender' => $this->gender,
+            'status' => $this->persona?->status,
+            'financial_status' => $this->financial_status,
+            'notes' => $this->persona?->notes,
+            'gender' => $this->persona?->gender,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'deleted_at' => $this->deleted_at,

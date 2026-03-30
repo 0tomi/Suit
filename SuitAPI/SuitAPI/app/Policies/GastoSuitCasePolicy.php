@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\GastoSuitCase;
 use App\Models\User;
-use Illuminate\Support\Facades\Gate;
 
 class GastoSuitCasePolicy
 {
@@ -25,11 +24,11 @@ class GastoSuitCasePolicy
 
     public function update(User $user, GastoSuitCase $gasto): bool
     {
-        return Gate::forUser($user)->allows('case-write', $gasto);
+        return $user->role === 'admin' || $user->id === $gasto->user_id;
     }
 
     public function delete(User $user, GastoSuitCase $gasto): bool
     {
-        return Gate::forUser($user)->allows('case-write', $gasto);
+        return $user->role === 'admin' || $user->id === $gasto->user_id;
     }
 }

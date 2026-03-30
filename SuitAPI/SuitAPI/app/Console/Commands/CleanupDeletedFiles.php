@@ -66,6 +66,7 @@ class CleanupDeletedFiles extends Command
         $this->comment("Found {$records->count()} deleted {$type} records to purge.");
 
         foreach ($records as $record) {
+            $this->line("  - Purgando {$type}: ID #{$record->id} (Path: {$record->path})");
             DB::transaction(function () use ($record, $type) {
                 // Delete physical file
                 if (Storage::disk('local')->exists($record->path)) {
@@ -95,6 +96,7 @@ class CleanupDeletedFiles extends Command
         $this->comment("Found {$documents->count()} deleted documents to purge.");
 
         foreach ($documents as $document) {
+            $this->line("  - Purgando document: ID #{$document->id}");
             DB::transaction(function () use ($document) {
                 // Delete all version files
                 foreach ($document->versions as $version) {
@@ -117,9 +119,16 @@ class CleanupDeletedFiles extends Command
 
     protected function cleanupTombstones($threshold)
     {
-        $deletedCount = Tombstone::where('deleted_at', '<', $threshold)->delete();
+        $query = Tombstone::where('deleted_at', '<', $threshold);
+        $tombstones = $query->get();
+        $deletedCount = $tombstones->count();
 
         if ($deletedCount > 0) {
+            foreach ($tombstones as $tombstone) {
+                $this->line("  - Eliminado tombstone: ID #{$tombstone->id} (Recurso: {$tombstone->resource_type} #{$tombstone->resource_id})");
+            }
+
+            $query->delete();
             $this->comment("Pruned {$deletedCount} old tombstone records.");
         }
     }

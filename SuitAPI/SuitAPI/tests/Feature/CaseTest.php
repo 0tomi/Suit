@@ -82,3 +82,40 @@ test('dates are cast to date objects without time', function () {
     // In Laravel, date casting usually returns Carbon instance at 00:00:00
     expect($case->start_date->format('Y-m-d'))->toBe('2024-01-15');
 });
+
+test('can filter cases by status', function () {
+    $user = User::factory()->create(['role' => 'lawyer']);
+    $type = CaseType::create(['name' => 'Civil']);
+
+    SuitCase::factory()->create([
+        'lawyer_id' => $user->id,
+        'status' => 'active',
+        'case_type_id' => $type->id,
+        'title' => 'Active Case',
+        'nro_expediente' => 'EXP-ACTIVE',
+        'radicacion_id' => \App\Models\Radicacion::factory()->create()->id,
+    ]);
+
+    SuitCase::factory()->create([
+        'lawyer_id' => $user->id,
+        'status' => 'closed',
+        'case_type_id' => $type->id,
+        'title' => 'Closed Case',
+        'nro_expediente' => 'EXP-CLOSED',
+        'radicacion_id' => \App\Models\Radicacion::factory()->create()->id,
+    ]);
+
+    $this->actingAs($user);
+
+    // Test active filter
+    $this->getJson('/api/cases?status=active')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonFragment(['title' => 'Active Case']);
+
+    // Test closed filter
+    $this->getJson('/api/cases?status=closed')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonFragment(['title' => 'Closed Case']);
+});

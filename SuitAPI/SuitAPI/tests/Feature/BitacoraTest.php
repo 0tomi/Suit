@@ -17,7 +17,7 @@ test('admins can view bitacora logs', function () {
 
     $response->assertStatus(200)
         ->assertJsonCount(5, 'data')
-        ->assertJsonStructure(['data' => [['id', 'user', 'action', 'entity_id', 'entity_type', 'created_at']]]);
+        ->assertJsonStructure(['data' => [['id', 'user', 'action', 'entity_info' => ['id', 'type', 'data'], 'created_at']]]);
 });
 
 test('non-admins cannot view bitacora logs', function () {

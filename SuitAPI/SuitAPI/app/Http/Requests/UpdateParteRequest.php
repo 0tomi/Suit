@@ -22,6 +22,11 @@ class UpdateParteRequest extends FormRequest
             'apellido' => ['sometimes', 'string', 'max:255'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'telefono' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'identificacion' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'direccion' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'genero' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'estado' => ['sometimes', 'nullable', 'string', 'max:255', 'in:activo,inactivo'],
+            'notas' => ['sometimes', 'nullable', 'string'],
             'rol_id' => ['sometimes', 'exists:roles,id'],
         ];
     }

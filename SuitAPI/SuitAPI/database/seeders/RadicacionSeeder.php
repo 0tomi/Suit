@@ -14,11 +14,11 @@ class RadicacionSeeder extends Seeder
         $tipos = [
             'Provincial',
             'Federal',
-            'Administrativa',
+            'Administrativo',
         ];
 
         foreach ($tipos as $tipo) {
-            \App\Models\Radicacion::firstOrCreate(['tipo' => $tipo]);
+            \App\Models\Radicacion::withTrashed()->firstOrCreate(['tipo' => $tipo]);
         }
     }
 }

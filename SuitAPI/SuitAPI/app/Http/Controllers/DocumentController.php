@@ -37,7 +37,7 @@ class DocumentController extends Controller
         $documents = Document::accessibleBy($request->user())
             ->sort($request->sort_by, $request->sort_direction)
             ->with(['latestVersion.creator', 'locker'])
-            ->paginate(15); // Pagination as requested
+            ->paginate(40); // Pagination as requested
 
         return response()->json($documents);
     }
@@ -48,7 +48,7 @@ class DocumentController extends Controller
     public function totalPages(Request $request): \Illuminate\Http\JsonResponse
     {
         $total = Document::accessibleBy($request->user())->count();
-        $perPage = 15;
+        $perPage = 40;
         $totalPages = ceil($total / $perPage);
 
         return response()->json([
@@ -68,7 +68,7 @@ class DocumentController extends Controller
         $this->applyFilters($query, $request);
 
         $total = $query->count();
-        $perPage = 15;
+        $perPage = 40;
         $totalPages = ceil($total / $perPage);
 
         return response()->json([
@@ -110,7 +110,7 @@ class DocumentController extends Controller
 
         $documents = $query->sort($request->sort_by, $request->sort_direction)
             ->with(['latestVersion.creator', 'locker'])
-            ->paginate(15);
+            ->paginate(40);
 
         return response()->json($documents);
     }

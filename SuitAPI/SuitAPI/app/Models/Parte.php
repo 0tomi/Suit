@@ -13,12 +13,14 @@ class Parte extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'nombre',
-        'apellido',
-        'email',
-        'telefono',
         'rol_id',
+        'persona_id',
     ];
+
+    public function persona(): BelongsTo
+    {
+        return $this->belongsTo(Persona::class);
+    }
 
     public function rol(): BelongsTo
     {

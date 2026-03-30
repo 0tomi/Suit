@@ -6,6 +6,7 @@ use App\Models\File;
 use App\Models\Multimedia;
 use App\Models\SuitCase;
 use App\Models\User;
+use App\Services\BitacoraService;
 use App\Services\FileService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\Request;
@@ -16,7 +17,10 @@ class CaseLinkController extends Controller
 {
     use \App\Traits\HandlesManualSignatures, AuthorizesRequests;
 
-    public function __construct(protected FileService $fileService) {}
+    public function __construct(
+        protected FileService $fileService,
+        protected BitacoraService $bitacora
+    ) {}
 
     /**
      * Generates a temporary signed URL for downloading or uploading a file/multimedia.
@@ -78,7 +82,7 @@ class CaseLinkController extends Controller
             ]);
         }
 
-        return response()->json(['message' => 'Invalid request type.'], 400);
+        return response()->json(['message' => 'Tipo de solicitud inválido.'], 400);
     }
 
     /**
@@ -159,9 +163,13 @@ class CaseLinkController extends Controller
             $data = ['suit_case_id' => $caseId];
 
             if ($modelType === 'file') {
-                $createdRecords[] = $this->fileService->storeFile($file, $data, $user);
+                $fileRecord = $this->fileService->storeFile($file, $data, $user);
+                $this->bitacora->record('uploaded', $fileRecord, $user);
+                $createdRecords[] = $fileRecord;
             } else {
-                $createdRecords[] = $this->fileService->storeMultimedia($file, $data, $user);
+                $multimediaRecord = $this->fileService->storeMultimedia($file, $data, $user);
+                $this->bitacora->record('uploaded', $multimediaRecord, $user);
+                $createdRecords[] = $multimediaRecord;
             }
         }
 

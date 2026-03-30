@@ -22,6 +22,11 @@ class StoreParteRequest extends FormRequest
             'apellido' => ['required', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255'],
             'telefono' => ['nullable', 'string', 'max:255'],
+            'identificacion' => ['nullable', 'string', 'max:255'],
+            'direccion' => ['nullable', 'string', 'max:255'],
+            'genero' => ['nullable', 'string', 'max:255'],
+            'estado' => ['nullable', 'string', 'max:255', 'in:activo,inactivo'],
+            'notas' => ['nullable', 'string'],
             'rol_id' => ['required', 'exists:roles,id'],
         ];
     }

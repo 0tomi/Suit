@@ -33,7 +33,7 @@ class RolSeeder extends Seeder
         ];
 
         foreach ($roles as $titulo) {
-            Rol::firstOrCreate(['titulo' => $titulo]);
+            Rol::withTrashed()->firstOrCreate(['titulo' => $titulo]);
         }
     }
 }

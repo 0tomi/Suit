@@ -33,6 +33,11 @@ class EntregaController extends Controller
 
         $honorario->recalcularPagado();
 
+        $client = $honorario->client;
+        if ($client) {
+            $client->recalculateFinancialStatus();
+        }
+
         $this->bitacora->record('created', $entrega);
 
         return new EntregaResource($entrega);
@@ -48,10 +53,18 @@ class EntregaController extends Controller
 
     public function update(UpdateEntregaRequest $request, Entrega $entrega)
     {
+        Gate::authorize('update', $entrega);
+
         $entrega->update($request->validated());
         $entrega->load('tipoPago');
 
-        $entrega->honorario->recalcularPagado();
+        $honorario = $entrega->honorario;
+        $honorario->recalcularPagado();
+
+        $client = $honorario->client;
+        if ($client) {
+            $client->recalculateFinancialStatus();
+        }
 
         $this->bitacora->record('updated', $entrega);
 
@@ -63,8 +76,14 @@ class EntregaController extends Controller
         Gate::authorize('delete', $entrega);
 
         $honorario = $entrega->honorario;
+        $client = $honorario->client;
+
         $entrega->delete();
+
         $honorario->recalcularPagado();
+        if ($client) {
+            $client->recalculateFinancialStatus();
+        }
 
         $this->bitacora->record('deleted', $entrega);
 

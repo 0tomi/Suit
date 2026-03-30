@@ -270,7 +270,7 @@
             }
         });
 
-        form.addEventListener('submit', async (e) => {
+        form.addEventListener('submit', (e) => {
             e.preventDefault();
             
             // Reset UI
@@ -278,22 +278,32 @@
             alertError.style.display = 'none';
             submitBtn.disabled = true;
             loader.style.display = 'block';
-            btnText.textContent = 'Subiendo...';
+            btnText.textContent = 'Iniciando...';
 
             const formData = new FormData(form);
-            
-            try {
-                const response = await fetch(window.location.href, {
-                    method: 'POST',
-                    body: formData,
-                    headers: {
-                        'Accept': 'application/json'
+            const xhr = new XMLHttpRequest();
+
+            // Track upload progress
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    if (percentComplete < 100) {
+                        btnText.textContent = `Subiendo... (${percentComplete}%)`;
+                    } else {
+                        btnText.textContent = 'Procesando en el servidor...';
                     }
-                });
+                }
+            });
 
-                const result = await response.json();
+            xhr.addEventListener('load', () => {
+                let result;
+                try {
+                    result = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    result = { message: 'Error de respuesta del servidor.' };
+                }
 
-                if (response.ok) {
+                if (xhr.status >= 200 && xhr.status < 300) {
                     alertSuccess.style.display = 'block';
                     form.style.display = 'none';
                     const count = fileInput.files.length;
@@ -302,15 +312,25 @@
                         : `Se han subido ${count} archivos correctamente.`;
                     btnText.textContent = 'Completado';
                 } else {
-                    throw new Error(result.message || 'Error al subir los archivos.');
+                    alertError.style.display = 'block';
+                    errorMessage.textContent = result.message || 'Error al subir los archivos.';
+                    submitBtn.disabled = false;
+                    loader.style.display = 'none';
+                    btnText.textContent = 'Reintentar subida';
                 }
-            } catch (error) {
+            });
+
+            xhr.addEventListener('error', () => {
                 alertError.style.display = 'block';
-                errorMessage.textContent = error.message;
+                errorMessage.textContent = 'Error de conexión con el servidor.';
                 submitBtn.disabled = false;
                 loader.style.display = 'none';
                 btnText.textContent = 'Reintentar subida';
-            }
+            });
+
+            xhr.open('POST', window.location.href);
+            xhr.setRequestHeader('Accept', 'application/json');
+            xhr.send(formData);
         });
 
         // Add visual feedback for touch on mobile

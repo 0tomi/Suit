@@ -47,7 +47,7 @@ class BitacoraResource extends JsonResource
     {
         switch ($this->entity_type) {
             case 'client':
-                return trim(($entity->last_name ?? '').' '.($entity->first_name ?? ''));
+                return trim(($entity->persona->last_name ?? '').' '.($entity->persona->first_name ?? ''));
             case 'user':
                 return trim(($entity->last_name ?? '').' '.($entity->name ?? ''));
             case 'case':

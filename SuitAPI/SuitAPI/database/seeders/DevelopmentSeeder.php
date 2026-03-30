@@ -64,10 +64,11 @@ class DevelopmentSeeder extends Seeder
             ]
         );
 
-        Agenda::firstOrCreate(
+        $testAgenda = Agenda::firstOrCreate(
             ['user_id' => $testUser->id, 'suit_case_id' => null],
             ['name' => 'Personal Agenda: '.$testUser->name]
         );
+        $testAgenda->syncAccessibleUsers(); // Asegurar que el dueño esté en la tabla pivot
 
         $normalUser = User::updateOrCreate(
             ['tag' => 'user'],
@@ -79,10 +80,11 @@ class DevelopmentSeeder extends Seeder
             ]
         );
 
-        Agenda::firstOrCreate(
+        $normalAgenda = Agenda::firstOrCreate(
             ['user_id' => $normalUser->id, 'suit_case_id' => null],
             ['name' => 'Personal Agenda: '.$normalUser->name]
         );
+        $normalAgenda->syncAccessibleUsers(); // Asegurar que el dueño esté en la tabla pivot
 
         // 4. Crear muchísimos Clientes
         $this->command->info('Creando clientes adicionales...');
@@ -140,6 +142,9 @@ class DevelopmentSeeder extends Seeder
             // Asignar 1-4 clientes al caso
             $caseClients = $clients->random(rand(1, 4));
             $case->clients()->attach($caseClients->pluck('id'));
+
+            // Sincronizar usuarios de la agenda después de añadir participantes
+            $caseAgenda->syncAccessibleUsers();
 
             // 6. Meter Honorarios y Entregas con fechas realistas
             foreach ($caseClients as $caseClient) {
@@ -304,8 +309,8 @@ class DevelopmentSeeder extends Seeder
         $this->command->info('Creando eventos personales para Test User y Normal User (promedio 1 cada 2 días)...');
         $currentDate = Carbon::create(2026, 1, 1);
         $endDate = Carbon::create(2026, 12, 31);
-        $personalAgendaTest = $testUser->personalAgenda;
-        $personalAgendaNormal = $normalUser->personalAgenda;
+        $personalAgendaTest = $testAgenda;
+        $personalAgendaNormal = $normalAgenda;
 
         while ($currentDate->lte($endDate)) {
             // Un evento cada ~2 días para cada uno
@@ -386,6 +391,56 @@ class DevelopmentSeeder extends Seeder
                     'hash' => hash('sha256', $fType['content']),
                 ]
             );
+        }
+
+        // 13. Registros borrados antiguos (>30 días) para pruebas de purga/sincronización
+        $this->command->info('Creando registros borrados antiguos (>30 días)...');
+        $oldDate = Carbon::now()->subDays(rand(31, 45));
+        $someCase = SuitCase::orderBy('id', 'desc')->first();
+
+        // Casos borrados
+        for ($i = 1; $i <= 5; $i++) {
+            $oldCase = SuitCase::create([
+                'title' => "Caso Borrado Antiguo #{$i}",
+                'lawyer_id' => $testUser->id,
+                'case_type_id' => $caseTypes->random()->id,
+                'radicacion_id' => $radicaciones->random()->id,
+                'dependencia_id' => $dependencias->random()->id,
+                'nro_expediente' => 'DEL-'.str_pad($i, 3, '0', STR_PAD_LEFT).'/2025',
+                'start_date' => $oldDate->copy()->subMonths(2),
+                'status' => 'closed',
+                'details' => 'Este caso fue borrado hace más de 30 días.',
+            ]);
+            $oldCase->created_at = $oldDate->copy()->subMonths(2);
+            $oldCase->deleted_at = $oldDate;
+            $oldCase->save();
+        }
+
+        // Documentos borrados
+        for ($i = 1; $i <= 5; $i++) {
+            $oldDoc = Document::create([
+                'name' => "Documento Borrado #{$i}.pdf",
+                'category' => 'document',
+                'user_id' => $testUser->id,
+                'suit_case_id' => $someCase->id,
+                'is_locked' => false,
+            ]);
+            $oldDoc->created_at = $oldDate->copy()->subMonths(1);
+            $oldDoc->deleted_at = $oldDate;
+            $oldDoc->save();
+        }
+
+        // Gastos borrados
+        for ($i = 1; $i <= 5; $i++) {
+            $oldGasto = GastoSuitCase::create([
+                'gasto_id' => $gastoTipos->random()->id,
+                'suit_case_id' => $someCase->id,
+                'user_id' => $testUser->id,
+                'monto' => rand(100, 500),
+            ]);
+            $oldGasto->created_at = $oldDate->copy()->subDays(10);
+            $oldGasto->deleted_at = $oldDate;
+            $oldGasto->save();
         }
 
         $this->call(BitacoraSeeder::class);

@@ -19,6 +19,7 @@ class GastosByDateRangeRequest extends FormRequest
         return [
             'from' => ['required', 'date', 'date_format:Y-m-d'],
             'to' => ['required', 'date', 'date_format:Y-m-d', 'after_or_equal:from'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
         ];
     }
 }

@@ -40,6 +40,7 @@ class RequisitoSeeder extends Seeder
             ['type' => 'caseTitle', 'title' => 'Carátula/Título del Caso'],
             ['type' => 'caseNumber', 'title' => 'Número de Expediente'],
             ['type' => 'caseType', 'title' => 'Tipo de Proceso'],
+            ['type' => 'caseExpedientType', 'title' => 'Tipo de Expediente'],
             ['type' => 'caseStartDate', 'title' => 'Fecha de Inicio'],
             ['type' => 'caseEndDate', 'title' => 'Fecha de Finalización'],
 

@@ -42,9 +42,17 @@ class FileService
      */
     protected function store(UploadedFile $file, array $data, User $user, string $modelClass, string $storageFolder): Model
     {
-        $content = $this->readFileContent($file);
-        $checksum = hash('sha256', $content);
+        $realPath = $file->getRealPath() ?: $file->getPathname();
+
+        // Use hash_file for streaming hash calculation (more memory efficient)
+        $checksum = hash_file('sha256', $realPath);
         $mimeType = $file->getMimeType() ?? $file->getClientMimeType() ?? 'application/octet-stream';
+
+        // Read once for encryption
+        $content = file_get_contents($realPath);
+        if ($content === false) {
+            throw new RuntimeException('Unable to read uploaded file.');
+        }
 
         // Encrypt content
         $encryptionResult = $this->encryptionService->encrypt($content);
@@ -101,23 +109,6 @@ class FileService
 
     protected function readFileContent(UploadedFile $file): string
     {
-        $path = $file->getRealPath() ?: $file->getPathname();
-        $stream = fopen($path, 'rb');
-
-        if ($stream === false) {
-            throw new RuntimeException('Unable to read uploaded file.');
-        }
-
-        try {
-            $content = stream_get_contents($stream);
-        } finally {
-            fclose($stream);
-        }
-
-        if ($content === false) {
-            throw new RuntimeException('Unable to read uploaded file.');
-        }
-
-        return $content;
+        return file_get_contents($file->getRealPath() ?: $file->getPathname());
     }
 }

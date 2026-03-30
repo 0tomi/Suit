@@ -13,13 +13,44 @@ use Illuminate\Support\Facades\Gate;
 
 class GastoSuitCaseController extends Controller
 {
+    public function stats(GastosByDateRangeRequest $request)
+    {
+        Gate::authorize('viewAny', GastoSuitCase::class);
+
+        $query = GastoSuitCase::getByDateRange(
+            auth()->user(),
+            $request->from,
+            $request->to,
+            $request->query('user_id')
+        );
+
+        $gastos = $query->get();
+
+        $stats = $gastos->groupBy(function ($item) {
+            return $item->created_at->format('Y-m');
+        })->map(function ($monthGroup, $month) {
+            return [
+                'month' => $month,
+                'count' => $monthGroup->count(),
+                'total_amount' => round($monthGroup->sum('monto'), 2),
+            ];
+        })->values()->sortBy('month')->values();
+
+        return response()->json($stats);
+    }
+
     public function byDateRange(GastosByDateRangeRequest $request)
     {
         Gate::authorize('viewAny', GastoSuitCase::class);
 
-        $gastos = GastoSuitCase::getByDateRange(auth()->user(), $request->from, $request->to);
+        $query = GastoSuitCase::getByDateRange(
+            auth()->user(),
+            $request->from,
+            $request->to,
+            $request->query('user_id')
+        );
 
-        return GastoSuitCaseResource::collection($gastos);
+        return GastoSuitCaseResource::collection($query->paginate(30));
     }
 
     public function indexByCase(SuitCase $suitCase)

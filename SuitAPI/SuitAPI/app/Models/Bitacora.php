@@ -34,6 +34,7 @@ class Bitacora extends Model
         'event' => \App\Models\Event::class,
         'user' => \App\Models\User::class,
         'multimedia' => \App\Models\Multimedia::class,
+        'public_file' => \App\Models\PublicFile::class,
         'file' => \App\Models\File::class,
         'role' => \App\Models\Rol::class,
         'jurisdiction' => \App\Models\Jurisdiccion::class,

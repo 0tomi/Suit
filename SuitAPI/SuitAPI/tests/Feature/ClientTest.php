@@ -29,8 +29,8 @@ test('can list clients', function () {
 });
 
 test('can search clients', function () {
-    Client::factory()->create(['first_name' => 'John', 'last_name' => 'Doe']);
-    Client::factory()->create(['first_name' => 'Jane', 'last_name' => 'Smith']);
+    Client::factory()->for(\App\Models\Persona::factory()->state(['first_name' => 'John', 'last_name' => 'Doe']))->create();
+    Client::factory()->for(\App\Models\Persona::factory()->state(['first_name' => 'Jane', 'last_name' => 'Smith']))->create();
 
     getJson('/api/clients?search=John')
         ->assertOk()
@@ -53,11 +53,11 @@ test('can create a client', function () {
         ->assertCreated()
         ->assertJsonFragment($data);
 
-    $this->assertDatabaseHas('clients', $data);
+    $this->assertDatabaseHas('personas', ['first_name' => 'Test', 'identification_number' => '12345678']);
 });
 
 test('can create client without identification number (nullable)', function () {
-    Client::factory()->create(['identification_number' => null]);
+    Client::factory()->for(\App\Models\Persona::factory()->state(['identification_number' => null]))->create();
 
     $data = [
         'first_name' => 'Test',
@@ -73,7 +73,7 @@ test('can create client without identification number (nullable)', function () {
 });
 
 test('cannot create client with duplicate identification number', function () {
-    Client::factory()->create(['identification_number' => '12345678']);
+    Client::factory()->for(\App\Models\Persona::factory()->state(['identification_number' => '12345678']))->create();
 
     $data = [
         'first_name' => 'Another',
@@ -98,11 +98,11 @@ test('can update a client', function () {
         ->assertOk()
         ->assertJsonFragment($data);
 
-    $this->assertDatabaseHas('clients', ['id' => $client->id, 'first_name' => 'Updated Name']);
+    $this->assertDatabaseHas('personas', ['id' => $client->persona_id, 'first_name' => 'Updated Name']);
 });
 
 test('can update client ignoring own unique identification number', function () {
-    $client = Client::factory()->create(['identification_number' => '12345678']);
+    $client = Client::factory()->for(\App\Models\Persona::factory()->state(['identification_number' => '12345678']))->create();
 
     putJson("/api/clients/{$client->id}", [
         'identification_number' => '12345678',

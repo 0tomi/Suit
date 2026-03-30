@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class SuitCase extends Model
@@ -116,6 +115,12 @@ class SuitCase extends Model
             ->withTimestamps();
     }
 
+    public function partes()
+    {
+        return $this->belongsToMany(Parte::class, 'parte_caso')
+            ->withTimestamps();
+    }
+
     public function radicacion()
     {
         return $this->belongsTo(Radicacion::class, 'radicacion_id');
@@ -159,12 +164,10 @@ class SuitCase extends Model
     }
 
     /**
-     * Get cases for the user, optionally filtered by status.
+     * Scope to limit cases to those accessible by a specific user.
      */
-    public static function getForUser(User $user, ?string $status = 'active')
+    public function scopeAccessibleBy($query, User $user)
     {
-        $query = static::with('creator');
-
         if ($user->role !== 'admin') {
             $query->where(function ($q) use ($user) {
                 $q->where('lawyer_id', $user->id)
@@ -173,17 +176,21 @@ class SuitCase extends Model
                     });
             });
         }
+    }
 
+    /**
+     * Scope to limit cases by status.
+     */
+    public function scopeOfStatus($query, ?string $status)
+    {
         if ($status !== null) {
             $query->where('status', $status);
         }
-
-        return $query->get();
     }
 
-    public function partes(): BelongsToMany
+    /** Recalcula el estado de todos los clientes asociados a este caso. */
+    public function recalculateClientsStatus(): void
     {
-        return $this->belongsToMany(Parte::class, 'parte_caso')
-            ->withTimestamps();
+        $this->clients->each->recalculateStatus();
     }
 }

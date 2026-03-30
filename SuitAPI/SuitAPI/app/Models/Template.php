@@ -34,9 +34,24 @@ class Template extends Model
      * Get a lightweight list of templates indicating their category.
      * Used for the main catalog catalog caching where content is omitted.
      */
-    public static function getLightweightCatalog(): \Illuminate\Database\Eloquent\Collection
+    public static function getLightweightCatalog(): \Illuminate\Contracts\Pagination\LengthAwarePaginator
     {
-        return self::select('id', 'title', 'template_category_id')->get();
+        return self::select('id', 'title', 'template_category_id')
+            ->latest()
+            ->paginate(40);
+    }
+
+    /**
+     * Scope to search templates by title or content.
+     */
+    public function scopeSearch($query, string $search): void
+    {
+        $like = config('database.default') === 'pgsql' ? 'ilike' : 'like';
+
+        $query->where(function ($q) use ($search, $like) {
+            $q->where('title', $like, "%{$search}%")
+                ->orWhere('content', $like, "%{$search}%");
+        });
     }
 
     public function requirements()

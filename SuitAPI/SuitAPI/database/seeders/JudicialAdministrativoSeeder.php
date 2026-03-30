@@ -16,21 +16,25 @@ class JudicialAdministrativoSeeder extends Seeder
     public function run(): void
     {
         // 1. Asegurar Radicación Administrativo
-        $radAdmin = Radicacion::firstOrCreate(['tipo' => 'Administrativo']);
+        $radAdmin = Radicacion::withTrashed()->firstOrCreate(['tipo' => 'Administrativo']);
+        if ($radAdmin->trashed()) $radAdmin->restore();
 
         // 2. Asegurar Jurisdicciones
-        $jurisParana = Jurisdiccion::updateOrCreate(
+        $jurisParana = Jurisdiccion::withTrashed()->updateOrCreate(
             ['nombre' => 'Paraná'],
             ['updated_at' => now()]
         );
+        if ($jurisParana->trashed()) $jurisParana->restore();
 
-        $jurisCDU = Jurisdiccion::updateOrCreate(
+        $jurisCDU = Jurisdiccion::withTrashed()->updateOrCreate(
             ['nombre' => 'Concepción del Uruguay'],
             ['updated_at' => now()]
         );
+        if ($jurisCDU->trashed()) $jurisCDU->restore();
 
         // 3. Asegurar Competencia Administrativo
-        $compAdmin = Competencia::firstOrCreate(['fuero' => 'Administrativo']);
+        $compAdmin = Competencia::withTrashed()->firstOrCreate(['fuero' => 'Administrativo']);
+        if ($compAdmin->trashed()) $compAdmin->restore();
 
         // 4. Dependencias Administrativas
         $adminDeps = [
@@ -45,12 +49,17 @@ class JudicialAdministrativoSeeder extends Seeder
         ];
 
         foreach ($adminDeps as $dep) {
-            DependenciaJudicial::firstOrCreate([
-                'nombre_juzgado' => $dep['nombre'],
-                'jurisdiccion_id' => $dep['juris_id'],
-                'radicacion_id' => $radAdmin->id,
-                'competencia_id' => $compAdmin->id,
-            ]);
+            $d = DependenciaJudicial::withTrashed()->updateOrCreate(
+                [
+                    'nombre_juzgado' => $dep['nombre'],
+                    'jurisdiccion_id' => $dep['juris_id'],
+                ],
+                [
+                    'radicacion_id' => $radAdmin->id,
+                    'competencia_id' => $compAdmin->id,
+                ]
+            );
+            if ($d->trashed()) $d->restore();
         }
     }
 }

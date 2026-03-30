@@ -7,6 +7,9 @@ use Illuminate\Http\Resources\Json\JsonResource;
 
 class HonorarioResource extends JsonResource
 {
+    /** @var string|null Disable the 'data' wrapper to match the rest of the API responses. */
+    public static $wrap = null;
+
     /**
      * Transform the resource into an array.
      *

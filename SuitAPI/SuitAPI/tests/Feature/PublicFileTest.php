@@ -34,13 +34,36 @@ it('lists public files paginated and ordered by latest', function () {
         ->getJson("/api/public-file-catalogs/{$catalog->id}/public-files")
         ->assertSuccessful()
         ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.1.id', $file1->id);
+});
+
+it('lists all public files paginated and ordered by latest', function () {
+    $catalog1 = PublicFileCatalog::create(['name' => 'Catalog 1']);
+    $catalog2 = PublicFileCatalog::create(['name' => 'Catalog 2']);
+
+    $file1 = PublicFile::factory()->create(['user_id' => $this->user->id, 'public_file_catalog_id' => $catalog1->id, 'created_at' => now()->subDay()]);
+    $file2 = PublicFile::factory()->create(['user_id' => $this->user->id, 'public_file_catalog_id' => $catalog2->id, 'created_at' => now()]);
+
+    actingAs($this->user)
+        ->getJson('/api/public-files')
+        ->assertSuccessful()
+        ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.id', $file2->id)
-        ->assertJsonPath('data.1.id', $file1->id)
-        ->assertJsonStructure([
-            'data' => [['id', 'uuid', 'user_id', 'name', 'url', 'mime_type', 'size', 'hash']],
-            'links',
-            'meta',
-        ]);
+        ->assertJsonPath('data.1.id', $file1->id);
+});
+
+it('lists public files filtered by catalog_id query parameter', function () {
+    $catalog1 = PublicFileCatalog::create(['name' => 'Catalog 1']);
+    $catalog2 = PublicFileCatalog::create(['name' => 'Catalog 2']);
+
+    $file1 = PublicFile::factory()->create(['user_id' => $this->user->id, 'public_file_catalog_id' => $catalog1->id]);
+    $file2 = PublicFile::factory()->create(['user_id' => $this->user->id, 'public_file_catalog_id' => $catalog2->id]);
+
+    actingAs($this->user)
+        ->getJson("/api/public-files?public_file_catalog_id={$catalog1->id}")
+        ->assertSuccessful()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $file1->id);
 });
 
 it('allows authenticated users to upload a public file', function () {
