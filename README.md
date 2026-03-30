@@ -3,7 +3,7 @@
 
   # Suit
 
-  **Suite de escritorio + servidor para gestión jurídica, con despliegue portable en Windows.**
+  **Ecosistema de aplicaciones para gestión jurídica con despliegue portable en Windows.**
 
   <p>
     <img alt="Laravel" src="https://img.shields.io/badge/Laravel-12-FF2D20?logo=laravel&logoColor=white">
@@ -21,108 +21,66 @@
 
 ## Qué es Suit
 
-**Suit** no es una sola app: es un ecosistema compuesto por **3 aplicaciones** y **1 instalador** que trabajan juntas para ofrecer una experiencia de escritorio conectada a un servidor local o de red.
+**Suit** está compuesto por **3 aplicaciones** y **1 instalador** que trabajan juntas para ofrecer una solución de escritorio conectada a un servidor local o de red:
 
-La idea es simple:
+- **SuitAPI**: backend y lógica central del sistema.
+- **SuitApp**: aplicación de escritorio para el usuario final.
+- **SuitApiLauncher**: lanzador para servir la API en Windows.
+- **Instalador Inno Setup**: empaquetado y despliegue portable.
 
-- **SuitAPI** es el cerebro.
-- **SuitApp** es la cara visible para el usuario final.
-- **SuitApiLauncher** hace que correr el backend en Windows no sea una ceremonia satánica.
-- **Inno Setup** empaqueta todo para que la instalación sea replicable y portable.
-
----
-
-## Arquitectura general
+## Arquitectura
 
 ```text
-┌─────────────────────────────────────────────────────────────────┐
-│                           SUIT ECOSYSTEM                       │
-└─────────────────────────────────────────────────────────────────┘
-
-   Usuario final
-        │
-        ▼
+Usuario final
+    │
+    ▼
 ┌───────────────────────┐
 │       SuitApp         │
 │ Electron + React      │
-│ Interfaz de escritorio│
 └──────────┬────────────┘
            │ conexión al servidor
            ▼
 ┌───────────────────────┐
 │       SuitAPI         │
 │ Laravel + FrankenPHP  │
-│ API / lógica central  │
 └──────────┬────────────┘
            │
            ▼
 ┌───────────────────────┐
 │      PostgreSQL       │
-│   Persistencia prod   │
 └───────────────────────┘
 
-En Windows, SuitApiLauncher se encarga de levantar
-FrankenPHP + PostgreSQL para servir la API.
+En Windows, SuitApiLauncher levanta FrankenPHP + PostgreSQL
+para servir la API de forma automática.
 ```
 
----
+## Componentes
 
-## Componentes del repositorio
-
-| Componente | Rol | Stack principal |
+| Componente | Función | Stack principal |
 |---|---|---|
-| **SuitAPI** | Backend y lógica central del sistema | Laravel 12, PHP 8.2+, Sanctum, FrankenPHP, Caddy |
-| **SuitApp** | Aplicación de escritorio para usuario final | Electron, React 19, Vite 7, Tailwind 4, Radix UI |
-| **SuitApiLauncher** | Lanzador del backend en Windows | Qt Widgets + C++17 |
-| **Instalador** | Empaquetado y despliegue en Windows | Inno Setup |
+| **SuitAPI** | Servidor y lógica de negocio | Laravel 12, PHP 8.2+, Sanctum, FrankenPHP, Caddy |
+| **SuitApp** | Cliente de escritorio | Electron, React 19, Vite 7, Tailwind 4, Radix UI |
+| **SuitApiLauncher** | Orquestación local en Windows | Qt Widgets, C++17 |
+| **Instalador** | Empaquetado y despliegue | Inno Setup |
 
----
+## SuitAPI
 
-## 1) SuitAPI
-
-Backend principal del ecosistema. Está pensado para correr como **servidor del estudio**, centralizando datos, lógica de negocio y atención de clientes de escritorio.
+**SuitAPI** es el servidor de la aplicación y su núcleo funcional. Centraliza autenticación, datos y reglas de negocio, y está pensada para la máquina del administrador de sistemas del estudio.
 
 ### Stack
 
 - **Laravel 12**
 - **PHP 8.2+**
 - **Laravel Sanctum**
-- **FrankenPHP** como runtime de PHP
-- **Caddy** como servidor embebido a través de FrankenPHP
+- **FrankenPHP**
+- **Caddy**
 - **PostgreSQL** en producción
 - **SQLite** en desarrollo
 - **Pest** para testing
 
-### Enfoque
+## SuitApp
 
-- En **producción**, la API está preparada para trabajar con **PostgreSQL**.
-- En **desarrollo**, puede levantarse con **SQLite**, lo que simplifica bastante el setup local.
-- Es el punto central del sistema: autenticación, datos, reglas de negocio y coordinación general.
-
-### Scripts detectados
-
-```bash
-composer setup
-composer dev
-composer start
-composer test
-```
-
-### Estructura relevante
-
-```text
-SuitAPI/
-├── SuitAPI/        # Proyecto Laravel
-├── docs/
-├── README.md
-└── SuitLogo.png
-```
-
----
-
-## 2) SuitApp
-
-Aplicación de escritorio orientada al **usuario final**. Busca ofrecer una interfaz moderna, amigable y operativa, con conexión automática al servidor.
+**SuitApp** es la aplicación de escritorio orientada al usuario final. Está construida para ofrecer una interfaz moderna, conexión automática al servidor y herramientas que le aportan valor propio más allá de consumir la API.
 
 ### Stack
 
@@ -136,103 +94,50 @@ Aplicación de escritorio orientada al **usuario final**. Busca ofrecer una inte
 
 ### Qué aporta
 
-- Interfaz desktop moderna.
-- Integración con proceso principal de Electron.
-- Tooling actual para desarrollo rápido.
-- Suite de tests E2E y unitarios ya montada.
+- Interfaz de escritorio amigable y moderna.
+- Sistema de **cacheo eficiente** para reducir consultas a la API.
+- **Motor de plantillas** que permite autocompletarlas rápidamente con información provista por el sistema.
+- Herramientas adicionales que amplían la experiencia del usuario y justifican su existencia como aplicación separada de la API.
 
-### Scripts detectados
+## SuitApiLauncher
 
-```bash
-npm run dev
-npm run dev:electron
-npm run build
-npm run build:electron
-npm run build:electron:win
-npm run test
-npm run test:unit
-npm run test:e2e
-```
+**SuitApiLauncher** es la solución para servir la API en Windows de forma automática, evitando configuraciones manuales para el usuario.
 
-### Estructura relevante
-
-```text
-SuitApp/
-├── electron/
-├── public/
-├── scripts/
-├── src/
-├── tests/
-├── package.json
-└── vite.config.js
-```
-
----
-
-## 3) SuitApiLauncher
-
-Aplicación de escritorio en **Qt/C++** creada para resolver el problema concreto de servir la API en Windows sin obligar al usuario a tocar consola, servicios o configuraciones manuales.
-
-### Rol
+### Función
 
 - Levanta el proceso de **FrankenPHP**.
 - Levanta el proceso de **PostgreSQL**.
-- Permite servir la API de Laravel de forma más automática.
-- Funciona como pieza de orquestación local para instalaciones Windows.
+- Permite servir la API Laravel como backend local o de red.
 
 ### Stack detectado
 
 - **Qt Widgets**
 - **C++17**
-- Proyecto `.pro` clásico de Qt
+- Proyecto `.pro` de Qt
 
-### Estructura relevante
+## Instalador con Inno Setup
 
-```text
-SuitApiLauncher/
-├── main.cpp
-├── mainwindow.cpp / .ui
-├── configmanager.*
-├── envparser.*
-├── phpiniparser.*
-├── caddyfileparser.*
-├── SuitAPI.pro
-└── SuitLogo.png
-```
+El instalador resuelve la portabilidad en Windows y prepara el entorno para que las aplicaciones funcionen correctamente.
 
-Sí, el nombre `SuitAPI.pro` dentro de `SuitApiLauncher` es medio traicionero. Qt no ayuda, solo observa y juzga.
+### Qué hace
 
----
+- Instala la solución completa.
+- Abre los puertos necesarios.
+- Instala dependencias del sistema, como **Visual C++ Redistributable**.
+- Despliega los binarios y archivos necesarios para ejecutar el sistema.
 
-## 4) Instalador con Inno Setup
+### Requisitos del paquete de instalación
 
-El instalador es la capa que hace viable la **portabilidad real en Windows**.
+La carpeta de instalación debe contener:
 
-### Qué resuelve
-
-- Instalación de la solución completa.
-- Apertura de los puertos necesarios.
-- Instalación de dependencias del sistema, como **Visual C++ Redistributable**.
-- Despliegue coordinado de launcher, backend y binarios requeridos.
-
-### Requisitos para armar el paquete de instalación
-
-Para que el instalador funcione correctamente, debe existir una carpeta que contenga:
-
-- El binario de **SuitApiLauncher** junto con sus dependencias.
+- El binario de **SuitApiLauncher** con sus dependencias.
 - El binario de **PostgreSQL para Windows**.
 - El binario de **FrankenPHP para Windows**.
 - Dentro de la carpeta de FrankenPHP, la **API Laravel lista para servirse**.
 
-En otras palabras: el instalador no hace magia. Hace packaging bien hecho, que es bastante mejor.
+## Desarrollo
 
----
-
-## Flujo de despliegue esperado
-
-### Desarrollo
-
-#### SuitAPI
+### SuitAPI
 
 ```bash
 cd SuitAPI/SuitAPI
@@ -245,7 +150,7 @@ composer start
 
 > En desarrollo puede usarse **SQLite**.
 
-#### SuitApp
+### SuitApp
 
 ```bash
 cd SuitApp
@@ -253,24 +158,22 @@ npm install
 npm run dev:electron
 ```
 
-#### SuitApiLauncher
+### SuitApiLauncher
 
-Compilar con **Qt Creator** o usando las herramientas de Qt sobre el archivo:
+Compilar con **Qt Creator** o con las herramientas de Qt sobre:
 
 ```text
 SuitApiLauncher/SuitAPI.pro
 ```
 
-### Producción en Windows
+## Producción en Windows
 
-1. Preparar **SuitApiLauncher** compilado.
+1. Compilar **SuitApiLauncher**.
 2. Incluir binarios de **PostgreSQL** y **FrankenPHP**.
-3. Copiar la **SuitAPI Laravel** ya lista dentro del árbol esperado.
+3. Copiar la **SuitAPI** Laravel lista dentro de la estructura esperada.
 4. Construir el instalador con **Inno Setup**.
 5. Instalar en la máquina servidor.
 6. Conectar clientes desde **SuitApp**.
-
----
 
 ## Estructura del repositorio
 
@@ -294,84 +197,6 @@ Suit/
 └── README.md
 ```
 
----
-
-## Tecnologías principales
-
-### Backend
-
-- Laravel
-- PHP
-- Sanctum
-- FrankenPHP
-- Caddy
-- PostgreSQL
-- SQLite
-
-### Desktop
-
-- Electron
-- React
-- Vite
-- Tailwind CSS
-- Radix UI
-
-### Windows / Infra local
-
-- Qt Widgets
-- C++
-- Inno Setup
-
----
-
-## Casos de uso que cubre esta arquitectura
-
-- **Servidor local del estudio** con backend centralizado.
-- **Clientes de escritorio** conectados automáticamente.
-- **Distribución en Windows** sin exigir instalación manual de stack web completo.
-- **Separación clara** entre interfaz de usuario, servidor y orquestación local.
-
----
-
-## Público objetivo de cada pieza
-
-| Pieza | Pensada para |
-|---|---|
-| **SuitAPI** | Administrador de sistemas / máquina servidor |
-| **SuitApp** | Usuario final |
-| **SuitApiLauncher** | Instalación y operación técnica en Windows |
-| **Instalador** | Despliegue portable y repetible |
-
----
-
-## Estado actual del repo
-
-Este repositorio agrupa varias piezas del sistema en un solo lugar, lo que permite trabajar sobre:
-
-- backend,
-- cliente de escritorio,
-- utilidades de despliegue,
-- y documentación.
-
-Es, básicamente, un mono-repo con esteroides moderados.
-
----
-
 ## Licencia
 
 Este proyecto se distribuye bajo licencia **MIT**.
-
----
-
-## Créditos
-
-En el README interno de la API figuran como creadores:
-
-- Valentino Pettinato
-- Tomás Schlotahuer
-
----
-
-<div align="center">
-  <sub>Hecho para que la instalación en Windows no dependa de rezarle a tres servicios, dos variables de entorno y una fase lunar.</sub>
-</div>
